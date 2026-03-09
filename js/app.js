@@ -472,9 +472,21 @@ function renderDashboard() {
     if (isAdmin()) {
       syncBadge.style.cursor = 'pointer';
       syncBadge.title  = 'Click pentru sincronizare manuală';
-      syncBadge.onclick = () => {
+      syncBadge.onclick = async () => {
+        if (!isSyncConfigured()) {
+          showToast('API URL nu este configurat. Mergi la Setări.', 'error');
+          return;
+        }
         showToast('Sincronizare în curs...', 'info');
-        forceSync().catch(() => showToast('Eroare la sincronizare.', 'error'));
+        try {
+          await forceSync();
+          await loadData();
+          renderDashboard();
+          updateSyncBadge();
+          showToast('Sincronizare completă!', 'success');
+        } catch (e) {
+          showToast('Eroare la sincronizare: ' + e.message, 'error');
+        }
       };
     } else {
       syncBadge.style.cursor = 'default';
@@ -2757,7 +2769,7 @@ function openDrumPicker(inputEl) {
     `<div style="height:${DRUM_PAD_H}px;flex-shrink:0"></div>` +
     values.map((v, i) => {
       const disp = Number.isInteger(v) ? String(v) : v.toFixed(dec);
-      return `<div class="drum-popup-item" data-index="${i}" data-value="${v}">${disp}${unit ? '<small class="drum-unit"> ' + unit + '</small>' : ''}</div>`;
+      return `<div class="drum-popup-item" data-index="${i}" data-value="${v}" onclick="_drumItemClick(${i})">${disp}${unit ? '<small class="drum-unit"> ' + unit + '</small>' : ''}</div>`;
     }).join('') +
     `<div style="height:${DRUM_PAD_H}px;flex-shrink:0"></div>`;
 
@@ -2841,6 +2853,16 @@ function closeDrumPicker() {
   _drumJustClosed = _drumInput; // remember which input closed (to prevent same-button toggle re-open)
   _drumInput = null;
   setTimeout(() => { _drumJustClosed = null; }, 150);
+}
+
+function _drumItemClick(idx) {
+  // Click on a drum item: scroll to it, select value and confirm
+  const viewport = $('drum-popup-viewport');
+  if (!viewport || !_drumInput) return;
+  viewport.scrollTop = idx * DRUM_ITEM_H;
+  _updateDrumHighlight();
+  // Small delay to let user see the selection, then confirm
+  setTimeout(() => confirmDrumPicker(), 120);
 }
 
 // Click outside popup → confirm and close

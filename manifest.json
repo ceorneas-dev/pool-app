@@ -44,6 +44,10 @@
       "label": "Pool Manager Dashboard"
     }
   ],
-  "categories": ["productivity", "utilities"],
-  "prefer_related_applications": false
+  "categories": [
+    "productivity",
+    "utilities"
+  ],
+  "prefer_related_applications": false,
+  "id": "/pool-app/"
 }

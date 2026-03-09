@@ -3660,6 +3660,15 @@ body.dark-mode .cal-entry-delete:hover  { background: #3f1515; color: #f87171; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
 }
+.cl-header .btn-back {
+  color: var(--primary);
+  font-size: 1.3rem;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--hover);
+  cursor: pointer;
+}
 .cl-header-title {
   flex: 1;
   font-size: 1rem;
