@@ -228,8 +228,8 @@ function getLastSyncTime() {
 function apiFetch(url, options) {
   const opts = Object.assign({
     method:  'GET',
-    headers: { 'Content-Type': 'application/json' },
-    mode:    'cors'
+    headers: { 'Content-Type': 'text/plain' },
+    redirect: 'follow'
   }, options);
 
   return fetch(url, opts)
