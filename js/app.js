@@ -460,7 +460,7 @@ function renderDashboard() {
   }
 
   // Logout
-  const logoutBtn = $('btn-logout');
+  const logoutBtn = $('btn-logout-hidden');
   if (logoutBtn) {
     logoutBtn.onclick = async () => {
       APP.alertShown = false;
@@ -3460,7 +3460,7 @@ async function deleteCalendarEntry(id) {
   try {
     const resp = await fetch(SYNC_CONFIG.API_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
       body:    JSON.stringify({ action: 'deleteCalendarEntry', id })
     });
     const data = await resp.json();
@@ -3571,7 +3571,8 @@ async function onCalendarFileImport(file) {
 
     const resp = await fetch(SYNC_CONFIG.API_URL, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
       body:    JSON.stringify({ action: 'saveCalendarEntries', entries })
     });
     const data = await resp.json();

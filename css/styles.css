@@ -3254,8 +3254,11 @@ body.dark-mode .btn-drum-cancel { border-color: rgba(255,255,255,0.12); color: #
 }
 
 /* Dark mode */
-body.dark-mode .map-legend { background: #1e293b; border-top-color: #334155; }
+body.dark-mode .map-header { background: var(--primary); }
+body.dark-mode .map-legend { background: var(--surface); border-top-color: var(--border); }
 body.dark-mode .map-no-api { color: #94a3b8; }
+body.dark-mode .map-history-panel { background: var(--surface); }
+body.dark-mode .map-hist-title { color: var(--text); }
 
 .map-popup-inner { font-size: 13px; line-height: 1.6; }
 
@@ -3631,12 +3634,15 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
 
 /* ── Dark mode ────────────────────────────────────────── */
 body.dark-mode .cal-header,
-body.dark-mode .cal-week-nav            { background: var(--slate-900); border-color: var(--border); }
+body.dark-mode .cal-week-nav            { background: var(--surface); border-color: var(--border); }
+body.dark-mode .cal-header-title,
+body.dark-mode .cal-week-label          { color: var(--text); }
+body.dark-mode .cal-header .btn-back    { color: var(--primary); border-color: var(--border); background: rgba(59,130,246,.15); }
 body.dark-mode .cal-icon-btn,
-body.dark-mode .cal-nav-btn             { background: var(--slate-800); border-color: var(--border); color: var(--text); }
+body.dark-mode .cal-nav-btn             { background: var(--card); border-color: var(--border); color: var(--text); }
 body.dark-mode .cal-icon-btn:hover,
-body.dark-mode .cal-nav-btn:hover       { background: var(--slate-700); }
-body.dark-mode .cal-entry               { background: var(--slate-800); }
+body.dark-mode .cal-nav-btn:hover       { background: var(--hover); }
+body.dark-mode .cal-entry               { background: var(--card); }
 body.dark-mode .cal-entry-client        { color: var(--text); }
 body.dark-mode .cal-entry-delete:hover  { background: #3f1515; color: #f87171; }
 
@@ -3895,7 +3901,7 @@ body.dark-mode .cal-entry-delete:hover  { background: #3f1515; color: #f87171; }
 /* ── Dark mode ────────────────────────────────────────── */
 body.dark-mode .cl-header,
 body.dark-mode .cl-list-title,
-body.dark-mode .cl-footer-bar      { background: var(--slate-900); border-color: var(--border); }
+body.dark-mode .cl-footer-bar      { background: var(--surface); border-color: var(--border); }
 body.dark-mode .cl-icon-btn        { background: var(--slate-800); border-color: var(--border); color: var(--text); }
 body.dark-mode .cl-icon-btn:hover  { background: var(--slate-700); }
 body.dark-mode .cl-table thead tr  { background: var(--slate-800); }
