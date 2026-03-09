@@ -3466,8 +3466,8 @@ async function deleteCalendarEntry(id) {
 }
 
 /** Descarcă template Excel pentru import calendar. */
-function downloadCalendarTemplate() {
-  if (typeof XLSX === 'undefined') {
+async function downloadCalendarTemplate() {
+  try { await loadXLSX(); } catch (e) {
     showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
     return;
   }
@@ -3489,7 +3489,7 @@ async function onCalendarFileImport(file) {
   const inp = $('cal-import-input');
   if (inp) inp.value = '';
 
-  if (typeof XLSX === 'undefined') {
+  try { await loadXLSX(); } catch (e) {
     showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
     return;
   }
@@ -3832,7 +3832,7 @@ async function onChecklistFileImport(file) {
   const inp = $('checklist-import-input');
   if (inp) inp.value = '';
 
-  if (typeof XLSX === 'undefined') {
+  try { await loadXLSX(); } catch (e) {
     showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
     return;
   }
@@ -3905,8 +3905,8 @@ async function onChecklistFileImport(file) {
 }
 
 /** Descarcă template Excel pentru import evidență. */
-function downloadChecklistTemplate() {
-  if (typeof XLSX === 'undefined') {
+async function downloadChecklistTemplate() {
+  try { await loadXLSX(); } catch (e) {
     showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
     return;
   }
