@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#1d4ed8">
+  <meta name="description" content="Aplicație management intervenții piscine">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="PoolMgr">
+
+  <title>Pool Manager</title>
+
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+<script>if(localStorage.getItem('darkMode'))document.body.classList.add('dark-mode');</script>
+
+<!-- ════════════════════════════════════
+     SCREEN: LOGIN
+════════════════════════════════════ -->
+<div id="screen-login" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="icons/icon-192.png" alt="Pool Manager">
+      <h1>Pool Manager</h1>
+    </div>
+    <p class="login-subtitle">Managementul intervențiilor piscine</p>
+
+    <form id="login-form" autocomplete="off">
+      <div class="form-group">
+        <label for="login-username">Utilizator</label>
+        <input type="text" id="login-username" name="username" placeholder="admin" autocomplete="username" autocorrect="off" autocapitalize="none">
+      </div>
+      <div class="form-group">
+        <label for="login-password">Parolă</label>
+        <input type="password" id="login-password" name="password" placeholder="••••••••" autocomplete="current-password">
+      </div>
+      <button type="submit" id="login-btn" class="btn-primary">Intră în cont</button>
+    </form>
+    <p id="login-switch-user" class="login-switch-link" style="display:none">
+      <button type="button" class="login-link-btn" onclick="switchLoginUser()">↩ Schimbă utilizatorul</button>
+    </p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: PIN
+════════════════════════════════════ -->
+<div id="screen-pin" class="screen">
+  <div class="login-card">
+    <div class="login-logo">
+      <img src="icons/icon-192.png" alt="Pool Manager">
+      <h1>Pool Manager</h1>
+    </div>
+    <p class="login-subtitle" id="pin-username-label">Introduceți PIN-ul</p>
+
+    <div class="pin-display">
+      <div class="pin-dot" data-index="0"></div>
+      <div class="pin-dot" data-index="1"></div>
+      <div class="pin-dot" data-index="2"></div>
+      <div class="pin-dot" data-index="3"></div>
+    </div>
+
+    <div class="pin-keypad">
+      <button class="pin-key" data-val="1">1</button>
+      <button class="pin-key" data-val="2">2</button>
+      <button class="pin-key" data-val="3">3</button>
+      <button class="pin-key" data-val="4">4</button>
+      <button class="pin-key" data-val="5">5</button>
+      <button class="pin-key" data-val="6">6</button>
+      <button class="pin-key" data-val="7">7</button>
+      <button class="pin-key" data-val="8">8</button>
+      <button class="pin-key" data-val="9">9</button>
+      <button class="pin-key empty" aria-hidden="true"></button>
+      <button class="pin-key" data-val="0">0</button>
+      <button class="pin-key backspace" data-val="del">⌫</button>
+    </div>
+
+    <div class="pin-switch-user" id="pin-switch-user">Schimbă utilizatorul</div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: DASHBOARD
+════════════════════════════════════ -->
+<div id="screen-dashboard" class="screen">
+
+  <!-- Header -->
+  <div class="dashboard-header">
+    <h2>🌊 Pool Manager</h2>
+    <div class="header-right">
+      <button class="nav-menu-btn" onclick="toggleNavMenu()" title="Meniu">&#9776;</button>
+      <span id="conn-badge" class="conn-badge online">🟢 Online</span>
+      <span id="sync-badge" class="sync-badge" title="Intervenții nesincronizate"></span>
+    </div>
+  </div>
+
+  <!-- Nav Menu Overlay -->
+  <div id="nav-menu-overlay" class="nav-menu-overlay" onclick="toggleNavMenu()">
+    <nav class="nav-menu" onclick="event.stopPropagation()">
+      <button class="nav-menu-item admin-only" onclick="toggleNavMenu();showScreen('map')">
+        <span class="nav-menu-icon">&#128205;</span>
+        <span>Hart&#259; Tehnicieni</span>
+      </button>
+      <button class="nav-menu-item" onclick="toggleNavMenu();showScreen('calendar')">
+        <span class="nav-menu-icon">&#128197;</span>
+        <span>Calendar Interven&#539;ii</span>
+      </button>
+      <button class="nav-menu-item admin-only" onclick="toggleNavMenu();showScreen('checklist')">
+        <span class="nav-menu-icon">&#128203;</span>
+        <span>Eviden&#539;&#259;</span>
+      </button>
+      <button class="nav-menu-item" onclick="toggleNavMenu();showScreen('info')">
+        <span class="nav-menu-icon">&#128214;</span>
+        <span>Ghid Tehnician</span>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-value" id="stat-total-clients">0</div>
+      <div class="stat-label">Clienți</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-today">0</div>
+      <div class="stat-label">Azi</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-value" id="stat-pending">0</div>
+      <div class="stat-label">Nesincronizate</div>
+    </div>
+  </div>
+
+  <!-- Search -->
+  <div class="search-bar">
+    <input type="search" id="search-input" class="search-input" placeholder="Caută client..." autocomplete="off">
+  </div>
+
+  <!-- Dashboard tabs + add button -->
+  <div class="dashboard-tabs">
+    <button class="tab-btn active" onclick="switchTab('all')">Toți clienții</button>
+    <button class="tab-btn" id="tab-due-btn" onclick="switchTab('due')">🔴 De vizitat</button>
+    <button class="tab-btn admin-only" onclick="showAddClientModal()" style="margin-left:auto">➕ Client nou</button>
+  </div>
+
+  <!-- Client list -->
+  <ul id="client-list"></ul>
+
+  <!-- Admin stats -->
+  <div id="admin-stats" class="admin-stats-section admin-only"></div>
+
+  <!-- Footer -->
+  <div class="dashboard-footer">
+    <div class="footer-nav">
+      <button class="footer-nav-btn admin-only" onclick="showScreen('map')" title="Hartă Tehnicieni">
+        <span class="footer-nav-icon">📍</span>
+        <span class="footer-nav-label">Hartă</span>
+      </button>
+      <button class="footer-nav-btn" onclick="showScreen('calendar')" title="Calendar Intervenții">
+        <span class="footer-nav-icon">📅</span>
+        <span class="footer-nav-label">Calendar</span>
+      </button>
+      <button class="footer-nav-btn admin-only" onclick="showScreen('checklist')" title="Evidență">
+        <span class="footer-nav-icon">📋</span>
+        <span class="footer-nav-label">Evidență</span>
+      </button>
+      <button class="footer-nav-btn" onclick="showScreen('info')" title="Ghid Tehnician">
+        <span class="footer-nav-icon">📖</span>
+        <span class="footer-nav-label">Ghid</span>
+      </button>
+      <button id="btn-export-all" class="footer-nav-btn admin-only" title="Export tot">
+        <span class="footer-nav-icon">📥</span>
+        <span class="footer-nav-label">Export</span>
+      </button>
+      <button id="btn-gps-status" class="footer-nav-btn admin-only" onclick="toggleGpsOverride()" title="GPS">
+        <span class="footer-nav-icon">⭕</span>
+        <span class="footer-nav-label">GPS</span>
+      </button>
+      <button class="footer-nav-btn footer-nav-logout" onclick="document.getElementById('btn-logout-hidden').click()" title="Ieșire">
+        <span class="footer-nav-icon">🚪</span>
+        <span class="footer-nav-label">Ieșire</span>
+      </button>
+    </div>
+    <button id="btn-logout-hidden" class="btn-logout" style="display:none">Ieșire</button>
+  </div>
+
+  <!-- Settings (admin only) -->
+  <details id="settings-section" class="admin-only" style="margin:0 12px 100px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm)" ontoggle="if(this.open)renderObsTemplatesSettings()">
+    <summary style="padding:12px 14px;font-size:.85rem;font-weight:700;color:var(--slate-600);cursor:pointer;list-style:none">⚙️ Setări</summary>
+    <div>
+      <div class="settings-row">
+        <label for="settings-api-url">API URL</label>
+        <input type="url" id="settings-api-url" placeholder="https://script.google.com/...">
+      </div>
+      <div class="settings-row">
+        <label for="settings-pin">PIN 4 cifre</label>
+        <input type="password" id="settings-pin" placeholder="Setați PIN" maxlength="4" inputmode="numeric" pattern="[0-9]{4}">
+      </div>
+      <div class="settings-row">
+        <label for="settings-alert-threshold">Prag alertă (intervenții)</label>
+        <input type="number" id="settings-alert-threshold" placeholder="4" min="1" max="50" inputmode="numeric" style="width:70px">
+      </div>
+      <div class="settings-section-subheader">📍 GPS Tracking</div>
+      <div class="settings-row">
+        <label for="settings-gps-interval">Interval trimitere poziție</label>
+        <select id="settings-gps-interval" style="width:130px">
+          <option value="60">1 minut</option>
+          <option value="120">2 minute</option>
+          <option value="300" selected>5 minute</option>
+          <option value="600">10 minute</option>
+          <option value="900">15 minute</option>
+          <option value="1200">20 minute</option>
+          <option value="1800">30 minute</option>
+        </select>
+      </div>
+      <div class="settings-row">
+        <label>Program GPS automat</label>
+        <div style="display:flex;align-items:center;gap:6px">
+          <select id="settings-gps-start" style="width:72px">
+            <!-- Ore 0-23 generate dinamic de JS -->
+          </select>
+          <span style="color:var(--text-secondary);font-size:13px">→</span>
+          <select id="settings-gps-end" style="width:72px">
+          </select>
+        </div>
+      </div>
+      <button id="btn-settings-save" class="btn-settings-save">Salvează setările</button>
+
+      <!-- Dark mode — available to all -->
+      <div class="settings-row" style="margin-top:8px">
+        <label>Mod întunecat</label>
+        <button id="btn-dark-mode" class="btn-settings-save" style="width:auto;padding:6px 16px" onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
+      </div>
+
+      <!-- Admin-only quick actions -->
+      <div class="settings-row admin-only" style="margin-top:4px;flex-wrap:wrap;gap:8px">
+        <label style="width:100%">Acțiuni admin</label>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="showTechManager()">👥 Tehnicieni</button>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="showStockModal()">📦 Stoc</button>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="exportBackupJSON()">💾 Backup</button>
+        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📂 Restore<input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"></label>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadImportTemplate()">📋 Template Import</button>
+        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Excel<input type="file" id="import-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="importInterventionsXLSX(this.files[0])"></label>
+      </div>
+
+      <!-- Obs Templates Management -->
+      <div class="settings-section-subheader">💬 Sugestii Observații</div>
+      <div id="obs-templates-settings-list" style="padding:0 14px 4px"></div>
+      <div style="display:flex;gap:6px;padding:0 14px 14px">
+        <input type="text" id="obs-template-new-input" class="obs-tmpl-input"
+               placeholder="Sugestie nouă..." onkeydown="if(event.key==='Enter')addObsTemplate()">
+        <button onclick="addObsTemplate()" class="obs-tmpl-add-btn">+ Adaugă</button>
+      </div>
+    </div>
+  </details>
+
+</div><!-- /screen-dashboard -->
+
+<!-- ════════════════════════════════════
+     SCREEN: INTERVENTION
+════════════════════════════════════ -->
+<div id="screen-intervention" class="screen">
+
+  <!-- Header -->
+  <div class="intervention-header">
+    <div class="intervention-header-top">
+      <button id="btn-back" class="btn-back" aria-label="Înapoi">←</button>
+      <span id="intervention-client-name" class="intervention-client-name"></span>
+    </div>
+    <div class="intervention-header-meta">
+      <span id="intervention-date" class="intervention-date"></span>
+      <span id="gps-indicator" class="gps-indicator locating">📍 Se localizează...</span>
+      <div class="wizard-progress" id="wizard-progress">
+        <span class="wiz-dot active" data-step="1"></span>
+        <span class="wiz-dot" data-step="2"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── PAS 1: Măsurare ── -->
+  <div class="wiz-step active" id="wiz-step-1">
+
+    <!-- A. Valori Măsurate -->
+    <div class="form-section">
+      <div class="form-section-title">Valori Măsurate</div>
+      <div class="measure-grid">
+        <div class="measure-item">
+          <label for="m-chlorine">Clor (mg/L) *</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-chlorine" inputmode="decimal" step="0.1" min="0" max="10" placeholder="0.0"
+                   data-step="0.1" data-unit="mg/L" data-label="Clor" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-ph">pH *</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-ph" inputmode="decimal" step="0.1" min="6" max="9" placeholder="7.0"
+                   data-step="0.1" data-unit="" data-label="pH" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-temp">Temp (°C)</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-temp" inputmode="decimal" step="0.5" min="0" max="45" placeholder="—"
+                   data-step="0.5" data-unit="°C" data-label="Temperatură" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-hardness">Duritate</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-hardness" inputmode="numeric" step="1" min="0" max="600" placeholder="—"
+                   data-step="1" data-unit="ppm" data-label="Duritate" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-alkalinity">Alcalinitate</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-alkalinity" inputmode="numeric" step="1" min="0" max="400" placeholder="—"
+                   data-step="1" data-unit="ppm" data-label="Alcalinitate" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-salinity">Salinitate</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-salinity" inputmode="decimal" step="0.1" min="0" max="15" placeholder="—"
+                   data-step="0.1" data-unit="g/L" data-label="Salinitate" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item">
+          <label for="m-tc">Clor Total (TC)</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-tc" inputmode="decimal" step="0.1" min="0" max="15" placeholder="—"
+                   data-step="0.1" data-unit="mg/L" data-label="Clor Total" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+        <div class="measure-item" id="measure-cya-wrap" style="display:none">
+          <label for="m-cya">Acid Cianuric (CYA)</label>
+          <div class="measure-input-wrap">
+            <input type="number" id="m-cya" inputmode="numeric" step="1" min="0" max="200" placeholder="—"
+                   data-step="1" data-unit="ppm" data-label="CYA" onclick="openDrumPicker(this)">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- B. Recomandare -->
+    <div class="form-section">
+      <div class="form-section-title">Recomandare Tratament (auto)</div>
+
+      <!-- Status badges per parameter -->
+      <div id="rec-status-badges" class="rec-status-area" style="display:none"></div>
+
+      <!-- CC + pH efficiency analysis line -->
+      <div id="rec-analysis" class="rec-analysis-row" style="display:none"></div>
+
+      <!-- Breakpoint chlorination alert -->
+      <div id="rec-breakpoint" class="breakpoint-alert" style="display:none"></div>
+
+      <!-- CYA-adjusted FAC minimum -->
+      <div id="rec-cya-min" class="cya-min-note" style="display:none"></div>
+
+      <!-- Dose recommendations -->
+      <div class="rec-grid">
+        <div class="rec-item">
+          <div class="rec-label">Cl Granule</div>
+          <div class="rec-value" id="rec-cl-granule">—</div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-label">Cl Tablete</div>
+          <div class="rec-value" id="rec-cl-tab">—</div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-label">pH Granule</div>
+          <div class="rec-value" id="rec-ph-kg">—</div>
+        </div>
+        <div class="rec-item">
+          <div class="rec-label">Antialgic</div>
+          <div class="rec-value" id="rec-anti">—</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- D. Intervenții anterioare (colapsabil) -->
+    <div class="form-section">
+      <div class="form-section-title wiz-collapsible" onclick="toggleSection(this)">
+        <span>▶ Ultimele intervenții</span>
+      </div>
+      <div class="wiz-collapsible-body" style="display:none">
+        <div id="prev-interventions"></div>
+      </div>
+    </div>
+
+    <div class="wiz-nav">
+      <button class="btn-wiz-next" onclick="nextWizardStep()">Tratament & Note ▶</button>
+    </div>
+  </div><!-- /wiz-step-1 -->
+
+  <!-- ── PAS 2: Tratament + Note & Foto (tab strip) ── -->
+  <div class="wiz-step" id="wiz-step-2">
+
+    <!-- Tab strip -->
+    <div class="p2-tabs">
+      <button class="p2-tab active" id="tab-treatment" onclick="switchP2Tab('treatment')">💊 Tratament</button>
+      <button class="p2-tab" id="tab-notes" onclick="switchP2Tab('notes')">📝 Note & Foto</button>
+    </div>
+
+    <!-- Panoul Tratament -->
+    <div class="p2-panel active" id="panel-treatment">
+      <div class="form-section">
+        <div id="treatment-steppers-container">
+          <!-- Generat dinamic de renderTreatmentSteppers() -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Panoul Note & Foto -->
+    <div class="p2-panel" id="panel-notes">
+      <!-- E. Observații -->
+      <div class="form-section">
+        <div class="form-section-title">Observații</div>
+        <div class="obs-templates" id="obs-templates-container">
+          <!-- chips injected by JS -->
+        </div>
+        <textarea id="observations" class="obs-textarea" placeholder="Note, observații, probleme constatate..." autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="sentences"></textarea>
+      </div>
+
+      <!-- F. Fotografii -->
+      <div class="form-section">
+        <div class="form-section-title">Fotografii</div>
+        <div id="photo-grid" class="photo-grid"></div>
+        <button id="btn-add-photo" class="btn-add-photo">📷 Adaugă fotografie</button>
+        <input type="file" id="photo-input" accept="image/*" capture="environment" multiple style="display:none">
+      </div>
+    </div>
+
+    <div class="wiz-nav">
+      <button class="btn-wiz-back" onclick="prevWizardStep()">◀ Înapoi</button>
+    </div>
+  </div><!-- /wiz-step-2 -->
+
+  <!-- Save bar (vizibil doar pe pasul 3) -->
+  <div class="save-bar" id="save-bar" style="display:none">
+    <button id="btn-save" class="btn-save" disabled>💾 Salvează Intervenția</button>
+  </div>
+
+</div><!-- /screen-intervention -->
+
+<!-- ════════════════════════════════════
+     SCREEN: SUCCESS
+════════════════════════════════════ -->
+<div id="screen-success" class="screen">
+  <div class="success-card">
+    <div class="success-icon">✅</div>
+    <h2>Intervenție salvată!</h2>
+    <p id="success-client-name" style="font-weight:600;color:var(--slate-700)"></p>
+    <p style="color:var(--slate-500);font-size:.9rem">Salvată local · sincronizare automată</p>
+    <div id="success-duration" class="success-duration" style="display:none"></div>
+
+    <!-- Share buttons -->
+    <div class="success-share-row">
+      <button id="btn-share-wa" class="btn-share btn-share-wa" onclick="shareIntervention('whatsapp')">
+        💬 Trimite pe WhatsApp
+      </button>
+      <button id="btn-share-copy" class="btn-share btn-share-copy" onclick="shareIntervention('copy')">
+        📋 Copiază raport
+      </button>
+    </div>
+    <div id="success-share-hint" class="success-share-hint" style="display:none"></div>
+
+    <button id="btn-success-back" class="btn-success-back">← Înapoi la clienți</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: MAP (Locații Tehnicieni)
+════════════════════════════════════ -->
+<div id="screen-map" class="screen">
+  <div class="map-header">
+    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
+    <span class="map-header-title">📍 Locații Tehnicieni</span>
+    <span id="map-last-update" class="map-last-update"></span>
+  </div>
+  <!-- Mesaj afișat când GAS API nu e configurat -->
+  <div id="map-no-api" class="map-no-api" style="display:none">
+    <div class="map-no-api-icon">🔌</div>
+    <p>Harta necesită configurarea API-ului Google Sheets.</p>
+    <p style="color:var(--text-secondary);font-size:13px">Setări → API URL → introdu URL-ul Google Apps Script</p>
+    <p style="margin-top:16px;font-size:12px;color:var(--text-secondary)">
+      Tehnicienilor li se trimite locația GPS automat la fiecare 5 minute,<br>
+      iar harta se actualizează live din foaia de calcul.
+    </p>
+  </div>
+  <!-- Container hartă Leaflet -->
+  <div id="map-container" class="map-container"></div>
+  <!-- Legendă culori markeri -->
+  <div class="map-legend">
+    <span class="map-legend-item"><span class="map-legend-dot" style="background:#16a34a"></span>Sub 10 min</span>
+    <span class="map-legend-item"><span class="map-legend-dot" style="background:#d97706"></span>Sub 1 oră</span>
+    <span class="map-legend-item"><span class="map-legend-dot" style="background:#94a3b8"></span>Mai vechi</span>
+  </div>
+  <!-- Panou Istoric GPS — doar admin -->
+  <div id="map-history-panel" class="map-history-panel admin-only">
+    <div class="map-hist-title">📅 Traseu istoric</div>
+    <div class="map-hist-controls">
+      <select id="map-hist-tech" class="map-hist-select">
+        <option value="">Alege tehnician...</option>
+      </select>
+      <input type="date" id="map-hist-date" class="map-hist-date">
+      <button onclick="loadAndShowHistory()" class="map-hist-btn">📍 Afișează</button>
+      <button onclick="clearHistoryTrail()" class="map-hist-clear-btn" title="Șterge traseul">✕</button>
+    </div>
+    <div id="map-hist-info" class="map-hist-info" style="display:none"></div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: INFO (Ghid Tehnician)
+════════════════════════════════════ -->
+<div id="screen-info" class="screen">
+  <div class="info-header">
+    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
+    <span class="info-header-title">📖 Ghid Tehnician Piscine</span>
+    <button id="btn-info-edit" class="btn-info-edit" onclick="enterInfoEditMode()" style="display:none">✏️ Editează</button>
+    <div id="info-edit-actions" class="info-edit-actions" style="display:none">
+      <button class="btn-info-action btn-info-save" onclick="saveInfoContent()">💾 Salvează</button>
+      <button class="btn-info-action btn-info-cancel" onclick="cancelInfoEditMode()">✗ Anulează</button>
+      <button class="btn-info-action btn-info-reset" onclick="resetInfoContent()">🔄 Reset</button>
+    </div>
+  </div>
+  <div class="info-search-bar">
+    <input type="search" id="info-search" class="search-input" placeholder="Caută în ghid..." autocomplete="off"
+           oninput="filterInfoSections(this.value)">
+  </div>
+  <div id="info-no-results" style="display:none;text-align:center;padding:32px 16px;color:var(--slate-400);font-size:.9rem">
+    🔍 Niciun rezultat pentru această căutare.
+  </div>
+
+  <div class="info-content">
+
+    <!-- 1. Parametri Ideali -->
+    <div class="info-section" data-title="Parametri Ideali">
+      <div class="info-section-label">Parametri Ideali</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+        <div class="info-param-row">
+          <div><strong>Clor Liber (FAC)</strong><div class="info-param-note">Clorul care dezinfectează activ apa</div></div>
+          <div class="info-param-range">1.0 — 3.0 ppm</div>
+        </div>
+        <div class="info-param-row">
+          <div><strong>Clor Combinat (CC)</strong><div class="info-param-note">CC = Total Chlorine − FAC. Indică cloramine.</div></div>
+          <div class="info-param-range">max 0.2 ppm</div>
+        </div>
+        <div class="info-param-row">
+          <div><strong>pH</strong><div class="info-param-note">Controlează eficiența clorului și confortul</div></div>
+          <div class="info-param-range">7.2 — 7.6</div>
+        </div>
+        <div class="info-param-row">
+          <div><strong>Alcalinitate Totală (TA)</strong><div class="info-param-note">Tamponul care ține pH-ul stabil</div></div>
+          <div class="info-param-range">80 — 120 ppm</div>
+        </div>
+        <div class="info-param-row">
+          <div><strong>Acid Cianuric (CYA)</strong><div class="info-param-note">Doar piscine exterioare — protejează clorul de UV</div></div>
+          <div class="info-param-range">30 — 50 ppm</div>
+        </div>
+        <div class="info-param-row" style="border-bottom:none">
+          <div><strong>Duritate Calciu (CH)</strong><div class="info-param-note">Previne apa agresivă sau depunerile</div></div>
+          <div class="info-param-range">200 — 400 ppm</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. pH si Eficienta Clorului -->
+    <div class="info-section" data-title="pH Eficienta Clor">
+      <div class="info-section-label">pH și Eficiența Clorului</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+        <div style="padding:14px 14px 6px;font-size:.85rem;line-height:1.6;color:var(--slate-600)">
+          Clorul există în două forme: <strong>acid hipocloros (HOCl)</strong> — care dezinfectează — și <strong>ion hipoclorit (OCl⁻)</strong> — de ~100× mai slab. pH-ul decide proporția.
+        </div>
+        <div class="info-eff-table-wrap">
+          <table class="info-eff-table">
+            <thead><tr><th>pH</th><th>HOCl activ</th><th>Verdict</th></tr></thead>
+            <tbody>
+              <tr><td>7.0</td><td class="eff-good">78%</td><td class="eff-good">Foarte bun</td></tr>
+              <tr><td>7.2</td><td class="eff-good">68%</td><td class="eff-good">Bun</td></tr>
+              <tr><td>7.4</td><td class="eff-ok">55%</td><td class="eff-ok">OK</td></tr>
+              <tr><td>7.6</td><td class="eff-ok">45%</td><td class="eff-ok">Limită</td></tr>
+              <tr><td>7.8</td><td class="eff-bad">33%</td><td class="eff-bad">Slab</td></tr>
+              <tr><td>8.0</td><td class="eff-bad">21%</td><td class="eff-bad">Ineficient</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="info-alert amber" style="margin:10px 14px 14px">
+          💡 La <strong>pH 8.0</strong>, doar 21% din clor lucrează. Poți avea FAC = 3 ppm și tot să nu dezinfectezi corespunzător.
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Ordinea Corecta de Tratament -->
+    <div class="info-section" data-title="Ordinea Tratament Pasi">
+      <div class="info-section-label">Ordinea Corectă de Tratament</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+        <div style="padding:8px 14px 4px;font-size:.8rem;color:var(--slate-400)">Nu sări pași. Fiecare pas depinde de cel anterior.</div>
+        <div class="info-step-list">
+          <div class="info-step"><span class="info-step-num">1</span><div><strong>Corectează Alcalinitatea (TA)</strong><br>TA controlează stabilitatea pH-ului. Bicarbonat de sodiu pentru creștere, acid muriatic (slugging) pentru scădere.</div></div>
+          <div class="info-step"><span class="info-step-num">2</span><div><strong>Corectează pH-ul la 7.2 — 7.4</strong><br>pH-ul trebuie corect ÎNAINTE de a adăuga clor. Altfel clorul este irosit.</div></div>
+          <div class="info-step"><span class="info-step-num">3</span><div><strong>Adaugă Clor (FAC)</strong><br>Acum, cu pH-ul corect, clorul va fi eficient. Țintește 2.0 ppm.</div></div>
+          <div class="info-step"><span class="info-step-num">4</span><div><strong>Tratează Cloraminele (CC) — dacă e cazul</strong><br>Dacă CC &gt; 0.5 ppm, fa breakpoint chlorination: adaugă clor = 10 × CC. Folosește DOAR clor nestabilizat!</div></div>
+          <div class="info-step"><span class="info-step-num">5</span><div><strong>Ajustează CYA — doar exterior</strong><br>Dacă CYA &lt; 30, adaugă stabilizator. Dacă CYA &gt; 100, diluează.</div></div>
+          <div class="info-step" style="border-bottom:none"><span class="info-step-num">6</span><div><strong>Ajustează Duritatea Calciu (CH)</strong><br>Se face ultima, după ce pH și TA sunt stabile.</div></div>
+        </div>
+        <div class="info-alert blue" style="margin:10px 14px 14px">
+          ⏱️ Între fiecare pas, așteaptă <strong>minim 30 min — 1 oră</strong> cu pompa pornită, apoi re-testează.
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. Reguli de Aur -->
+    <div class="info-section" data-title="Reguli Aur">
+      <div class="info-section-label">Reguli de Aur</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0;padding:0 14px">
+        <div class="info-rule"><span class="info-rule-num critical">1</span><div><strong>pH-ul se corectează ÎNAINTE de clor.</strong> La pH &gt; 7.6, clorul pierde eficiență.</div></div>
+        <div class="info-rule"><span class="info-rule-num critical">2</span><div><strong>Mirosul "de clor" NU înseamnă clor mult.</strong> Înseamnă cloramine. Soluția e MAI MULT clor (breakpoint), nu mai puțin.</div></div>
+        <div class="info-rule"><span class="info-rule-num critical">3</span><div><strong>Apă clară ≠ apă corectă chimic.</strong> Apa poate fi cristalină și totuși să aibă FAC = 0. Testează mereu.</div></div>
+        <div class="info-rule"><span class="info-rule-num warning">4</span><div><strong>Dacă pH-ul fluctuează mult,</strong> nu ajusta pH repetat. Verifică alcalinitatea (TA). TA scăzut = pH bounce.</div></div>
+        <div class="info-rule"><span class="info-rule-num warning">5</span><div><strong>Dacă pH-ul crește constant,</strong> nu tot adăuga acid. Verifică TA — dacă e prea mare, cauzează pH drift. Scade TA prin slugging.</div></div>
+        <div class="info-rule"><span class="info-rule-num warning">6</span><div><strong>CYA peste 100 = diluție obligatorie.</strong> Mai mult clor NU rezolvă problema. Singura soluție: schimb parțial de apă.</div></div>
+        <div class="info-rule"><span class="info-rule-num info">7</span><div><strong>Apă tulbure cu chimia OK</strong> = problemă de filtrare sau recirculare. Verifică filtrul (backwash), debitul, și orele pompei.</div></div>
+        <div class="info-rule"><span class="info-rule-num info">8</span><div><strong>Cu CYA ridicat, FAC minim crește.</strong> Regula: FAC minim = CYA × 0.075. Exemplu: CYA = 60 → FAC trebuie să fie minim 4.5 ppm.</div></div>
+        <div class="info-rule"><span class="info-rule-num info">9</span><div><strong>Niciodată shock cu clor stabilizat.</strong> Trichlor și dichlor adaugă CYA. Folosește Ca(OCl)₂ sau NaOCl pentru shock/breakpoint.</div></div>
+        <div class="info-rule" style="border-bottom:none"><span class="info-rule-num info">10</span><div><strong>După orice tratament: recirculare + retestare.</strong> Nu presupune că doza a fost corectă. Verifică din nou.</div></div>
+      </div>
+    </div>
+
+    <!-- 5. Nu Face Niciodata -->
+    <div class="info-section" data-title="Nu Face Niciodata Interzis Pericol">
+      <div class="info-section-label">Nu Face Niciodată</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0;border-left:3px solid var(--red-500,#ef4444)">
+        <div style="padding:0 14px">
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu amesteca <strong>hipoclorit de calciu cu acid</strong> direct. Reacție violentă, potențial gaz toxic de clor.</div></div>
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu adăuga <strong>acid și clor simultan</strong> în apă. Interval minim: 30 minute.</div></div>
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu adăuga chimicale <strong>cu oameni în apă</strong>.</div></div>
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu turna acid <strong>direct pe liner</strong> sau pe suprafețele piscinei. Adaugă în apă cu recirculare pornită.</div></div>
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu corecta <strong>mai mult de 2 parametri odată</strong>. Supra-corecția creează probleme noi.</div></div>
+          <div class="info-interdict"><span class="info-x">✕</span><div>Nu lăsa <strong>pompa de recirculare oprită</strong> după adăugare de chimicale. Amestecarea e obligatorie.</div></div>
+          <div class="info-interdict" style="border-bottom:none"><span class="info-x">✕</span><div>Nu depozita <strong>produse pe bază de clor lângă acizi</strong>. Păstrează-le separat, în loc uscat și ventilat.</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 6. Diagnostic Rapid -->
+    <div class="info-section" data-title="Diagnostic Rapid Probleme Apa Verde Tulbure Miros Depuneri">
+      <div class="info-section-label">Diagnostic Rapid</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+        <div style="padding:14px 14px 8px">
+          <div class="info-alert green" style="margin-bottom:8px">🟢 <strong>Apă clară, FAC 1-3, pH 7.2-7.6, CC &lt; 0.2</strong><br>Totul OK. Monitorizare de rutină.</div>
+          <div class="info-alert amber" style="margin-bottom:8px">🟡 <strong>Apă clară dar FAC &lt; 1.0</strong><br>Apa pare bună dar NU este sanitizată. Corectează pH, apoi adaugă clor.</div>
+          <div class="info-alert amber" style="margin-bottom:8px">🟡 <strong>Miros puternic "de clor"</strong><br>NU e clor prea mult. Sunt cloramine (CC mare). Fa breakpoint: adaugă clor = 10 × CC.</div>
+          <div class="info-alert red" style="margin-bottom:8px">🔴 <strong>Apă verde</strong><br>Alge. Verifică FAC (probabil 0). Shock cu Ca(OCl)₂ la 10-15 ppm, după corecție pH. Apoi filtrare continuă.</div>
+          <div class="info-alert red" style="margin-bottom:8px">🔴 <strong>Apă tulbure lăptoasă, chimia pare OK</strong><br>Problemă mecanică: filtru ineficient, backwash necesar, debit scăzut sau ore de recirculare insuficiente.</div>
+          <div class="info-alert amber" style="margin-bottom:8px">🟡 <strong>Depuneri albe pe suprafețe / schimbător căldură</strong><br>Scaling = pH prea mare + CH prea mare + TA prea mare. Verifică indexul Langelier.</div>
+          <div class="info-alert amber">🟡 <strong>pH fluctuează mult fără motiv aparent</strong><br>TA prea scăzută (pH bounce). Corectează TA la 80-100 ÎNTÂI, pH-ul se va stabiliza.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 7. Formule Esentiale -->
+    <div class="info-section" data-title="Formule Calcule Doze Bicarbonat Langelier">
+      <div class="info-section-label">Formule Esențiale</div>
+      <div class="form-section" style="border-radius:12px;overflow:hidden;margin-bottom:0">
+        <div class="info-formula-row"><strong>Combined Chlorine</strong><code>CC = Total Chlorine − FAC</code></div>
+        <div class="info-formula-row"><strong>Breakpoint Chlorination</strong><code>Clor de adăugat = CC × 10</code></div>
+        <div class="info-formula-row"><strong>Doză NaOCl (lichid)</strong><code>mL = (mc × 1000 × Δppm) / (10000 × conc%)</code><div class="info-formula-note">Exemplu NaOCl 14%: 50mc, +2ppm = 714 mL</div></div>
+        <div class="info-formula-row"><strong>FAC minim cu CYA</strong><code>FAC min = CYA × 0.075</code></div>
+        <div class="info-formula-row"><strong>TA creștere cu bicarbonat</strong><code>18 g / mc = +10 ppm TA</code></div>
+        <div class="info-formula-row" style="border-bottom:none"><strong>Langelier Saturation Index</strong><code>SI = pH + TF + CF + AF − 12.1</code><div class="info-formula-note">SI &gt; +0.3 = depuneri &nbsp; SI &lt; −0.3 = coroziv</div></div>
+      </div>
+    </div>
+
+    <!-- 8. Principiul Fundamental -->
+    <div class="info-section" data-title="Principiul Fundamental Chimie Filtrare Circulatie">
+      <div class="info-section-label">Principiul Fundamental</div>
+      <div class="info-principle-card">
+        <div style="font-size:1.4rem;margin-bottom:6px">💧</div>
+        <div style="font-size:1rem;font-weight:700;margin-bottom:10px">Apă clară depinde de trei lucruri simultane:</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+          <span class="info-principle-tag">Chimie corectă</span>
+          <span class="info-principle-tag">Filtrare bună</span>
+          <span class="info-principle-tag">Circulație bună</span>
+        </div>
+        <div style="font-size:.85rem;opacity:.85;line-height:1.6">
+          Dacă una lipsește, celelalte două nu compensează. Nu trata niciodată apa doar din chimie — verifică mereu și filtrarea și recircularea.
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /info-content -->
+</div><!-- /screen-info -->
+
+<!-- ════════════════════════════════════
+     MODALS
+════════════════════════════════════ -->
+
+<!-- Confirm save -->
+<div id="modal-confirm" class="modal-overlay" onclick="if(event.target===this) closeConfirmModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Confirmați salvarea</div>
+    <div class="modal-body">
+      <p style="color:var(--slate-600);font-size:.9rem">Doriți să salvați intervenția curentă? Aceasta va fi trimisă automat la sincronizare.</p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeConfirmModal()">Anulează</button>
+      <button class="btn-modal-confirm" onclick="doSaveIntervention()">✓ Salvează</button>
+    </div>
+  </div>
+</div>
+
+<!-- Export -->
+<div id="modal-export" class="modal-overlay" onclick="if(event.target===this) closeExportModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Export Excel</div>
+    <div class="modal-body">
+      <div class="export-option" id="export-client-btn">
+        <span class="export-option-icon">📊</span>
+        <div class="export-option-text">
+          <h4>Export client</h4>
+          <p>3 foi: Intervenții, Sumar, Măsurători</p>
+        </div>
+      </div>
+      <div class="export-option" id="export-all-btn">
+        <span class="export-option-icon">📈</span>
+        <div class="export-option-text">
+          <h4>Export toți clienții</h4>
+          <p>Sumar general + câte un sheet per client</p>
+        </div>
+      </div>
+      <div class="export-option" id="export-structured-btn">
+        <span class="export-option-icon">📂</span>
+        <div class="export-option-text">
+          <h4>Export structurat (sheet/client)</h4>
+          <p>Un fișier cu câte un sheet per client</p>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeExportModal()">Anulează</button>
+    </div>
+  </div>
+</div>
+
+<!-- Client details -->
+<div id="modal-client" class="modal-overlay" onclick="if(event.target===this) closeClientModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-client-title"></div>
+    <div class="modal-body" id="modal-client-body"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeClientModal()">Închide</button>
+      <button class="btn-modal-confirm admin-only" id="btn-mark-billed" style="display:none" onclick="markClientBilled()">💰 Marchează facturat</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     MODAL: CLIENT FORM (add/edit)
+════════════════════════════════════ -->
+<div id="modal-client-form" class="modal-overlay" onclick="if(event.target===this) closeClientFormModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="client-form-title">Adaugă client</div>
+    <div class="modal-body form-modal-body">
+      <div class="form-modal-row">
+        <label for="cf-name">Nume *</label>
+        <input type="text" id="cf-name" placeholder="Numele clientului">
+      </div>
+      <div class="form-row-2">
+        <div class="form-modal-row">
+          <label for="cf-phone">Telefon</label>
+          <input type="tel" id="cf-phone" placeholder="07xx xxx xxx" inputmode="tel">
+        </div>
+        <div class="form-modal-row">
+          <label for="cf-visit-freq">Frecvență vizite (zile)</label>
+          <input type="number" id="cf-visit-freq" placeholder="14" min="1" max="365" inputmode="numeric">
+        </div>
+      </div>
+      <div class="form-modal-row">
+        <label for="cf-address">Adresă</label>
+        <input type="text" id="cf-address" placeholder="Strada, nr., localitate">
+      </div>
+      <div class="form-row-2">
+        <div class="form-modal-row">
+          <label for="cf-pool-vol">Volum piscină (m³)</label>
+          <input type="number" id="cf-pool-vol" placeholder="50" min="0" step="0.5" inputmode="decimal">
+        </div>
+        <div class="form-modal-row">
+          <label for="cf-pool-type">Tip piscină</label>
+          <select id="cf-pool-type">
+            <option value="exterior">Exterior</option>
+            <option value="interior">Interior</option>
+            <option value="saltwater">Salinizată</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-modal-row">
+        <label for="cf-notes">Note</label>
+        <textarea id="cf-notes" rows="2" placeholder="Informații suplimentare..." style="width:100%;border:1px solid var(--slate-200);border-radius:8px;padding:8px;font-size:.9rem;resize:vertical"></textarea>
+      </div>
+      <div class="form-modal-row">
+        <label for="cf-billing-interval">Notificare facturare (nr. intervenții)</label>
+        <input type="number" id="cf-billing-interval" min="0" max="100" placeholder="Ex: 4  (0 = dezactivat)" inputmode="numeric" style="width:100%">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeClientFormModal()">Anulează</button>
+      <button class="btn-modal-confirm" onclick="doSaveClientForm()">✓ Salvează</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     MODAL: TECH MANAGER
+════════════════════════════════════ -->
+<div id="modal-tech-manager" class="modal-overlay" onclick="if(event.target===this) closeTechManager()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title">👥 Gestionare Tehnicieni</div>
+    <div class="modal-body" id="tech-manager-body">
+      <!-- rendered by JS -->
+    </div>
+    <!-- Add tech form (hidden by default) -->
+    <div id="tech-form-section" style="padding:0 16px 8px;display:none">
+      <div class="form-row-2">
+        <div class="form-modal-row">
+          <label for="tf-name">Nume *</label>
+          <input type="text" id="tf-name" placeholder="Prenume Nume">
+        </div>
+        <div class="form-modal-row">
+          <label for="tf-username">Username *</label>
+          <input type="text" id="tf-username" placeholder="username" autocomplete="off" autocapitalize="none">
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div class="form-modal-row">
+          <label for="tf-password">Parolă *</label>
+          <input type="password" id="tf-password" placeholder="••••••" autocomplete="new-password">
+        </div>
+        <div class="form-modal-row">
+          <label for="tf-role">Rol</label>
+          <select id="tf-role">
+            <option value="technician">Tehnician</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+      </div>
+      <input type="hidden" id="tf-id">
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-modal-cancel" style="flex:1" onclick="hideTechForm()">Anulează</button>
+        <button class="btn-modal-confirm" style="flex:1" onclick="doSaveTech()">✓ Salvează</button>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeTechManager()">Închide</button>
+      <button class="btn-modal-confirm" onclick="showTechForm()">➕ Adaugă</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     MODAL: STOCK
+════════════════════════════════════ -->
+<div id="modal-stock" class="modal-overlay" onclick="if(event.target===this) closeStockModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title" style="display:flex;align-items:center;justify-content:space-between">
+      <span>📦 Gestiune Stoc</span>
+      <button class="btn-sm admin-only" onclick="showAddProductForm()" style="font-size:.8rem;padding:4px 10px;background:var(--primary);color:#fff;border:none;border-radius:8px;cursor:pointer">+ Produs nou</button>
+    </div>
+    <!-- Form add/edit produs (ascuns implicit) -->
+    <div id="product-form" class="product-form" style="display:none">
+      <input id="pf-name" type="text" placeholder="Denumire produs *" class="product-form-input">
+      <div class="product-form-row">
+        <select id="pf-unit" class="product-form-select">
+          <option value="buc">buc (bucăți)</option>
+          <option value="kg">kg</option>
+          <option value="gr">gr (grame)</option>
+          <option value="L">L (litri)</option>
+          <option value="bidoane">bidoane</option>
+          <option value="saci">saci</option>
+          <option value="ml">ml</option>
+        </select>
+        <input id="pf-step" type="number" placeholder="Pas +/−" min="0.01" step="0.01" inputmode="decimal" class="product-form-input">
+      </div>
+      <div class="product-form-row">
+        <input id="pf-threshold" type="number" placeholder="Alertă stoc minim" min="0" step="any" inputmode="decimal" class="product-form-input">
+        <label class="product-form-check"><input type="checkbox" id="pf-visible" checked> Vizibil în formular</label>
+      </div>
+      <input type="hidden" id="pf-id">
+      <div class="product-form-actions">
+        <button class="btn-modal-cancel" onclick="hideProductForm()">Anulează</button>
+        <button class="btn-modal-confirm" onclick="doSaveProduct()">✓ Salvează produs</button>
+      </div>
+    </div>
+    <div class="modal-body" id="stock-modal-body">
+      <!-- rendered by JS -->
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeStockModal()">Închide</button>
+      <button class="btn-modal-confirm" onclick="saveStock()">✓ Salvează cantități</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     MODAL: QR CODE
+════════════════════════════════════ -->
+<div id="modal-qr" class="modal-overlay" onclick="if(event.target===this) closeQRModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title">QR Code</div>
+    <div class="modal-body" style="text-align:center">
+      <p class="qr-client-label" id="qr-client-name"></p>
+      <div class="qr-wrapper">
+        <div id="qr-canvas"></div>
+      </div>
+      <p style="font-size:.78rem;color:var(--slate-500);word-break:break-all;margin-top:8px" id="qr-url-text"></p>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeQRModal()">Închide</button>
+      <button class="btn-modal-confirm" id="qr-copy-btn">📋 Copiază link</button>
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     DRUM PICKER POPUP (inline popover)
+════════════════════════════════════ -->
+<div id="drum-popup" class="drum-popup" style="display:none">
+  <div class="drum-popup-label" id="drum-popup-label"></div>
+  <div class="drum-popup-drum-wrap">
+    <div id="drum-popup-viewport" class="drum-popup-viewport" onscroll="onDrumScroll()">
+      <!-- filled by JS -->
+    </div>
+    <div class="drum-popup-center-line"></div>
+  </div>
+  <div class="drum-popup-actions">
+    <button class="btn-drum-cancel" onclick="closeDrumPicker()">Anulează</button>
+    <button class="btn-drum-confirm" onclick="confirmDrumPicker()">✓ Acceptă</button>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: CHECKLIST (Evidență)
+════════════════════════════════════ -->
+<div id="screen-checklist" class="screen">
+
+  <!-- Header -->
+  <div class="cl-header">
+    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
+    <span class="cl-header-title">📋 Evidență</span>
+    <div class="cl-header-actions">
+      <label class="cl-icon-btn admin-only" title="Import Excel (.xlsx)">
+        📥
+        <input type="file" id="checklist-import-input" accept=".xlsx,.xls" style="display:none"
+               onchange="onChecklistFileImport(this.files[0])">
+      </label>
+      <button class="cl-icon-btn admin-only" onclick="downloadChecklistTemplate()" title="Descarcă template Excel">📋</button>
+      <button class="cl-icon-btn admin-only" onclick="resetChecklist()" title="Resetează toate bifele și F-urile">🔄</button>
+      <button class="cl-icon-btn admin-only" onclick="clearChecklist()" title="Șterge lista curentă">🗑️</button>
+    </div>
+  </div>
+
+  <!-- List title (populated by JS) -->
+  <div class="cl-list-title" id="checklist-title">Nicio listă importată</div>
+
+  <!-- Scrollable table wrapper -->
+  <div class="cl-table-wrap">
+    <table class="cl-table">
+      <thead>
+        <tr>
+          <th class="cl-th-f">F</th>
+          <th class="cl-th-name">NUME</th>
+          <th class="cl-th-value">VALOARE</th>
+          <th class="cl-th-check">✓</th>
+          <th class="cl-th-del admin-only"></th>
+        </tr>
+      </thead>
+      <tbody id="checklist-tbody">
+        <tr>
+          <td colspan="5" class="cl-empty">
+            Importați un fișier Excel folosind butonul 📥 din header.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Bottom progress counter -->
+  <div class="cl-footer-bar">
+    <span id="checklist-counter" class="cl-counter"></span>
+  </div>
+
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: CALENDAR (Program Intervenții)
+════════════════════════════════════ -->
+<div id="screen-calendar" class="screen">
+
+  <!-- Header -->
+  <div class="cal-header">
+    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
+    <span class="cal-header-title">📅 Calendar Intervenții</span>
+    <div class="cal-header-actions">
+      <button class="cal-icon-btn" onclick="exportCalendarPdf()" title="Export PDF">🖨️</button>
+      <label class="cal-icon-btn admin-only" title="Import Excel (.xlsx)">
+        📥
+        <input type="file" id="cal-import-input" accept=".xlsx,.xls" style="display:none" onchange="onCalendarFileImport(this.files[0])">
+      </label>
+      <button class="cal-icon-btn admin-only" onclick="downloadCalendarTemplate()" title="Descarcă template Excel">📋</button>
+    </div>
+  </div>
+
+  <!-- Week navigation -->
+  <div class="cal-week-nav">
+    <button class="cal-nav-btn" onclick="changeCalendarWeek(-1)" title="Săptămâna anterioară">◀</button>
+    <div class="cal-week-label-wrap">
+      <span id="cal-week-label" class="cal-week-label">—</span>
+      <button class="cal-today-btn" onclick="jumpCalendarToToday()">Azi</button>
+    </div>
+    <button class="cal-nav-btn" onclick="changeCalendarWeek(1)" title="Săptămâna următoare">▶</button>
+  </div>
+
+  <!-- No API configured message -->
+  <div id="cal-no-api" class="cal-state-box" style="display:none">
+    <div style="font-size:2.5rem;margin-bottom:10px">🔌</div>
+    <p style="font-weight:600">Calendarul necesită API-ul Google Sheets</p>
+    <p style="color:var(--text-secondary);font-size:13px;margin-top:4px">Setări → API URL → introdu URL-ul Google Apps Script</p>
+  </div>
+
+  <!-- Loading state -->
+  <div id="cal-loading" class="cal-state-box" style="display:none">
+    <div style="font-size:2rem;margin-bottom:10px">⏳</div>
+    <p>Se încarcă programul...</p>
+  </div>
+
+  <!-- Calendar content — rendered by JS -->
+  <div id="cal-content" class="cal-content"></div>
+
+</div>
+
+<!-- ════════════════════════════════════
+     TOAST CONTAINER
+════════════════════════════════════ -->
+<div id="toast-container" aria-live="polite" aria-atomic="false"></div>
+
+<!-- ════════════════════════════════════
+     SCRIPTS
+════════════════════════════════════ -->
+<script src="js/rules.js"></script>
+<script src="js/db.js"></script>
+<script src="js/sync.js"></script>
+<script src="js/export.js"></script>
+<script src="js/app.js"></script>
+
+</body>
+</html>

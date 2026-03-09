@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="80" fill="#1d4ed8"/>
+  <!-- Pool water waves -->
+  <ellipse cx="256" cy="310" rx="180" ry="80" fill="#3b82f6" opacity="0.6"/>
+  <!-- Pool body -->
+  <rect x="96" y="220" width="320" height="180" rx="20" fill="#1e3a8a"/>
+  <!-- Water surface -->
+  <path d="M96 280 Q176 260 256 280 Q336 300 416 280 L416 400 Q336 400 256 400 Q176 400 96 400 Z" fill="#3b82f6"/>
+  <!-- Wave line 1 -->
+  <path d="M110 295 Q176 278 256 295 Q336 312 402 295" stroke="#60a5fa" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Wave line 2 -->
+  <path d="M110 320 Q176 303 256 320 Q336 337 402 320" stroke="#93c5fd" stroke-width="4" fill="none" stroke-linecap="round" opacity="0.7"/>
+  <!-- Pool lane dividers -->
+  <line x1="200" y1="230" x2="200" y2="395" stroke="#60a5fa" stroke-width="3" opacity="0.5" stroke-dasharray="10,8"/>
+  <line x1="312" y1="230" x2="312" y2="395" stroke="#60a5fa" stroke-width="3" opacity="0.5" stroke-dasharray="10,8"/>
+  <!-- Droplet icon top -->
+  <path d="M256 80 C256 80 210 140 210 170 C210 200 231 220 256 220 C281 220 302 200 302 170 C302 140 256 80 256 80 Z" fill="#60a5fa"/>
+  <path d="M256 90 C256 90 220 142 220 168 C220 192 236 210 256 210 C276 210 292 192 292 168 C292 142 256 90 256 90 Z" fill="#93c5fd" opacity="0.6"/>
+</svg>
