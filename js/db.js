@@ -161,7 +161,8 @@ function getClientInterventions(clientId) {
 }
 
 function getUnsyncedInterventions() {
-  return getByIndex('interventions', 'synced', false);
+  // Note: boolean false is not a valid IDB key, so we filter in JS
+  return getAll('interventions').then(list => list.filter(i => !i.synced));
 }
 
 function saveIntervention(intervention) {
