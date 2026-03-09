@@ -449,6 +449,16 @@ function renderDashboard() {
     searchInput.oninput = e => renderClientList(e.target.value);
   }
 
+  // Dismiss keyboard on swipe/scroll (mobile UX)
+  const dashboard = $('screen-dashboard');
+  if (dashboard) {
+    dashboard.addEventListener('touchmove', () => {
+      if (document.activeElement && document.activeElement.tagName === 'INPUT') {
+        document.activeElement.blur();
+      }
+    }, { passive: true });
+  }
+
   // Logout
   const logoutBtn = $('btn-logout');
   if (logoutBtn) {
