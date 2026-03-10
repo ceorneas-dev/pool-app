@@ -733,6 +733,7 @@ async function renderClientList(searchTerm) {
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); setClientLocation('${client.client_id}')" style="color:var(--emerald-600)">📍 ${client.location_set ? 'Relocare' : 'Locație'}</button>` : ''}
+        ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); deleteClient('${client.client_id}')" style="color:var(--danger)">🗑️ Șterge</button>` : ''}
       </div>
     </li>`;
   }).join('');
@@ -1842,6 +1843,30 @@ async function doSaveClientForm() {
 function closeClientFormModal() {
   const modal = $('modal-client-form');
   if (modal) modal.classList.remove('open');
+}
+
+/** Șterge un client (admin only) — marchez inactiv, nu șterge fizic din bază. */
+async function deleteClient(clientId) {
+  const client = APP.clients.find(c => c.client_id === clientId);
+  if (!client) return;
+  if (!confirm('Ștergi clientul "' + client.name + '"?\nClientul va fi dezactivat (nu șters definitiv).')) return;
+  try {
+    client.active = false;
+    client.updated_at = new Date().toISOString();
+    await put('clients', client);
+    // Push to GAS if configured
+    if (isSyncConfigured()) {
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+      }).catch(err => console.warn('[SYNC] Client deactivate push failed:', err.message));
+    }
+    await loadData();
+    renderDashboard();
+    showToast('Clientul "' + client.name + '" a fost dezactivat.', 'success');
+  } catch (e) {
+    showToast('Eroare: ' + e.message, 'error');
+  }
 }
 
 // ════════════════════════════════════════════════════════════════
