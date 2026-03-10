@@ -3,6 +3,6 @@
       "target": {
         "namespace": "android_app",
         "package_name": "com.poolmgmt.app",
-        "sha256_cert_fingerprints": ["22:9F:06:68:46:22:1C:E5:77:70:61:7E:CD:5B:86:86:C0:A0:45:AA:0E:20:A4:C8:C3:E5:16:96:C4:6B:D7:E4"]
+        "sha256_cert_fingerprints": ["52:EA:55:5A:3B:DB:E1:57:7B:79:F2:EA:32:B8:56:BB:AB:B3:9B:F5:EC:7E:2B:DE:33:07:F0:D4:7E:D6:C3:0A"]
       }
     }]
