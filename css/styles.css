@@ -417,7 +417,10 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 /* Client list */
 #client-list {
-  padding: 4px 12px 80px;
+  padding: 4px 12px 12px;
+  max-height: 55vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .client-card {

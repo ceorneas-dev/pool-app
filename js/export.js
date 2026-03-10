@@ -331,26 +331,30 @@ async function importClientsXLSX(file) {
 
     if (!rows.length) { showToast('Fișierul este gol sau invalid.', 'error'); return; }
 
-    let imported = 0, skipped = 0;
-    // Build existing client map by name (case-insensitive) to avoid duplicates
+    // Helper: strip non-breaking spaces (\u00a0) and trim
+    const clean = v => String(v || '').replace(/\u00a0/g, ' ').trim();
+
+    let imported = 0, skipped = 0, idCounter = 0;
+    const baseTime = Date.now();
     const existingMap = {};
     (window.APP && APP.clients || []).forEach(c => {
-      existingMap[c.name.toLowerCase().trim()] = c;
+      existingMap[c.name.toLowerCase().replace(/\u00a0/g, ' ').trim()] = c;
     });
 
+    const newClients = [];
+
     for (const row of rows) {
-      const name = String(row['nume'] || row['name'] || row['client_name'] || row['NUME'] || '').trim();
+      const name = clean(row['nume'] || row['name'] || row['client_name'] || row['NUME']);
       if (!name) { skipped++; continue; }
 
       const nameKey = name.toLowerCase();
       if (existingMap[nameKey]) {
-        // Update existing client with new data if provided
         const existing = existingMap[nameKey];
-        const phone = String(row['telefon'] || row['phone'] || row['TELEFON'] || '').trim();
-        const addr  = String(row['adresa']  || row['address'] || row['ADRESA'] || '').trim();
-        const vol   = parseFloat(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'] || 0) || 0;
-        const type  = String(row['tip_piscina'] || row['pool_type'] || row['TIP'] || '').trim().toLowerCase();
-        const notes = String(row['observatii'] || row['notes'] || row['OBS'] || '').trim();
+        const phone = clean(row['telefon'] || row['phone'] || row['TELEFON']);
+        const addr  = clean(row['adresa']  || row['address'] || row['ADRESA']);
+        const vol   = parseFloat(clean(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'])) || 0;
+        const type  = clean(row['tip_piscina'] || row['pool_type'] || row['TIP']).toLowerCase();
+        const notes = clean(row['observatii'] || row['notes'] || row['OBS']);
         if (phone) existing.phone = phone;
         if (addr)  existing.address = addr;
         if (vol)   existing.pool_volume_mc = vol;
@@ -358,19 +362,21 @@ async function importClientsXLSX(file) {
         if (notes) existing.notes = notes;
         existing.updated_at = new Date().toISOString();
         await put('clients', existing);
+        newClients.push(existing);
         imported++;
         continue;
       }
 
+      idCounter++;
       const now = new Date().toISOString();
       const client = {
-        client_id:      'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        client_id:      'c_' + (baseTime + idCounter) + '_' + Math.random().toString(36).slice(2, 8),
         name,
-        phone:          String(row['telefon'] || row['phone'] || row['TELEFON'] || '').trim(),
-        address:        String(row['adresa']  || row['address'] || row['ADRESA'] || '').trim(),
-        pool_volume_mc: parseFloat(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'] || 0) || 0,
-        pool_type:      (String(row['tip_piscina'] || row['pool_type'] || row['TIP'] || 'exterior').trim().toLowerCase() === 'interior') ? 'interior' : 'exterior',
-        notes:          String(row['observatii'] || row['notes'] || row['OBS'] || '').trim(),
+        phone:          clean(row['telefon'] || row['phone'] || row['TELEFON']),
+        address:        clean(row['adresa']  || row['address'] || row['ADRESA']),
+        pool_volume_mc: parseFloat(clean(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'])) || 0,
+        pool_type:      (clean(row['tip_piscina'] || row['pool_type'] || row['TIP']).toLowerCase() === 'interior') ? 'interior' : 'exterior',
+        notes:          clean(row['observatii'] || row['notes'] || row['OBS']),
         visit_frequency_days: parseInt(row['frecventa_zile'] || row['visit_frequency_days'] || 14) || 14,
         active:         true,
         created_at:     now,
@@ -382,21 +388,21 @@ async function importClientsXLSX(file) {
 
       await put('clients', client);
       existingMap[nameKey] = client;
-
-      // Push to GAS if configured
-      if (typeof isSyncConfigured === 'function' && isSyncConfigured()) {
-        apiFetch(SYNC_CONFIG.API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
-        }).catch(err => console.warn('[SYNC] Client push failed:', err.message));
-      }
-
+      newClients.push(client);
       imported++;
+    }
+
+    // Batch push all to GAS (one request instead of N)
+    if (newClients.length && typeof isSyncConfigured === 'function' && isSyncConfigured()) {
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'clients', data: newClients })
+      }).catch(err => console.warn('[SYNC] Client batch push failed:', err.message));
     }
 
     if (inp) inp.value = '';
     if (imported > 0 && window.APP) { await loadData(); renderDashboard(); }
-    showToast(`Import complet: ${imported} clienți importați${skipped ? ', ' + skipped + ' rânduri ignorate' : ''}.`, imported > 0 ? 'success' : 'error');
+    showToast('Import complet: ' + imported + ' clienți importați' + (skipped ? ', ' + skipped + ' rânduri ignorate' : '') + '.', imported > 0 ? 'success' : 'error');
   } catch(e) {
     if (inp) inp.value = '';
     showToast('Eroare import: ' + e.message, 'error');
