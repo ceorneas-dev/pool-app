@@ -317,6 +317,108 @@ async function importInterventionsXLSX(file) {
   }
 }
 
+
+// ── Import clients from XLSX ─────────────────────────────────
+async function importClientsXLSX(file) {
+  if (!file) return;
+  const inp = document.getElementById('import-clients-input');
+  try {
+    await loadXLSX();
+    const data = await file.arrayBuffer();
+    const wb   = XLSX.read(data, { type: 'array', cellDates: true });
+    const ws   = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(ws, { defval: '' });
+
+    if (!rows.length) { showToast('Fișierul este gol sau invalid.', 'error'); return; }
+
+    let imported = 0, skipped = 0;
+    // Build existing client map by name (case-insensitive) to avoid duplicates
+    const existingMap = {};
+    (window.APP && APP.clients || []).forEach(c => {
+      existingMap[c.name.toLowerCase().trim()] = c;
+    });
+
+    for (const row of rows) {
+      const name = String(row['nume'] || row['name'] || row['client_name'] || row['NUME'] || '').trim();
+      if (!name) { skipped++; continue; }
+
+      const nameKey = name.toLowerCase();
+      if (existingMap[nameKey]) {
+        // Update existing client with new data if provided
+        const existing = existingMap[nameKey];
+        const phone = String(row['telefon'] || row['phone'] || row['TELEFON'] || '').trim();
+        const addr  = String(row['adresa']  || row['address'] || row['ADRESA'] || '').trim();
+        const vol   = parseFloat(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'] || 0) || 0;
+        const type  = String(row['tip_piscina'] || row['pool_type'] || row['TIP'] || '').trim().toLowerCase();
+        const notes = String(row['observatii'] || row['notes'] || row['OBS'] || '').trim();
+        if (phone) existing.phone = phone;
+        if (addr)  existing.address = addr;
+        if (vol)   existing.pool_volume_mc = vol;
+        if (type === 'interior' || type === 'exterior') existing.pool_type = type;
+        if (notes) existing.notes = notes;
+        existing.updated_at = new Date().toISOString();
+        await put('clients', existing);
+        imported++;
+        continue;
+      }
+
+      const now = new Date().toISOString();
+      const client = {
+        client_id:      'c_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6),
+        name,
+        phone:          String(row['telefon'] || row['phone'] || row['TELEFON'] || '').trim(),
+        address:        String(row['adresa']  || row['address'] || row['ADRESA'] || '').trim(),
+        pool_volume_mc: parseFloat(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'] || 0) || 0,
+        pool_type:      (String(row['tip_piscina'] || row['pool_type'] || row['TIP'] || 'exterior').trim().toLowerCase() === 'interior') ? 'interior' : 'exterior',
+        notes:          String(row['observatii'] || row['notes'] || row['OBS'] || '').trim(),
+        visit_frequency_days: parseInt(row['frecventa_zile'] || row['visit_frequency_days'] || 14) || 14,
+        active:         true,
+        created_at:     now,
+        updated_at:     now,
+        latitude:       null,
+        longitude:      null,
+        location_set:   false
+      };
+
+      await put('clients', client);
+      existingMap[nameKey] = client;
+
+      // Push to GAS if configured
+      if (typeof isSyncConfigured === 'function' && isSyncConfigured()) {
+        apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+        }).catch(err => console.warn('[SYNC] Client push failed:', err.message));
+      }
+
+      imported++;
+    }
+
+    if (inp) inp.value = '';
+    if (imported > 0 && window.APP) { await loadData(); renderDashboard(); }
+    showToast(`Import complet: ${imported} clienți importați${skipped ? ', ' + skipped + ' rânduri ignorate' : ''}.`, imported > 0 ? 'success' : 'error');
+  } catch(e) {
+    if (inp) inp.value = '';
+    showToast('Eroare import: ' + e.message, 'error');
+  }
+}
+
+// ── Download client import template ──────────────────────────
+async function downloadClientTemplate() {
+  try { await loadXLSX(); } catch (e) {
+    showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+  const headers = ['nume', 'telefon', 'adresa', 'volum_mc', 'tip_piscina', 'observatii'];
+  const ex1 = ['Popescu Ion', '0712345678', 'Str. Exemplu 1, București', 50, 'exterior', 'Piscina 10x5m'];
+  const ex2 = ['Ionescu Maria', '0723456789', 'Str. Exemplu 2, Cluj', 30, 'interior', ''];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ex1, ex2]);
+  ws['!cols'] = [{ wch: 24 }, { wch: 14 }, { wch: 36 }, { wch: 10 }, { wch: 14 }, { wch: 30 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'Clienti');
+  XLSX.writeFile(wb, 'template-clienti.xlsx');
+}
+
 // ── Helpers ───────────────────────────────────────────────────
 function calcTotals(interventions) {
   const durations = interventions.filter(i => i.duration_minutes != null).map(i => i.duration_minutes);

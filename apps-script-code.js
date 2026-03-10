@@ -186,6 +186,7 @@ function handleLogin(body) {
 function handlePush(body) {
   const type = body.type || 'interventions';
   if (type === 'clients') return handlePushClients(body);
+  if (type === 'technicians') return handlePushTechnicians(body);
   return handlePushInterventions(body);
 }
 
@@ -244,6 +245,44 @@ function handlePushClients(body) {
       return val !== undefined && val !== null ? String(val) : '';
     });
     const rowNum = existingRows[client.client_id];
+    if (rowNum) {
+      sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      updated++;
+    } else {
+      sheet.appendRow(row);
+      saved++;
+    }
+  });
+
+  return { success: true, saved, updated };
+}
+
+// ── POST: pushTechnicians ─────────────────────────────────────
+function handlePushTechnicians(body) {
+  const { data } = body;
+  if (!data || !Array.isArray(data)) {
+    return { success: false, error: 'Lipsesc datele' };
+  }
+
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = getOrCreateSheet(ss, 'technicians', TECHNICIANS_COLS);
+  const rows  = sheet.getDataRange().getValues();
+  const idCol = TECHNICIANS_COLS.indexOf('technician_id');
+
+  const existingRows = {};
+  rows.slice(1).forEach((row, i) => {
+    if (row[idCol]) existingRows[row[idCol]] = i + 2;
+  });
+
+  let saved = 0, updated = 0;
+
+  data.forEach(tech => {
+    const row = TECHNICIANS_COLS.map(col => {
+      const val = tech[col];
+      return val !== undefined && val !== null ? String(val) : '';
+    });
+
+    const rowNum = existingRows[tech.technician_id];
     if (rowNum) {
       sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
       updated++;

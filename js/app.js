@@ -447,6 +447,9 @@ function renderDashboard() {
   if (searchInput) {
     searchInput.value = '';
     searchInput.oninput = e => renderClientList(e.target.value);
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); searchInput.blur(); }
+    });
   }
 
   // Dismiss keyboard on swipe/scroll (mobile UX)
@@ -1449,6 +1452,23 @@ function renderPhotoGrid() {
 
   const addBtn = $('btn-add-photo');
   if (addBtn) addBtn.style.display = APP.currentPhotos.length >= 4 ? 'none' : '';
+
+  // Photo count indicator
+  let indicator = $('photo-count-indicator');
+  if (!indicator) {
+    indicator = document.createElement('div');
+    indicator.id = 'photo-count-indicator';
+    indicator.className = 'photo-count-indicator';
+    const parent = grid.parentElement;
+    if (parent) parent.appendChild(indicator);
+  }
+  const n = APP.currentPhotos.length;
+  if (n > 0) {
+    indicator.innerHTML = '<span class="photo-check">✓</span> ' + n + ' foto' + (n > 1 ? 'grafii' : 'grafie') + ' adăugat' + (n > 1 ? 'e' : 'ă');
+    indicator.style.display = '';
+  } else {
+    indicator.style.display = 'none';
+  }
 }
 
 function removePhoto(idx) {
@@ -1837,6 +1857,13 @@ async function doSaveTech() {
 
   try {
     await put('technicians', data);
+    // Push to GAS immediately if configured
+    if (isSyncConfigured()) {
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
+      }).catch(err => console.warn('[SYNC] Technician push failed:', err.message));
+    }
     showToast(existingId ? 'Tehnician actualizat.' : 'Tehnician adăugat.', 'success');
     showTechManager();
   } catch (e) {
@@ -2670,6 +2697,34 @@ function prevWizardStep() {
   if (APP.wizardStep > 1) goWizardStep(APP.wizardStep - 1);
 }
 
+// ── Swipe on step 2 tabs (Tratament <-> Note & Foto) ─────
+(function setupP2Swipe() {
+  let _p2TouchX = 0;
+  let _p2TouchY = 0;
+  document.addEventListener('touchstart', e => {
+    const screen = document.getElementById('screen-intervention');
+    if (!screen || !screen.classList.contains('active')) return;
+    if (typeof APP === 'undefined' || APP.wizardStep !== 2) return;
+    _p2TouchX = e.touches[0].clientX;
+    _p2TouchY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const screen = document.getElementById('screen-intervention');
+    if (!screen || !screen.classList.contains('active')) return;
+    if (typeof APP === 'undefined' || APP.wizardStep !== 2) return;
+    const dx = e.changedTouches[0].clientX - _p2TouchX;
+    const dy = e.changedTouches[0].clientY - _p2TouchY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      const treatActive = document.getElementById('tab-treatment');
+      if (dx < 0 && treatActive && treatActive.classList.contains('active')) {
+        switchP2Tab('notes');   // swipe left = go to Notes & Foto
+      } else if (dx > 0 && treatActive && !treatActive.classList.contains('active')) {
+        switchP2Tab('treatment'); // swipe right = go to Treatment
+      }
+    }
+  }, { passive: true });
+})();
+
 /** Switch tab on page 2 (Tratament / Note & Foto) */
 function switchP2Tab(tab) {
   ['treatment', 'notes'].forEach(t => {
@@ -3309,6 +3364,14 @@ function _formatDuration(tsStart, tsEnd) {
 // ── CALENDAR INTERVENȚII ──────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
 
+/** Returns YYYY-MM-DD in local timezone (avoids UTC shift from toISOString). */
+function toLocalDate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + day;
+}
+
 let _calWeekOffset = 0; // 0 = săptămâna curentă, -1/+1 = prev/next
 
 /** Returnează {start, end, label} pentru săptămâna Luni–Duminică cu offset-ul dat. */
@@ -3322,7 +3385,7 @@ function getWeekBounds(offset) {
   const sun = new Date(mon);
   sun.setDate(mon.getDate() + 6);
 
-  const toISO = d => d.toISOString().slice(0, 10);
+  const toISO = d => toLocalDate(d);
   const mo    = ['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'];
   const monLbl = mon.getDate() + ' ' + mo[mon.getMonth()];
   const sunLbl = sun.getDate() + ' ' + mo[sun.getMonth()] + ' ' + sun.getFullYear();
@@ -3385,7 +3448,7 @@ function renderCalendar(entries, bounds) {
   const content = $('cal-content');
   if (!content) return;
 
-  const today    = new Date().toISOString().slice(0, 10);
+  const today    = toLocalDate(new Date());
   const dayNames = ['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'];
   const mo       = ['ianuarie','februarie','martie','aprilie','mai','iunie',
                     'iulie','august','septembrie','octombrie','noiembrie','decembrie'];
@@ -3411,7 +3474,7 @@ function renderCalendar(entries, bounds) {
   const d = new Date(bounds.start + 'T00:00:00');
 
   for (let i = 0; i < 7; i++) {
-    const dateStr  = d.toISOString().slice(0, 10);
+    const dateStr  = toLocalDate(d);
     const isToday  = dateStr === today;
     const dayLabel = dayNames[d.getDay()] + ', ' + d.getDate() + ' ' + mo[d.getMonth()];
 
@@ -3475,15 +3538,39 @@ async function deleteCalendarEntry(id) {
   }
 }
 
+// ── Calendar swipe navigation ──────────────────────────────
+(function setupCalendarSwipe() {
+  let _calTouchStartX = 0;
+  let _calTouchStartY = 0;
+  document.addEventListener('touchstart', e => {
+    const cal = document.getElementById('screen-calendar');
+    if (!cal || !cal.classList.contains('active')) return;
+    _calTouchStartX = e.touches[0].clientX;
+    _calTouchStartY = e.touches[0].clientY;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const cal = document.getElementById('screen-calendar');
+    if (!cal || !cal.classList.contains('active')) return;
+    const dx = e.changedTouches[0].clientX - _calTouchStartX;
+    const dy = e.changedTouches[0].clientY - _calTouchStartY;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+      if (dx > 0) changeCalendarWeek(-1);  // swipe right = prev week
+      else        changeCalendarWeek(1);   // swipe left = next week
+    }
+  }, { passive: true });
+})();
+
 /** Descarcă template Excel pentru import calendar. */
 async function downloadCalendarTemplate() {
   try { await loadXLSX(); } catch (e) {
     showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
     return;
   }
-  const headers = ['data (YYYY-MM-DD)', 'ora (HH:MM)', 'technician_name', 'client_name', 'adresa', 'observatii'];
-  const ex1     = [new Date().toISOString().slice(0,10), '09:00', 'Nume Tehnician', 'Client ABC', 'Str. Exemplu 1, București', 'Verificare clor'];
-  const ex2     = [new Date().toISOString().slice(0,10), '11:30', 'Nume Tehnician', 'Client DEF', 'Str. Exemplu 2, Cluj', ''];
+  const headers = ['data (ZZ.LL.AAAA)', 'ora (HH:MM)', 'technician_name', 'client_name', 'adresa', 'observatii'];
+  const nd = new Date();
+  const exDate = String(nd.getDate()).padStart(2,'0') + '.' + String(nd.getMonth()+1).padStart(2,'0') + '.' + nd.getFullYear();
+  const ex1     = [exDate, '09:00', 'Nume Tehnician', 'Client ABC', 'Str. Exemplu 1, București', 'Verificare clor'];
+  const ex2     = [exDate, '11:30', 'Nume Tehnician', 'Client DEF', 'Str. Exemplu 2, Cluj', ''];
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.aoa_to_sheet([headers, ex1, ex2]);
   // Stil header (lărgime coloane)
@@ -3529,9 +3616,14 @@ async function onCalendarFileImport(file) {
       const [date, time, tname, cname, addr, notes] = cells;
       if (!date && !tname && !cname) continue; // rând complet gol — skip silențios
 
-      // Validare dată
-      if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        skipped.push(`Rândul ${i+1}: format dată invalid "${date}" (trebuie YYYY-MM-DD)`);
+      // Validare + normalizare dată (acceptă YYYY-MM-DD sau DD.MM.YYYY)
+      let normDate = date;
+      if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
+        const [dd, mm, yyyy] = date.split('.');
+        normDate = yyyy + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
+      }
+      if (!normDate || !/^\d{4}-\d{2}-\d{2}$/.test(normDate)) {
+        skipped.push(`Rândul ${i+1}: format dată invalid "${date}" (trebuie ZZ.LL.AAAA sau YYYY-MM-DD)`);
         continue;
       }
       // Validare technician
@@ -3548,7 +3640,7 @@ async function onCalendarFileImport(file) {
 
       entries.push({
         id:              'p_' + now + '_' + i,
-        date,
+        date:            normDate,
         time:            time || '',
         technician_id:   techId,
         technician_name: techName,

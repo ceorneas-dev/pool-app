@@ -245,8 +245,10 @@
         <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="showStockModal()">📦 Stoc</button>
         <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="exportBackupJSON()">💾 Backup</button>
         <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📂 Restore<input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"></label>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadImportTemplate()">📋 Template Import</button>
-        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Excel<input type="file" id="import-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="importInterventionsXLSX(this.files[0])"></label>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadImportTemplate()">📋 Template Intervenții</button>
+        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Intervenții<input type="file" id="import-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="importInterventionsXLSX(this.files[0])"></label>
+        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadClientTemplate()">📋 Template Clienți</button>
+        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Clienți<input type="file" id="import-clients-input" accept=".xlsx,.xls" style="display:none" onchange="importClientsXLSX(this.files[0])"></label>
       </div>
 
       <!-- Obs Templates Management -->

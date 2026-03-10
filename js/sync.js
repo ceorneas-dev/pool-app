@@ -181,8 +181,9 @@ function pullData() {
         active:        t.active === true || t.active === 'true',
         last_sync:     t.last_sync || null
       }));
-      tasks.push(clearStore('technicians').then(() => putMany('technicians', parsed)));
-      console.log('[SYNC] Pulled', parsed.length, 'technicians');
+      // Merge: upsert remote technicians (preserves any local-only techs)
+      tasks.push(putMany('technicians', parsed));
+      console.log('[SYNC] Pulled', parsed.length, 'technicians (merged)');
     }
 
     if (data.treatment_rules && data.treatment_rules.length) {

@@ -423,7 +423,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-card {
   background: white;
   border-radius: var(--radius);
-  margin-bottom: 10px;
+  margin-bottom: 8px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: box-shadow 0.15s;
@@ -432,7 +432,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-card:active { box-shadow: var(--shadow); }
 
 .client-card-main {
-  padding: 14px;
+  padding: 10px 14px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -518,8 +518,8 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 .client-action-btn {
   flex: 1;
-  padding: 10px;
-  font-size: 0.8rem;
+  padding: 7px 4px;
+  font-size: 0.75rem;
   font-weight: 600;
   color: var(--blue-600);
   text-align: center;
