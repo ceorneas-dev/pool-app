@@ -3751,7 +3751,7 @@ function renderCalendar(entries, bounds) {
             const eid = (e.id || '').replace(/'/g, "\\'");
             html += '<td class="cal-td-entry">';
             html += '<div class="cal-cell-entry">';
-            if (e.time) html += '<span class="cal-cell-time">' + escHtml(e.time) + '</span> ';
+            if (e.time && e.time !== '00:00' && e.time !== '0') html += '<span class="cal-cell-time">' + escHtml(e.time) + '</span> ';
             html += '<span class="cal-cell-client">' + escHtml(e.client_name || '\u2014') + '</span>';
             if (e.notes) html += '<span class="cal-cell-notes">' + escHtml(e.notes) + '</span>';
             if (isAdmin) html += '<button class="cal-cell-del" onclick="deleteCalendarEntry(\'' + eid + '\')" title="\u0218terge">\u2715</button>';
