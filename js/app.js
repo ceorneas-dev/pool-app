@@ -71,12 +71,31 @@ async function initApp() {
     }
   }
 
-  // Seed demo if DB empty
+  // Seed demo if DB empty — with backup recovery
   const techCount = await count('technicians');
   if (techCount === 0) {
-    await seedDemoData();
-    showToast('Date demo încărcate. Login: admin / admin123', 'info', 5000);
+    let restored = false;
+    try {
+      const backup = await getSetting('technicians_backup');
+      if (backup) {
+        const techs = JSON.parse(backup);
+        if (techs && techs.length) {
+          for (const t of techs) { try { await put('technicians', t); } catch(_) {} }
+          console.log('[DB] Restored', techs.length, 'technicians from backup');
+          restored = (await count('technicians')) > 0;
+        }
+      }
+    } catch(_) {}
+    if (!restored) {
+      await seedDemoData();
+      showToast('Date demo încărcate. Login: admin / admin123', 'info', 5000);
+    }
   }
+  // Always keep technicians backup fresh
+  try {
+    const allTechs = await getAll('technicians');
+    if (allTechs.length) await setSetting('technicians_backup', JSON.stringify(allTechs));
+  } catch(_) {}
 
   // Register service worker
   if ('serviceWorker' in navigator) {
@@ -1835,6 +1854,7 @@ async function showTechManager() {
 
   hideTechForm();
   const techs = await getAll('technicians');
+  APP._techList = techs;
 
   body.innerHTML = techs.length ? techs.map(t => `
     <div class="tech-row">
@@ -1920,6 +1940,8 @@ async function doSaveTech() {
         showToast('Tehnicianul a fost salvat local. Sincronizarea va reîncerca automat.', 'warning', 4000);
       }
     }
+    // Backup all techs to settings for persistence
+    try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
     showToast(existingId ? 'Tehnician actualizat.' : 'Tehnician adăugat și salvat.', 'success');
     showTechManager();
   } catch (e) {
@@ -1933,6 +1955,7 @@ async function toggleTechActive(techId) {
     if (!tech) return;
     tech.active = tech.active === false ? true : false;
     await put('technicians', tech);
+    try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
     showTechManager();
   } catch (e) {
     showToast('Eroare: ' + e.message, 'error');
@@ -3549,20 +3572,6 @@ async function openAddCalendarEntry() {
       .join('');
   }
 
-  // Auto-fill address when client is selected
-  const clientInput = $('cal-add-client');
-  if (clientInput) {
-    clientInput.oninput = function() {
-      const name = this.value.trim().toLowerCase();
-      const match = (APP.clients || []).find(cl => cl.name.toLowerCase() === name);
-      if (match && match.address) {
-        const addr = $('cal-add-addr');
-        if (addr && !addr.value) addr.value = match.address;
-      }
-    };
-  }
-
-  $('cal-add-addr').value = '';
   $('cal-add-notes').value = '';
   $('cal-add-client').value = '';
   modal.style.display = '';
@@ -3573,7 +3582,6 @@ async function saveNewCalendarEntry() {
   const date   = ($('cal-add-date')  || {}).value || '';
   const time   = ($('cal-add-time')  || {}).value || '';
   const client = ($('cal-add-client')|| {}).value.trim();
-  const addr   = ($('cal-add-addr')  || {}).value.trim();
   const notes  = ($('cal-add-notes') || {}).value.trim();
 
   const techSelect = $('cal-add-tech');
@@ -3591,7 +3599,7 @@ async function saveNewCalendarEntry() {
     technician_id:   techId,
     technician_name: techName,
     client_name:     client,
-    address:         addr,
+    address:         '',
     notes:           notes
   };
 
@@ -3640,21 +3648,20 @@ function renderCalendar(entries, bounds) {
   if (!content) return;
 
   const today    = toLocalDate(new Date());
-  const dayNames = ['Duminică','Luni','Marți','Miercuri','Joi','Vineri','Sâmbătă'];
+  const dayNames = ['Duminic\u0103','Luni','Mar\u021bi','Miercuri','Joi','Vineri','S\u00e2mb\u0103t\u0103'];
   const mo       = ['ianuarie','februarie','martie','aprilie','mai','iunie',
                     'iulie','august','septembrie','octombrie','noiembrie','decembrie'];
   const isAdmin  = APP.user && APP.user.role === 'admin';
 
-  // Mapare technician_id → indice culoare (0–4, ciclic)
+  const TECH_COLORS = ['#1d4ed8','#16a34a','#ea580c','#9333ea','#0891b2'];
   const techColors = {};
-  let   colorIdx   = 0;
+  let colorIdx = 0;
   entries.forEach(e => {
     if (!techColors.hasOwnProperty(e.technician_id)) {
       techColors[e.technician_id] = colorIdx++ % 5;
     }
   });
 
-  // Grupare după dată
   const byDate = {};
   entries.forEach(e => {
     if (!byDate[e.date]) byDate[e.date] = [];
@@ -3668,43 +3675,87 @@ function renderCalendar(entries, bounds) {
     const dateStr  = toLocalDate(d);
     const isToday  = dateStr === today;
     const dayLabel = dayNames[d.getDay()] + ', ' + d.getDate() + ' ' + mo[d.getMonth()];
-
-        const dayEntries = byDate[dateStr] || [];
+    const dayEntries = byDate[dateStr] || [];
     const entryCount = dayEntries.length;
-    html += `<div class="cal-day-group">
-      <div class="cal-day-header${isToday ? ' is-today' : ''}" onclick="toggleCalDay(this)">
-        <span>${escHtml(dayLabel)}${isToday ? ' <span class="cal-today-badge">Azi</span>' : ''}</span>
-        ${entryCount ? `<span class="cal-day-count">${entryCount}</span>` : ''}
-      </div>`;
-    html += `<div class="cal-day-entries${isToday ? '' : ' collapsed'}">`;
+
+    html += '<div class="cal-day-group">';
+    html += '<div class="cal-day-header' + (isToday ? ' is-today' : '') + '" onclick="toggleCalDay(this)">';
+    html += '<span>' + escHtml(dayLabel) + (isToday ? ' <span class="cal-today-badge">Azi</span>' : '') + '</span>';
+    html += entryCount ? '<span class="cal-day-count">' + entryCount + '</span>' : '';
+    html += '</div>';
+
+    html += '<div class="cal-day-entries' + (isToday ? '' : ' collapsed') + '">';
+
     if (entryCount === 0) {
-      html += `<div class="cal-day-empty">Nicio intervenție planificată</div>`;
+      html += '<div class="cal-day-empty">Nicio interven\u021bie planificat\u0103</div>';
     } else {
+      // Unique techs for this day (preserve order)
+      const dayTechs = [];
+      const dayTechSet = new Set();
       dayEntries.forEach(e => {
-        const tci = techColors[e.technician_id] !== undefined ? techColors[e.technician_id] : 0;
-        html += `<div class="cal-entry" data-tech-color="${tci}">
-          <div class="cal-entry-time">${escHtml(e.time || '—')}</div>
-          <div class="cal-entry-body">
-            ${isAdmin ? `<div class="cal-entry-tech">👤 ${escHtml(e.technician_name || '')}</div>` : ''}
-            <div class="cal-entry-client">${escHtml(e.client_name || '—')}</div>
-            ${e.address ? `<div class="cal-entry-addr">📍 ${escHtml(e.address)}</div>` : ''}
-            ${e.notes   ? `<div class="cal-entry-notes">${escHtml(e.notes)}</div>` : ''}
-          </div>
-          ${isAdmin ? `<button class="cal-entry-delete" onclick="deleteCalendarEntry('${e.id.replace(/'/g,"\\\\\'")}')">✕</button>` : ''}
-        </div>`;
+        if (!dayTechSet.has(e.technician_id)) {
+          dayTechSet.add(e.technician_id);
+          dayTechs.push({ id: e.technician_id, name: e.technician_name || '' });
+        }
       });
+
+      // Sort entries by time
+      dayEntries.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
+
+      // Unique sorted times
+      const times = [];
+      const timeSet = new Set();
+      dayEntries.forEach(e => {
+        const t = e.time || '\u2014';
+        if (!timeSet.has(t)) { timeSet.add(t); times.push(t); }
+      });
+
+      // Build table
+      html += '<div class="cal-table-wrap"><table class="cal-table">';
+      // Header
+      html += '<thead><tr><th class="cal-th-time">Ora</th>';
+      dayTechs.forEach(tech => {
+        const ci = techColors[tech.id] !== undefined ? techColors[tech.id] : 0;
+        html += '<th style="color:' + TECH_COLORS[ci] + '">' + escHtml(tech.name) + '</th>';
+      });
+      html += '</tr></thead>';
+
+      // Body
+      html += '<tbody>';
+      times.forEach(time => {
+        html += '<tr>';
+        html += '<td class="cal-td-time">' + escHtml(time) + '</td>';
+        dayTechs.forEach(tech => {
+          const cells = dayEntries.filter(e => (e.time || '\u2014') === time && e.technician_id === tech.id);
+          if (cells.length) {
+            html += '<td class="cal-td-entry">';
+            cells.forEach(e => {
+              const eid = (e.id || '').replace(/'/g, "\\'");
+              html += '<div class="cal-cell-entry">';
+              html += '<span class="cal-cell-client">' + escHtml(e.client_name || '\u2014') + '</span>';
+              if (e.notes) html += '<span class="cal-cell-notes">' + escHtml(e.notes) + '</span>';
+              if (isAdmin) html += ' <button class="cal-cell-del" onclick="deleteCalendarEntry(\'' + eid + '\')" title="\u0218terge">\u2715</button>';
+              html += '</div>';
+            });
+            html += '</td>';
+          } else {
+            html += '<td class="cal-td-empty">\u2014</td>';
+          }
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
     }
-    html += '</div>';
-    html += '</div>';
+
+    html += '</div></div>';
     d.setDate(d.getDate() + 1);
   }
 
-  // Dacă nu există deloc intervenții pentru săptămână
   if (!entries.length) {
-    html += `<div style="text-align:center;padding:32px 16px;color:var(--slate-400);font-size:.9rem">
-      📭 Nu există intervenții programate în această săptămână.
-      ${isAdmin ? '<br><small style="font-size:.8rem">Importați un fișier Excel cu butonul 📥 din header.</small>' : ''}
-    </div>`;
+    html += '<div style="text-align:center;padding:32px 16px;color:var(--slate-400);font-size:.9rem">';
+    html += 'Nu exist\u0103 interven\u021bii programate \u00een aceast\u0103 s\u0103pt\u0103m\u00e2n\u0103.';
+    if (isAdmin) html += '<br><small style="font-size:.8rem">Importa\u021bi un fi\u0219ier Excel cu butonul din header sau ad\u0103uga\u021bi manual cu +.</small>';
+    html += '</div>';
   }
 
   content.innerHTML = html;

@@ -197,9 +197,22 @@ function pullData() {
         active:        t.active === true || t.active === 'true',
         last_sync:     t.last_sync || null
       }));
-      // Merge: upsert remote technicians (preserves any local-only techs)
-      tasks.push(putMany('technicians', parsed));
-      console.log('[SYNC] Pulled', parsed.length, 'technicians (merged)');
+      // Merge: upsert remote technicians one-by-one (avoids unique-index abort)
+      const techMerge = (async function() {
+        let ok = 0;
+        for (const t of parsed) {
+          try { await put('technicians', t); ok++; } catch(e) {
+            console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
+          }
+        }
+        console.log('[SYNC] Pulled', ok, '/', parsed.length, 'technicians (merged)');
+        // Update backup
+        try {
+          const all = await getAll('technicians');
+          await setSetting('technicians_backup', JSON.stringify(all));
+        } catch(_) {}
+      })();
+      tasks.push(techMerge);
     }
 
     if (data.treatment_rules && data.treatment_rules.length) {
