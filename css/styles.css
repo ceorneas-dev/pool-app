@@ -3519,7 +3519,26 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   margin-bottom: 6px;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+.cal-day-count {
+  background: var(--primary);
+  color: #fff;
+  font-size: .65rem;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  font-weight: 700;
+}
+.cal-day-entries.collapsed {
+  display: none;
 }
 .cal-day-header.is-today {
   color: var(--primary);

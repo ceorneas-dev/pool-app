@@ -3475,59 +3475,47 @@ async function _getCalendarLocal(dateFrom, dateTo, techId) {
   } catch (e) { return []; }
 }
 
-/** Încarcă și randează calendarul pentru săptămâna curentă (cu offset). */
+/** Incarca si randeaza calendarul (local-first, apoi GAS). */
 async function loadCalendarScreen() {
   const noApi   = $('cal-no-api');
   const loading = $('cal-loading');
   const content = $('cal-content');
-
-  // Dacă API nu e configurat — arată date locale dacă există
-  if (!isSyncConfigured()) {
-    if (loading) loading.style.display = 'none';
-    const techId = (APP.user && APP.user.role !== 'admin') ? APP.user.technician_id : '';
-    const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
-    if (local.length) {
-      if (noApi) noApi.style.display = 'none';
-      renderCalendar(local, bounds);
-    } else {
-      if (noApi)   noApi.style.display   = '';
-      if (content) content.innerHTML     = '';
-    }
-    return;
-  }
-  if (noApi) noApi.style.display = 'none';
-
   const bounds = getWeekBounds(_calWeekOffset);
   const label  = $('cal-week-label');
   if (label) label.textContent = bounds.label;
-
-  if (loading) loading.style.display = '';
-  if (content) content.innerHTML     = '';
-
   const techId = (APP.user && APP.user.role !== 'admin') ? APP.user.technician_id : '';
-
-  try {
-    let url = SYNC_CONFIG.API_URL + '?action=getCalendar&date_from=' + bounds.start + '&date_to=' + bounds.end;
-    if (techId) url += '&tech_id=' + encodeURIComponent(techId);
-    const resp = await fetch(url, { cache: 'no-store' });
-    const data = await resp.json();
-    const entries = data.entries || [];
-    // Cache remote data locally
-    if (entries.length) _mergeCalendarLocal(entries);
+  const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
+  if (local.length) {
+    if (noApi) noApi.style.display = 'none';
     if (loading) loading.style.display = 'none';
-    renderCalendar(entries, bounds);
-  } catch (err) {
-    console.warn('[CAL] GAS fetch failed, trying local cache:', err.message);
-    // Fallback: show local cached data
-    const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
-    if (loading) loading.style.display = 'none';
-    if (local.length) {
-      renderCalendar(local, bounds);
-    } else {
-      if (content) content.innerHTML =
-        '<p style="text-align:center;padding:40px 16px;color:var(--slate-400)">⚠️ Eroare la încărcarea programului.<br><small>' + escHtml(err.message) + '</small></p>';
-    }
+    renderCalendar(local, bounds);
   }
+  if (isSyncConfigured()) {
+    if (noApi) noApi.style.display = 'none';
+    if (!local.length) { if (loading) loading.style.display = ''; if (content) content.innerHTML = ''; }
+    try {
+      let url = SYNC_CONFIG.API_URL + '?action=getCalendar&date_from=' + bounds.start + '&date_to=' + bounds.end;
+      if (techId) url += '&tech_id=' + encodeURIComponent(techId);
+      const resp = await fetch(url, { cache: 'no-store' });
+      const data = await resp.json();
+      const entries = data.entries || [];
+      if (entries.length) _mergeCalendarLocal(entries);
+      if (loading) loading.style.display = 'none';
+      renderCalendar(entries.length ? entries : local, bounds);
+    } catch (err) {
+      console.warn('[CAL] GAS fetch failed:', err.message);
+      if (loading) loading.style.display = 'none';
+    }
+  } else {
+    if (loading) loading.style.display = 'none';
+    if (!local.length) { if (noApi) noApi.style.display = ''; if (content) content.innerHTML = ''; }
+  }
+}
+
+
+function toggleCalDay(h) {
+  const el = h.nextElementSibling;
+  if (el && el.classList.contains('cal-day-entries')) el.classList.toggle('collapsed');
 }
 
 /** Navighează cu o săptămână înainte sau înapoi. */
@@ -3577,13 +3565,15 @@ function renderCalendar(entries, bounds) {
     const isToday  = dateStr === today;
     const dayLabel = dayNames[d.getDay()] + ', ' + d.getDate() + ' ' + mo[d.getMonth()];
 
+        const dayEntries = byDate[dateStr] || [];
+    const entryCount = dayEntries.length;
     html += `<div class="cal-day-group">
-      <div class="cal-day-header${isToday ? ' is-today' : ''}">
-        ${escHtml(dayLabel)}${isToday ? ' <span class="cal-today-badge">Azi</span>' : ''}
+      <div class="cal-day-header${isToday ? ' is-today' : ''}" onclick="toggleCalDay(this)">
+        <span>${escHtml(dayLabel)}${isToday ? ' <span class="cal-today-badge">Azi</span>' : ''}</span>
+        ${entryCount ? `<span class="cal-day-count">${entryCount}</span>` : ''}
       </div>`;
-
-    const dayEntries = byDate[dateStr] || [];
-    if (dayEntries.length === 0) {
+    html += `<div class="cal-day-entries${isToday ? '' : ' collapsed'}">`;
+    if (entryCount === 0) {
       html += `<div class="cal-day-empty">Nicio intervenție planificată</div>`;
     } else {
       dayEntries.forEach(e => {
@@ -3596,10 +3586,11 @@ function renderCalendar(entries, bounds) {
             ${e.address ? `<div class="cal-entry-addr">📍 ${escHtml(e.address)}</div>` : ''}
             ${e.notes   ? `<div class="cal-entry-notes">${escHtml(e.notes)}</div>` : ''}
           </div>
-          ${isAdmin ? `<button class="cal-entry-delete" onclick="deleteCalendarEntry('${e.id.replace(/'/g,"\\'")}')">✕</button>` : ''}
+          ${isAdmin ? `<button class="cal-entry-delete" onclick="deleteCalendarEntry('${e.id.replace(/'/g,"\\\\\'")}')">✕</button>` : ''}
         </div>`;
       });
     }
+    html += '</div>';
     html += '</div>';
     d.setDate(d.getDate() + 1);
   }
