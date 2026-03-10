@@ -199,7 +199,7 @@
         <input type="url" id="settings-api-url" placeholder="https://script.google.com/...">
       </div>
       <div class="settings-row">
-        <label for="settings-pin">PIN 4 cifre</label>
+        <label for="settings-pin">PIN 4 cifre <small style="font-weight:400;color:var(--slate-400)">(deblocare rapidă)</small></label>
         <input type="password" id="settings-pin" placeholder="Setați PIN" maxlength="4" inputmode="numeric" pattern="[0-9]{4}">
       </div>
       <div class="settings-row">
@@ -230,7 +230,10 @@
           </select>
         </div>
       </div>
-      <button id="btn-settings-save" class="btn-settings-save">Salvează setările</button>
+      <div style="display:flex;gap:8px;padding:0 14px">
+        <button id="btn-settings-save" class="btn-settings-save" style="flex:1">💾 Salvează</button>
+        <button class="btn-settings-save" style="flex:0 0 auto;padding:6px 16px;background:var(--slate-200);color:var(--slate-600)" onclick="document.getElementById('settings-section').open=false">✕ Închide</button>
+      </div>
 
       <!-- Dark mode — available to all -->
       <div class="settings-row" style="margin-top:8px">

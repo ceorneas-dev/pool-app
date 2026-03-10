@@ -560,6 +560,9 @@ function renderDashboard() {
         updateGpsToggleBtn(); // reflectă noile ore imediat
       }
       showToast('Setări salvate.', 'success');
+      // Close settings section after saving
+      const settingsDetails = $('settings-section');
+      if (settingsDetails) settingsDetails.open = false;
     };
   }
 
@@ -701,6 +704,7 @@ async function renderClientList(searchTerm) {
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
+        ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); setClientLocation('${client.client_id}')" style="color:var(--emerald-600)">📍 ${client.location_set ? 'Relocare' : 'Locație'}</button>` : ''}
       </div>
     </li>`;
   }).join('');
@@ -733,6 +737,39 @@ function navigateToClient(clientId) {
   if (!client || !client.latitude) return;
   const url = `https://www.google.com/maps/dir/?api=1&destination=${client.latitude},${client.longitude}`;
   window.open(url, '_blank');
+}
+
+/** Admin: set client GPS location from current position */
+async function setClientLocation(clientId) {
+  const client = APP.clients.find(c => c.client_id === clientId);
+  if (!client) return;
+  if (!navigator.geolocation) {
+    showToast('GPS nu este disponibil pe acest dispozitiv.', 'error');
+    return;
+  }
+  showToast('Se obține locația...', 'info', 3000);
+  navigator.geolocation.getCurrentPosition(
+    async (pos) => {
+      client.latitude     = pos.coords.latitude;
+      client.longitude    = pos.coords.longitude;
+      client.location_set = true;
+      client.updated_at   = new Date().toISOString();
+      await put('clients', client);
+      // Push to GAS
+      if (isSyncConfigured()) {
+        apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+        }).catch(err => console.warn('[SYNC] Client loc push failed:', err.message));
+      }
+      showToast('📍 Locația salvată pentru ' + client.name, 'success');
+      renderClientList($('search-input') ? $('search-input').value : '');
+    },
+    (err) => {
+      showToast('Eroare GPS: ' + err.message, 'error');
+    },
+    { enableHighAccuracy: true, timeout: 10000 }
+  );
 }
 
 function openClientIntervention(clientId) {
