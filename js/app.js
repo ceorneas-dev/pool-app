@@ -3599,7 +3599,7 @@ async function openAddCalendarEntry() {
 
   $('cal-add-notes').value = '';
   $('cal-add-client').value = '';
-  modal.style.display = '';
+  modal.classList.add('open');
 }
 
 /** Save a new calendar entry from the modal form. */
