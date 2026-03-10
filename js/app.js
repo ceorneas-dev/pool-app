@@ -3429,17 +3429,51 @@ function getWeekBounds(offset) {
   return { start: toISO(mon), end: toISO(sun), label: monLbl + ' – ' + sunLbl };
 }
 
+/** Merge imported entries into local IndexedDB cache. */
+async function _mergeCalendarLocal(entries) {
+  try {
+    const stored = await getSetting('calendar_entries');
+    const all = stored ? JSON.parse(stored) : [];
+    const map = {};
+    all.forEach(e => { map[e.id] = e; });
+    entries.forEach(e => { map[e.id] = e; });
+    await setSetting('calendar_entries', JSON.stringify(Object.values(map)));
+  } catch (e) { console.warn('[CAL] Local save failed:', e.message); }
+}
+
+/** Get calendar entries from local cache, filtered by date range. */
+async function _getCalendarLocal(dateFrom, dateTo, techId) {
+  try {
+    const stored = await getSetting('calendar_entries');
+    if (!stored) return [];
+    const all = JSON.parse(stored);
+    return all.filter(e => {
+      if (dateFrom && e.date < dateFrom) return false;
+      if (dateTo && e.date > dateTo) return false;
+      if (techId && e.technician_id !== techId) return false;
+      return true;
+    });
+  } catch (e) { return []; }
+}
+
 /** Încarcă și randează calendarul pentru săptămâna curentă (cu offset). */
 async function loadCalendarScreen() {
   const noApi   = $('cal-no-api');
   const loading = $('cal-loading');
   const content = $('cal-content');
 
-  // Dacă API nu e configurat — mesaj explicativ
+  // Dacă API nu e configurat — arată date locale dacă există
   if (!isSyncConfigured()) {
-    if (noApi)   noApi.style.display   = '';
     if (loading) loading.style.display = 'none';
-    if (content) content.innerHTML     = '';
+    const techId = (APP.user && APP.user.role !== 'admin') ? APP.user.technician_id : '';
+    const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
+    if (local.length) {
+      if (noApi) noApi.style.display = 'none';
+      renderCalendar(local, bounds);
+    } else {
+      if (noApi)   noApi.style.display   = '';
+      if (content) content.innerHTML     = '';
+    }
     return;
   }
   if (noApi) noApi.style.display = 'none';
@@ -3451,20 +3485,29 @@ async function loadCalendarScreen() {
   if (loading) loading.style.display = '';
   if (content) content.innerHTML     = '';
 
+  const techId = (APP.user && APP.user.role !== 'admin') ? APP.user.technician_id : '';
+
   try {
     let url = SYNC_CONFIG.API_URL + '?action=getCalendar&date_from=' + bounds.start + '&date_to=' + bounds.end;
-    // Tehnicianul vede doar propriile intervenții
-    if (APP.user && APP.user.role !== 'admin') {
-      url += '&tech_id=' + encodeURIComponent(APP.user.technician_id);
-    }
+    if (techId) url += '&tech_id=' + encodeURIComponent(techId);
     const resp = await fetch(url, { cache: 'no-store' });
     const data = await resp.json();
+    const entries = data.entries || [];
+    // Cache remote data locally
+    if (entries.length) _mergeCalendarLocal(entries);
     if (loading) loading.style.display = 'none';
-    renderCalendar(data.entries || [], bounds);
+    renderCalendar(entries, bounds);
   } catch (err) {
+    console.warn('[CAL] GAS fetch failed, trying local cache:', err.message);
+    // Fallback: show local cached data
+    const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
     if (loading) loading.style.display = 'none';
-    if (content) content.innerHTML =
-      '<p style="text-align:center;padding:40px 16px;color:var(--slate-400)">⚠️ Eroare la încărcarea programului.<br><small>' + escHtml(err.message) + '</small></p>';
+    if (local.length) {
+      renderCalendar(local, bounds);
+    } else {
+      if (content) content.innerHTML =
+        '<p style="text-align:center;padding:40px 16px;color:var(--slate-400)">⚠️ Eroare la încărcarea programului.<br><small>' + escHtml(err.message) + '</small></p>';
+    }
   }
 }
 
@@ -3565,6 +3608,14 @@ async function deleteCalendarEntry(id) {
     });
     const data = await resp.json();
     if (data.success) {
+      // Șterge și din cache-ul local
+      try {
+        const stored = await getSetting('calendar_entries');
+        if (stored) {
+          const all = JSON.parse(stored).filter(e => e.id !== id);
+          await setSetting('calendar_entries', JSON.stringify(all));
+        }
+      } catch (_) {}
       showToast('Intervenție ștearsă din program.', 'success');
       loadCalendarScreen();
     } else {
@@ -3631,9 +3682,9 @@ async function onCalendarFileImport(file) {
 
   try {
     const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf, { type: 'array', cellDates: true });
+    const wb   = XLSX.read(buf, { type: 'array' });
     const ws   = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
     if (rows.length < 2) {
       showToast('Fișierul este gol sau are format greșit.', 'error');
       return;
@@ -3649,14 +3700,33 @@ async function onCalendarFileImport(file) {
     const now     = Date.now();
 
     for (let i = 1; i < rows.length; i++) {
-      const cells = rows[i].map(v => String(v || '').trim());
+      const rawCells = rows[i];
+      // Parsare dată robustă: Date object, serial number Excel, sau string
+      let dateRaw = rawCells[0];
+      if (typeof dateRaw === 'number' && dateRaw > 1000) {
+        // Excel serial number → JS Date (UTC)
+        const d = new Date((dateRaw - 25569) * 86400000);
+        dateRaw = String(d.getUTCDate()).padStart(2,'0') + '.' + String(d.getUTCMonth()+1).padStart(2,'0') + '.' + d.getUTCFullYear();
+      } else if (dateRaw instanceof Date) {
+        dateRaw = String(dateRaw.getDate()).padStart(2,'0') + '.' + String(dateRaw.getMonth()+1).padStart(2,'0') + '.' + dateRaw.getFullYear();
+      }
+      const cells = rawCells.map(v => String(v || '').trim());
+      cells[0] = String(dateRaw || '').trim();
       const [date, time, tname, cname, addr, notes] = cells;
       if (!date && !tname && !cname) continue; // rând complet gol — skip silențios
 
-      // Validare + normalizare dată (acceptă YYYY-MM-DD sau DD.MM.YYYY)
+      // Normalizare dată: DD.MM.YYYY → YYYY-MM-DD; DD/MM/YYYY → YYYY-MM-DD; M/D/YYYY → YYYY-MM-DD
       let normDate = date;
       if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
         const [dd, mm, yyyy] = date.split('.');
+        normDate = yyyy + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
+      } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
+        const parts = date.split('/');
+        // Detect M/D/YYYY vs D/M/YYYY: if first part > 12 it must be day
+        let dd, mm, yyyy;
+        if (parseInt(parts[0]) > 12) { dd = parts[0]; mm = parts[1]; yyyy = parts[2]; }
+        else if (parseInt(parts[1]) > 12) { dd = parts[1]; mm = parts[0]; yyyy = parts[2]; }
+        else { dd = parts[0]; mm = parts[1]; yyyy = parts[2]; } // assume D/M/YYYY
         normDate = yyyy + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
       }
       if (!normDate || !/^\d{4}-\d{2}-\d{2}$/.test(normDate)) {
@@ -3693,30 +3763,31 @@ async function onCalendarFileImport(file) {
       return;
     }
 
-    if (!isSyncConfigured()) {
-      showToast('API-ul nu este configurat — intrările nu pot fi salvate.', 'error');
-      return;
-    }
+    // Salvare locală în IndexedDB (mereu, chiar fără API)
+    await _mergeCalendarLocal(entries);
 
-    const resp = await fetch(SYNC_CONFIG.API_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      redirect: 'follow',
-      body:    JSON.stringify({ action: 'saveCalendarEntries', entries })
-    });
-    const data = await resp.json();
-
-    if (data.success) {
-      let msg = `Import reușit: ${data.saved} intrări salvate.`;
-      if (skipped.length) msg += ` (${skipped.length} omise)`;
-      showToast(msg, 'success', 5000);
-      if (skipped.length) {
-        setTimeout(() => showToast('Omise: ' + skipped.slice(0, 3).join(' | '), 'warning', 7000), 1200);
+    if (isSyncConfigured()) {
+      try {
+        const resp = await fetch(SYNC_CONFIG.API_URL, {
+          method:  'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          redirect: 'follow',
+          body:    JSON.stringify({ action: 'saveCalendarEntries', entries })
+        });
+        const data = await resp.json();
+        if (!data.success) console.warn('[CAL] GAS save error:', data.error);
+      } catch (gasErr) {
+        console.warn('[CAL] GAS push failed (local data saved):', gasErr.message);
       }
-      loadCalendarScreen();
-    } else {
-      showToast('Eroare la salvare: ' + (data.error || ''), 'error');
     }
+
+    let msg = `Import reușit: ${entries.length} intrări salvate.`;
+    if (skipped.length) msg += ` (${skipped.length} omise)`;
+    showToast(msg, 'success', 5000);
+    if (skipped.length) {
+      setTimeout(() => showToast('Omise: ' + skipped.slice(0, 3).join(' | '), 'warning', 7000), 1200);
+    }
+    loadCalendarScreen();
   } catch (err) {
     showToast('Eroare la procesarea fișierului: ' + err.message, 'error');
   }
