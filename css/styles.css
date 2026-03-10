@@ -4038,3 +4038,21 @@ body.dark-mode .footer-nav-logout:hover {
 #settings-section { background: white; }
 body.dark-mode #settings-section { background: var(--slate-900); }
 body.dark-mode #settings-section summary { color: var(--text-secondary); }
+
+/* Calendar add modal inputs */
+#modal-cal-add .form-input {
+  padding: 8px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  background: var(--surface);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+#modal-cal-add .form-input:focus {
+  border-color: var(--primary);
+}
+#modal-cal-add select.form-input {
+  appearance: auto;
+}

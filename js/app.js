@@ -3513,6 +3513,110 @@ async function loadCalendarScreen() {
 }
 
 
+/** Open the add-calendar-entry modal and populate dropdowns. */
+async function openAddCalendarEntry() {
+  const modal = $('modal-cal-add');
+  if (!modal) return;
+
+  // Set default date to today
+  const dateInput = $('cal-add-date');
+  if (dateInput) dateInput.value = toLocalDate(new Date());
+
+  // Set default time to next full hour
+  const timeInput = $('cal-add-time');
+  if (timeInput) {
+    const now = new Date();
+    const h = (now.getHours() + 1) % 24;
+    timeInput.value = String(h).padStart(2, '0') + ':00';
+  }
+
+  // Populate technician dropdown
+  const techSelect = $('cal-add-tech');
+  if (techSelect) {
+    const techs = await getAll('technicians');
+    techSelect.innerHTML = techs
+      .filter(t => t.active !== false)
+      .map(t => '<option value="' + escHtml(t.technician_id) + '" data-name="' + escHtml(t.name) + '">' + escHtml(t.name) + '</option>')
+      .join('');
+  }
+
+  // Populate client datalist
+  const clientList = $('cal-add-client-list');
+  if (clientList && APP.clients) {
+    clientList.innerHTML = APP.clients
+      .filter(cl => cl.active !== false)
+      .map(cl => '<option value="' + escHtml(cl.name) + '">')
+      .join('');
+  }
+
+  // Auto-fill address when client is selected
+  const clientInput = $('cal-add-client');
+  if (clientInput) {
+    clientInput.oninput = function() {
+      const name = this.value.trim().toLowerCase();
+      const match = (APP.clients || []).find(cl => cl.name.toLowerCase() === name);
+      if (match && match.address) {
+        const addr = $('cal-add-addr');
+        if (addr && !addr.value) addr.value = match.address;
+      }
+    };
+  }
+
+  $('cal-add-addr').value = '';
+  $('cal-add-notes').value = '';
+  $('cal-add-client').value = '';
+  modal.style.display = '';
+}
+
+/** Save a new calendar entry from the modal form. */
+async function saveNewCalendarEntry() {
+  const date   = ($('cal-add-date')  || {}).value || '';
+  const time   = ($('cal-add-time')  || {}).value || '';
+  const client = ($('cal-add-client')|| {}).value.trim();
+  const addr   = ($('cal-add-addr')  || {}).value.trim();
+  const notes  = ($('cal-add-notes') || {}).value.trim();
+
+  const techSelect = $('cal-add-tech');
+  const techId   = techSelect ? techSelect.value : '';
+  const techName = techSelect && techSelect.selectedOptions[0] ? techSelect.selectedOptions[0].dataset.name || techSelect.selectedOptions[0].text : '';
+
+  if (!date) { showToast('Selectează o dată.', 'error'); return; }
+  if (!client) { showToast('Introdu numele clientului.', 'error'); return; }
+  if (!techId) { showToast('Selectează un tehnician.', 'error'); return; }
+
+  const entry = {
+    id:              'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
+    date:            date,
+    time:            time || '',
+    technician_id:   techId,
+    technician_name: techName,
+    client_name:     client,
+    address:         addr,
+    notes:           notes
+  };
+
+  // Save locally
+  await _mergeCalendarLocal([entry]);
+
+  // Push to GAS if configured
+  if (isSyncConfigured()) {
+    try {
+      await fetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        redirect: 'follow',
+        body: JSON.stringify({ action: 'saveCalendarEntries', entries: [entry] })
+      });
+    } catch (e) { console.warn('[CAL] GAS push failed:', e.message); }
+  }
+
+  // Close modal and refresh
+  const modal = $('modal-cal-add');
+  if (modal) modal.style.display = 'none';
+  showToast('Intrare adaugata in calendar.', 'success');
+  loadCalendarScreen();
+}
+
 function toggleCalDay(h) {
   const el = h.nextElementSibling;
   if (el && el.classList.contains('cal-day-entries')) el.classList.toggle('collapsed');

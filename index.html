@@ -1029,6 +1029,7 @@
         <input type="file" id="cal-import-input" accept=".xlsx,.xls" style="display:none" onchange="onCalendarFileImport(this.files[0])">
       </label>
       <button class="cal-icon-btn admin-only" onclick="downloadCalendarTemplate()" title="Descarcă template Excel">📋</button>
+      <button class="cal-icon-btn admin-only" onclick="openAddCalendarEntry()" title="Adaugă intrare" style="font-size:1.3rem">➕</button>
     </div>
   </div>
 
@@ -1063,6 +1064,47 @@
 <!-- ════════════════════════════════════
      TOAST CONTAINER
 ════════════════════════════════════ -->
+
+<!-- Modal: Add Calendar Entry -->
+<div id="modal-cal-add" class="modal-overlay" style="display:none" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal-content" style="max-width:420px" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 14px;font-size:1.1rem">📅 Adaugă în calendar</h3>
+    <div style="display:flex;flex-direction:column;gap:10px">
+      <div style="display:flex;gap:8px">
+        <div style="flex:1">
+          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Data</label>
+          <input type="date" id="cal-add-date" class="form-input" style="width:100%">
+        </div>
+        <div style="flex:0 0 100px">
+          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Ora</label>
+          <input type="time" id="cal-add-time" class="form-input" style="width:100%">
+        </div>
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Tehnician</label>
+        <select id="cal-add-tech" class="form-input" style="width:100%"></select>
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Client</label>
+        <input type="text" id="cal-add-client" class="form-input" list="cal-add-client-list" placeholder="Nume client" style="width:100%" autocomplete="off">
+        <datalist id="cal-add-client-list"></datalist>
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Adresa</label>
+        <input type="text" id="cal-add-addr" class="form-input" placeholder="Opțional" style="width:100%">
+      </div>
+      <div>
+        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Observații</label>
+        <input type="text" id="cal-add-notes" class="form-input" placeholder="Opțional" style="width:100%">
+      </div>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn-primary" style="flex:1" onclick="saveNewCalendarEntry()">💾 Salvează</button>
+        <button style="flex:0 0 auto;padding:8px 18px;border-radius:10px;background:var(--slate-200);color:var(--slate-600);font-weight:600" onclick="document.getElementById('modal-cal-add').style.display='none'">✕</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
 <!-- ════════════════════════════════════
