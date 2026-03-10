@@ -417,8 +417,8 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 /* Client list */
 #client-list {
-  padding: 4px 12px 12px;
-  max-height: 55vh;
+  padding: 4px 10px 12px;
+  max-height: 42vh;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
@@ -426,7 +426,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-card {
   background: white;
   border-radius: var(--radius);
-  margin-bottom: 8px;
+  margin-bottom: 5px;
   box-shadow: var(--shadow-sm);
   overflow: hidden;
   transition: box-shadow 0.15s;
@@ -435,7 +435,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-card:active { box-shadow: var(--shadow); }
 
 .client-card-main {
-  padding: 10px 14px;
+  padding: 7px 10px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -445,7 +445,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-info { flex: 1; min-width: 0; }
 
 .client-name {
-  font-size: 1rem;
+  font-size: 0.9rem;
   font-weight: 700;
   color: var(--slate-800);
   white-space: nowrap;
@@ -456,8 +456,8 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .client-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 4px;
+  gap: 6px;
+  margin-top: 2px;
   flex-wrap: wrap;
 }
 
@@ -521,8 +521,8 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 .client-action-btn {
   flex: 1;
-  padding: 7px 4px;
-  font-size: 0.75rem;
+  padding: 5px 3px;
+  font-size: 0.7rem;
   font-weight: 600;
   color: var(--blue-600);
   text-align: center;

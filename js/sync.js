@@ -62,7 +62,8 @@ function doSync() {
   _syncActive = true;
   console.log('[SYNC] Starting sync cycle...');
 
-  return pushInterventions()
+  return pushTechnicians()
+    .then(() => pushInterventions())
     .then(() => pullData())
     .then(() => {
       setSetting('last_sync', new Date().toISOString());
@@ -76,6 +77,21 @@ function doSync() {
     .finally(() => {
       _syncActive = false;
     });
+}
+
+// Push all local technicians to server on each sync cycle
+function pushTechnicians() {
+  return getAll('technicians').then(function(techs) {
+    if (!techs || !techs.length) return;
+    return apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'technicians', data: techs })
+    }).then(function() {
+      console.log('[SYNC] Pushed', techs.length, 'technicians');
+    }).catch(function(err) {
+      console.warn('[SYNC] Technician push failed:', err.message);
+    });
+  });
 }
 
 // ── Push interventions to server ─────────────────────────────

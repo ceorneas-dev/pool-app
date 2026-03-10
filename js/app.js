@@ -97,6 +97,15 @@ function toggleNavMenu() {
   if (overlay) overlay.classList.toggle('open');
 }
 
+/** Open settings from header button — scroll to and open settings details */
+function openSettingsFromHeader() {
+  const details = $('settings-section');
+  if (details) {
+    details.open = true;
+    details.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 function showScreen(name) {
   $$('.screen').forEach(s => s.classList.remove('active'));
   const el = $('screen-' + name);
@@ -1896,12 +1905,22 @@ async function doSaveTech() {
     await put('technicians', data);
     // Push to GAS immediately if configured
     if (isSyncConfigured()) {
-      apiFetch(SYNC_CONFIG.API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
-      }).catch(err => console.warn('[SYNC] Technician push failed:', err.message));
+      try {
+        const resp = await apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
+        });
+        if (resp && resp.success) {
+          console.log('[SYNC] Technician pushed to GAS OK');
+        } else {
+          console.warn('[SYNC] Technician push response:', resp);
+        }
+      } catch (pushErr) {
+        console.warn('[SYNC] Technician push failed:', pushErr.message);
+        showToast('Tehnicianul a fost salvat local. Sincronizarea va reîncerca automat.', 'warning', 4000);
+      }
     }
-    showToast(existingId ? 'Tehnician actualizat.' : 'Tehnician adăugat.', 'success');
+    showToast(existingId ? 'Tehnician actualizat.' : 'Tehnician adăugat și salvat.', 'success');
     showTechManager();
   } catch (e) {
     showToast('Eroare: ' + e.message, 'error');
@@ -3710,8 +3729,23 @@ async function onCalendarFileImport(file) {
       } else if (dateRaw instanceof Date) {
         dateRaw = String(dateRaw.getDate()).padStart(2,'0') + '.' + String(dateRaw.getMonth()+1).padStart(2,'0') + '.' + dateRaw.getFullYear();
       }
+      // Parsare oră: serial Excel (0.375=09:00), număr întreg (14=14:00), sau string
+      let timeRaw = rawCells[1];
+      if (typeof timeRaw === 'number') {
+        if (timeRaw < 1) {
+          // Fracție de zi: 0.375 = 09:00, 0.5 = 12:00
+          const totalMin = Math.round(timeRaw * 1440);
+          const hh = String(Math.floor(totalMin / 60)).padStart(2, '0');
+          const mm = String(totalMin % 60).padStart(2, '0');
+          timeRaw = hh + ':' + mm;
+        } else {
+          // Număr întreg (ex: 14 → 14:00)
+          timeRaw = String(Math.floor(timeRaw)).padStart(2, '0') + ':00';
+        }
+      }
       const cells = rawCells.map(v => String(v || '').trim());
       cells[0] = String(dateRaw || '').trim();
+      cells[1] = String(timeRaw || '').trim();
       const [date, time, tname, cname, addr, notes] = cells;
       if (!date && !tname && !cname) continue; // rând complet gol — skip silențios
 
