@@ -3667,7 +3667,7 @@ function jumpCalendarToToday() {
   loadCalendarScreen();
 }
 
-/** Randează lista de intervenții zi cu zi în #cal-content. */
+/** Randeaz\u0103 lista de interven\u021bii zi cu zi \u00een #cal-content. */
 function renderCalendar(entries, bounds) {
   const content = $('cal-content');
   if (!content) return;
@@ -3714,7 +3714,7 @@ function renderCalendar(entries, bounds) {
     if (entryCount === 0) {
       html += '<div class="cal-day-empty">Nicio interven\u021bie planificat\u0103</div>';
     } else {
-      // Unique techs for this day (preserve order)
+      // Unique techs for this day
       const dayTechs = [];
       const dayTechSet = new Set();
       dayEntries.forEach(e => {
@@ -3724,51 +3724,45 @@ function renderCalendar(entries, bounds) {
         }
       });
 
-      // Sort entries by time
-      dayEntries.sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-
-      // Unique sorted times
-      const times = [];
-      const timeSet = new Set();
-      dayEntries.forEach(e => {
-        const t = e.time || '\u2014';
-        if (!timeSet.has(t)) { timeSet.add(t); times.push(t); }
+      // Group entries per tech, sorted by time
+      const perTech = {};
+      dayTechs.forEach(t => { perTech[t.id] = []; });
+      dayEntries.forEach(e => { perTech[e.technician_id].push(e); });
+      dayTechs.forEach(t => {
+        perTech[t.id].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
       });
+      const maxRows = Math.max(...dayTechs.map(t => perTech[t.id].length));
 
-      // Build table
+      // Build compact table — each column fills top-to-bottom independently
       html += '<div class="cal-table-wrap"><table class="cal-table">';
-      // Header
-      html += '<thead><tr><th class="cal-th-time">Ora</th>';
+      html += '<thead><tr>';
       dayTechs.forEach(tech => {
         const ci = techColors[tech.id] !== undefined ? techColors[tech.id] : 0;
         html += '<th style="color:' + TECH_COLORS[ci] + '">' + escHtml(tech.name) + '</th>';
       });
-      html += '</tr></thead>';
+      html += '</tr></thead><tbody>';
 
-      // Body
-      html += '<tbody>';
-      times.forEach(time => {
+      for (let r = 0; r < maxRows; r++) {
         html += '<tr>';
-        html += '<td class="cal-td-time">' + escHtml(time) + '</td>';
         dayTechs.forEach(tech => {
-          const cells = dayEntries.filter(e => (e.time || '\u2014') === time && e.technician_id === tech.id);
-          if (cells.length) {
+          const list = perTech[tech.id];
+          if (r < list.length) {
+            const e = list[r];
+            const eid = (e.id || '').replace(/'/g, "\\'");
             html += '<td class="cal-td-entry">';
-            cells.forEach(e => {
-              const eid = (e.id || '').replace(/'/g, "\\'");
-              html += '<div class="cal-cell-entry">';
-              html += '<span class="cal-cell-client">' + escHtml(e.client_name || '\u2014') + '</span>';
-              if (e.notes) html += '<span class="cal-cell-notes">' + escHtml(e.notes) + '</span>';
-              if (isAdmin) html += ' <button class="cal-cell-del" onclick="deleteCalendarEntry(\'' + eid + '\')" title="\u0218terge">\u2715</button>';
-              html += '</div>';
-            });
-            html += '</td>';
+            html += '<div class="cal-cell-entry">';
+            if (e.time) html += '<span class="cal-cell-time">' + escHtml(e.time) + '</span> ';
+            html += '<span class="cal-cell-client">' + escHtml(e.client_name || '\u2014') + '</span>';
+            if (e.notes) html += '<span class="cal-cell-notes">' + escHtml(e.notes) + '</span>';
+            if (isAdmin) html += '<button class="cal-cell-del" onclick="deleteCalendarEntry(\'' + eid + '\')" title="\u0218terge">\u2715</button>';
+            html += '</div></td>';
           } else {
-            html += '<td class="cal-td-empty">\u2014</td>';
+            html += '<td></td>';
           }
         });
         html += '</tr>';
-      });
+      }
+
       html += '</tbody></table></div>';
     }
 

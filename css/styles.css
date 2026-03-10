@@ -3586,19 +3586,10 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   letter-spacing: .03em;
   white-space: nowrap;
 }
-.cal-th-time {
-  width: 55px;
-  text-align: center !important;
-}
-.cal-td-time {
+.cal-cell-time {
   font-weight: 700;
   color: var(--primary);
-  text-align: center !important;
-  white-space: nowrap;
-}
-.cal-td-empty {
-  color: var(--slate-300);
-  text-align: center !important;
+  font-size: .78rem;
 }
 .cal-td-entry {
   min-width: 100px;
