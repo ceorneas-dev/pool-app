@@ -1070,14 +1070,17 @@
   <div class="modal-content" style="max-width:420px" onclick="event.stopPropagation()">
     <h3 style="margin:0 0 14px;font-size:1.1rem">📅 Adaugă în calendar</h3>
     <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;gap:8px">
+      <div style="display:flex;gap:8px;align-items:flex-end">
         <div style="flex:1">
           <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Data</label>
           <input type="date" id="cal-add-date" class="form-input" style="width:100%">
         </div>
         <div style="flex:0 0 100px">
-          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Ora</label>
-          <input type="time" id="cal-add-time" class="form-input" style="width:100%">
+          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
+            <input type="checkbox" id="cal-add-time-chk" onchange="toggleCalTime(this)" style="margin:0;width:14px;height:14px;accent-color:var(--primary)">
+            Ora
+          </label>
+          <input type="time" id="cal-add-time" class="form-input" style="width:100%;opacity:0.4" disabled>
         </div>
       </div>
       <div>

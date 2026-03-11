@@ -3403,15 +3403,15 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   align-items: center;
   gap: 10px;
   padding: 12px 14px;
-  background: white;
-  border-bottom: 1px solid var(--border);
+  background: linear-gradient(135deg, var(--blue-700), var(--blue-600));
+  border-bottom: none;
   flex-shrink: 0;
 }
 .cal-header-title {
   flex: 1;
   font-size: 1rem;
   font-weight: 700;
-  color: var(--text);
+  color: #ffffff;
 }
 .cal-header-actions {
   display: flex;
@@ -3419,8 +3419,8 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   gap: 6px;
 }
 .cal-header .btn-back {
-  color: var(--text);
-  background: var(--slate-100);
+  color: #ffffff;
+  background: rgba(255,255,255,0.18);
   border-radius: 8px;
   width: 36px;
   height: 36px;
@@ -3435,18 +3435,18 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: white;
+  border: 1px solid rgba(255,255,255,0.25);
+  background: rgba(255,255,255,0.15);
   font-size: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  color: var(--text);
+  color: #ffffff;
   text-decoration: none;
   line-height: 1;
 }
-.cal-icon-btn:hover { background: var(--slate-50); }
+.cal-icon-btn:hover { background: rgba(255,255,255,0.28); }
 
 /* ── Week navigation ──────────────────────────────────── */
 .cal-week-nav {
@@ -3454,19 +3454,19 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: white;
-  border-bottom: 1px solid var(--border);
+  background: var(--blue-50);
+  border-bottom: 1px solid var(--blue-200);
   flex-shrink: 0;
 }
 .cal-nav-btn {
   width: 36px;
   height: 36px;
   border-radius: 8px;
-  border: 1px solid var(--border);
-  background: white;
+  border: 1px solid var(--blue-200);
+  background: #ffffff;
   font-size: 16px;
   cursor: pointer;
-  color: var(--text);
+  color: var(--blue-700);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3483,7 +3483,7 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
 .cal-week-label {
   font-size: .9rem;
   font-weight: 700;
-  color: var(--text);
+  color: var(--blue-800);
   text-align: center;
 }
 .cal-today-btn {
@@ -3649,6 +3649,10 @@ body.dark-mode .btn-gps-status[data-state="idle"]   { background: var(--slate-80
 .cal-cell-del:hover { background: #fef2f2; color: #dc2626; }
 
 /* ── Dark mode ───────────────────────────────────────── */
+body.dark-mode .cal-header          { background: linear-gradient(135deg, #1e3a5f, #1a365d); }
+body.dark-mode .cal-week-nav        { background: var(--card); border-color: var(--border); }
+body.dark-mode .cal-nav-btn         { background: var(--card); border-color: var(--border); color: var(--text); }
+body.dark-mode .cal-week-label      { color: var(--text); }
 body.dark-mode .cal-table th       { background: var(--card); color: var(--text); }
 body.dark-mode .cal-table td       { border-color: var(--border); }
 body.dark-mode .cal-cell-client    { color: var(--text); }

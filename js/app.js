@@ -3570,12 +3570,18 @@ async function openAddCalendarEntry() {
   const dateInput = $('cal-add-date');
   if (dateInput) dateInput.value = toLocalDate(new Date());
 
-  // Set default time to next full hour
+  // Time disabled by default, toggled by checkbox
   const timeInput = $('cal-add-time');
+  const timeChk = $('cal-add-time-chk');
   if (timeInput) {
     const now = new Date();
     const h = (now.getHours() + 1) % 24;
     timeInput.value = String(h).padStart(2, '0') + ':00';
+    timeInput.disabled = true;
+    timeInput.style.opacity = '0.4';
+  }
+  if (timeChk) {
+    timeChk.checked = false;
   }
 
   // Populate technician dropdown
@@ -3605,7 +3611,8 @@ async function openAddCalendarEntry() {
 /** Save a new calendar entry from the modal form. */
 async function saveNewCalendarEntry() {
   const date   = ($('cal-add-date')  || {}).value || '';
-  const time   = ($('cal-add-time')  || {}).value || '';
+  const timeChk = $('cal-add-time-chk');
+  const time   = (timeChk && timeChk.checked) ? (($('cal-add-time') || {}).value || '') : '';
   const client = ($('cal-add-client')|| {}).value.trim();
   const notes  = ($('cal-add-notes') || {}).value.trim();
 
@@ -3645,7 +3652,7 @@ async function saveNewCalendarEntry() {
 
   // Close modal and refresh
   const modal = $('modal-cal-add');
-  if (modal) modal.style.display = 'none';
+  if (modal) modal.classList.remove('open');
   showToast('Intrare adaugata in calendar.', 'success');
   loadCalendarScreen();
 }
@@ -3666,6 +3673,16 @@ function jumpCalendarToToday() {
   _calWeekOffset = 0;
   loadCalendarScreen();
 }
+
+/** Toggle time field enabled/disabled in calendar add modal. */
+function toggleCalTime(chk) {
+  var inp = $('cal-add-time');
+  if (inp) {
+    inp.disabled = !chk.checked;
+    inp.style.opacity = chk.checked ? '1' : '0.4';
+  }
+}
+
 
 /** Randeaz\u0103 lista de interven\u021bii zi cu zi \u00een #cal-content. */
 function renderCalendar(entries, bounds) {
