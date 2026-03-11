@@ -654,6 +654,24 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
   opacity: 0.85;
 }
 
+.client-info-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.2);
+  color: white;
+  font-size: 16px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding: 0;
+  line-height: 1;
+}
+.client-info-btn:hover { background: rgba(255,255,255,0.35); }
+
 .intervention-client-name {
   font-size: 1rem;
   font-weight: 700;

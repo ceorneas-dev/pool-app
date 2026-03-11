@@ -333,6 +333,7 @@ async function importClientsXLSX(file) {
 
     // Helper: strip non-breaking spaces (\u00a0) and trim
     const clean = v => String(v || '').replace(/\u00a0/g, ' ').trim();
+    const fixPhone = v => { var s = clean(v); if (/^\d{9}$/.test(s) && s[0] === '7') s = '0' + s; return s; };
 
     let imported = 0, skipped = 0, idCounter = 0;
     const baseTime = Date.now();
@@ -350,7 +351,7 @@ async function importClientsXLSX(file) {
       const nameKey = name.toLowerCase();
       if (existingMap[nameKey]) {
         const existing = existingMap[nameKey];
-        const phone = clean(row['telefon'] || row['phone'] || row['TELEFON']);
+        const phone = fixPhone(row['telefon'] || row['phone'] || row['TELEFON']);
         const addr  = clean(row['adresa']  || row['address'] || row['ADRESA']);
         const vol   = parseFloat(clean(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'])) || 0;
         const type  = clean(row['tip_piscina'] || row['pool_type'] || row['TIP']).toLowerCase();
@@ -372,7 +373,7 @@ async function importClientsXLSX(file) {
       const client = {
         client_id:      'c_' + (baseTime + idCounter) + '_' + Math.random().toString(36).slice(2, 8),
         name,
-        phone:          clean(row['telefon'] || row['phone'] || row['TELEFON']),
+        phone:          fixPhone(row['telefon'] || row['phone'] || row['TELEFON']),
         address:        clean(row['adresa']  || row['address'] || row['ADRESA']),
         pool_volume_mc: parseFloat(clean(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'])) || 0,
         pool_type:      (clean(row['tip_piscina'] || row['pool_type'] || row['TIP']).toLowerCase() === 'interior') ? 'interior' : 'exterior',

@@ -845,7 +845,20 @@ async function renderIntervention(client) {
   // Header
   const nameEl = $('intervention-client-name');
   const dateEl = $('intervention-date');
-  if (nameEl) nameEl.textContent = client.name;
+  if (nameEl) {
+    nameEl.textContent = client.name;
+    // Add info icon button if not already present
+    var infoBtn = $('client-info-btn');
+    if (!infoBtn) {
+      infoBtn = document.createElement('button');
+      infoBtn.id = 'client-info-btn';
+      infoBtn.className = 'client-info-btn';
+      infoBtn.title = 'Info client';
+      infoBtn.innerHTML = 'ℹ️';
+      nameEl.parentNode.insertBefore(infoBtn, nameEl.nextSibling);
+    }
+    infoBtn.onclick = function() { showClientDetails(client.client_id); };
+  }
   if (dateEl) dateEl.textContent = new Date().toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   // Track arrival time
@@ -2242,7 +2255,20 @@ function showQRCode(clientId) {
 
   if (!modal || !canvas) return;
 
-  if (nameEl) nameEl.textContent = client.name;
+  if (nameEl) {
+    nameEl.textContent = client.name;
+    // Add info icon button if not already present
+    var infoBtn = $('client-info-btn');
+    if (!infoBtn) {
+      infoBtn = document.createElement('button');
+      infoBtn.id = 'client-info-btn';
+      infoBtn.className = 'client-info-btn';
+      infoBtn.title = 'Info client';
+      infoBtn.innerHTML = 'ℹ️';
+      nameEl.parentNode.insertBefore(infoBtn, nameEl.nextSibling);
+    }
+    infoBtn.onclick = function() { showClientDetails(client.client_id); };
+  }
   if (urlEl)  urlEl.textContent  = url;
   canvas.innerHTML = '';
 

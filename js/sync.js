@@ -171,7 +171,7 @@ function pullData() {
       const parsed = data.clients.map(c => ({
         client_id:      c.client_id,
         name:           c.name,
-        phone:          c.phone || '',
+        phone:          (function(p){ var s = String(p || ''); if (/^\d{9}$/.test(s) && s[0] === '7') s = '0' + s; return s; })(c.phone),
         address:        c.address || '',
         pool_volume_mc: parseFloat(c.pool_volume_mc) || 0,
         pool_type:      c.pool_type || 'exterior',
