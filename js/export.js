@@ -378,7 +378,7 @@ async function importClientsXLSX(file) {
         pool_volume_mc: parseFloat(clean(row['volum_mc'] || row['pool_volume_mc'] || row['VOLUM'])) || 0,
         pool_type:      (clean(row['tip_piscina'] || row['pool_type'] || row['TIP']).toLowerCase() === 'interior') ? 'interior' : 'exterior',
         notes:          clean(row['observatii'] || row['notes'] || row['OBS']),
-        visit_frequency_days: parseInt(row['frecventa_zile'] || row['visit_frequency_days'] || 14) || 14,
+        visit_frequency_days: parseInt(row['frecventa_zile'] || row['visit_frequency_days'] || 7) || 7,
         active:         true,
         created_at:     now,
         updated_at:     now,

@@ -1782,7 +1782,7 @@ function showAddClientModal() {
   $('client-form-title').textContent = 'Adaugă client';
   ['cf-name','cf-phone','cf-address','cf-notes','cf-billing-interval'].forEach(id => { const el = $(id); if (el) el.value = ''; });
   const vol = $('cf-pool-vol');   if (vol) vol.value = '';
-  const freq = $('cf-visit-freq'); if (freq) freq.value = '14';
+  const freq = $('cf-visit-freq'); if (freq) freq.value = '7';
   const type = $('cf-pool-type'); if (type) type.value = 'exterior';
   $('modal-client-form').classList.add('open');
 }
@@ -1823,8 +1823,8 @@ async function doSaveClientForm() {
     pool_volume_mc:      parseFloat($('cf-pool-vol') ? $('cf-pool-vol').value : '0') || 0,
     pool_type:           $('cf-pool-type') ? $('cf-pool-type').value       : 'exterior',
     notes:               $('cf-notes')    ? $('cf-notes').value.trim()     : '',
-    visit_frequency_days: parseInt($('cf-visit-freq') ? $('cf-visit-freq').value : '14') || 14,
-    billing_interval_interventions: billingRaw > 0 ? billingRaw : null,
+    visit_frequency_days: parseInt($('cf-visit-freq') ? $('cf-visit-freq').value : '7') || 7,
+    billing_interval_interventions: billingRaw > 0 ? billingRaw : 4,
     last_billing_date:   isEdit && existing ? (existing.last_billing_date || null) : null,
     active:              true,
     created_at:          isEdit ? (existing ? existing.created_at : now) : now,
