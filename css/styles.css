@@ -690,7 +690,17 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 .intervention-date {
   font-size: 0.8rem;
-  opacity: 0.8;
+  opacity: 0.9;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.intervention-date::after {
+  content: ' \270E';
+  font-size: 0.7rem;
+  opacity: 0.6;
+}
+.intervention-date:active {
+  opacity: 1;
 }
 
 /* GPS indicator */

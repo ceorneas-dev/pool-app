@@ -859,7 +859,15 @@ async function renderIntervention(client) {
     }
     infoBtn.onclick = function() { showClientDetails(client.client_id); };
   }
-  if (dateEl) dateEl.textContent = new Date().toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  if (dateEl) {
+    var today = new Date();
+    var todayStr = today.toISOString().split('T')[0];
+    dateEl.textContent = today.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    dateEl.title = 'Click pentru a schimba data';
+    var picker = $('intervention-date-picker');
+    if (picker) picker.value = todayStr;
+    APP._interventionDate = todayStr;
+  }
 
   // Track arrival time
   APP.arrivalTime    = new Date().toISOString();
@@ -1187,7 +1195,7 @@ async function doSaveIntervention() {
     client_name:      client.name,
     technician_id:    APP.user.technician_id,
     technician_name:  APP.user.name,
-    date:             new Date().toISOString().split('T')[0],
+    date:             APP._interventionDate || new Date().toISOString().split('T')[0],
     created_at:       departureTime,
 
     measured_chlorine:   cl,
@@ -3932,6 +3940,28 @@ function jumpCalendarToToday() {
   loadCalendarScreen();
 }
 
+
+/** Update intervention date from picker. */
+function updateInterventionDate(val) {
+  if (!val) return;
+  APP._interventionDate = val;
+  var d = new Date(val + 'T12:00:00');
+  var dateEl = $('intervention-date');
+  if (dateEl) {
+    dateEl.textContent = d.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    // Highlight if not today
+    var today = new Date().toISOString().split('T')[0];
+    if (val !== today) {
+      dateEl.style.background = 'rgba(251,191,36,0.3)';
+      dateEl.style.padding = '2px 8px';
+      dateEl.style.borderRadius = '6px';
+    } else {
+      dateEl.style.background = '';
+      dateEl.style.padding = '';
+      dateEl.style.borderRadius = '';
+    }
+  }
+}
 /** Toggle time field enabled/disabled in calendar add modal. */
 function toggleCalTime(chk) {
   var inp = $('cal-add-time');
