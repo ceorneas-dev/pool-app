@@ -3279,7 +3279,7 @@ body.dark-mode .map-header { background: var(--primary); }
 body.dark-mode .map-legend { background: var(--surface); border-top-color: var(--border); }
 body.dark-mode .map-no-api { color: #94a3b8; }
 body.dark-mode .map-history-panel { background: var(--surface); }
-body.dark-mode .map-hist-title { color: var(--text); }
+body.dark-mode .map-hist-title { color: #cbd5e1; }
 
 .map-popup-inner { font-size: 13px; line-height: 1.6; }
 
@@ -3359,9 +3359,12 @@ body.dark-mode .map-hist-title { color: var(--text); }
   padding: 5px 9px;
   line-height: 1.5;
 }
-body.dark-mode .map-hist-info { background: var(--slate-800); }
+body.dark-mode .map-hist-info { background: #1a2332; color: #e2e8f0; }
 body.dark-mode .map-hist-select,
-body.dark-mode .map-hist-date { background: var(--slate-800); border-color: var(--border); }
+body.dark-mode .map-hist-date { background: #1a2332; border-color: #475569; color: #f1f5f9; }
+body.dark-mode .map-hist-select option { background: #1a2332; color: #f1f5f9; }
+body.dark-mode .map-hist-title { color: #cbd5e1; }
+body.dark-mode .map-hist-clear-btn { color: #cbd5e1; border-color: #475569; }
 
 /* ── Buton GPS Status (footer dashboard) ────────────────────── */
 .btn-gps-status {
