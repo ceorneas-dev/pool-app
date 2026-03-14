@@ -27,55 +27,97 @@ function exportClientXLSX(client, interventions) {
     // Sort interventions descending by date
     const sorted = [...interventions].sort((a, b) => b.date.localeCompare(a.date));
 
-    // --- Sheet 1: Intervenții ---
-    const intRows = sorted.map(i => ({
-      'Data':              i.date,
-      'Tehnician':         i.technician_name || '',
-      'Clor măsurat':      i.measured_chlorine != null ? i.measured_chlorine : '',
-      'pH măsurat':        i.measured_ph != null ? i.measured_ph : '',
-      'Temperatură (°C)':  i.measured_temp != null ? i.measured_temp : '',
-      'Duritate':          i.measured_hardness != null ? i.measured_hardness : '',
-      'Alcalinitate':      i.measured_alkalinity != null ? i.measured_alkalinity : '',
-      'Salinitate':        i.measured_salinity != null ? i.measured_salinity : '',
-      'Cl granule (gr)':   i.treat_cl_granule_gr || 0,
-      'Cl tablete (buc)':  i.treat_cl_tablete || 0,
-      'Cl tablete (gr)':   i.treat_cl_tablete_export_gr || 0,
-      'Cl lichid (bid)':   i.treat_cl_lichid_bidoane || 0,
-      'pH granule (kg)':   i.treat_ph_granule || 0,
-      'pH lichid (bid)':   i.treat_ph_lichid_bidoane || 0,
-      'Antialgic (L)':     i.treat_antialgic || 0,
-      'Anticalcar (L)':    i.treat_anticalcar || 0,
-      'Floculant (L)':     i.treat_floculant || 0,
-      'Sare (saci)':       i.treat_sare_saci || 0,
-      'Bicarbonat (kg)':   i.treat_bicarbonat || 0,
-      'Durată (min)':      i.duration_minutes != null ? i.duration_minutes : '',
-      'GPS Lat':           i.geo_lat != null ? i.geo_lat : '',
-      'GPS Lng':           i.geo_lng != null ? i.geo_lng : '',
-      'Observații':        i.observations || ''
-    }));
+    // --- Sheet 1: Intervenții (only show chemicals that were actually used) ---
 
-    const ws1 = XLSX.utils.json_to_sheet(intRows);
-    setColWidths(ws1, [12,18,12,10,14,10,12,10,14,14,12,14,14,14,12,12,12,12,14,12,12,12,30]);
+    // Define all possible treatment columns with their data keys
+    var treatCols = [
+      { key: 'treat_cl_granule_gr',       label: 'Cl granule (gr)' },
+      { key: 'treat_cl_tablete',          label: 'Cl tablete (buc)' },
+      { key: 'treat_cl_tablete_export_gr',label: 'Cl tablete (gr)' },
+      { key: 'treat_cl_lichid_bidoane',   label: 'Cl lichid (bid)' },
+      { key: 'treat_ph_granule',          label: 'pH granule (kg)' },
+      { key: 'treat_ph_lichid_bidoane',   label: 'pH lichid (bid)' },
+      { key: 'treat_antialgic',           label: 'Antialgic (L)' },
+      { key: 'treat_anticalcar',          label: 'Anticalcar (L)' },
+      { key: 'treat_floculant',           label: 'Floculant (L)' },
+      { key: 'treat_sare_saci',           label: 'Sare (saci)' },
+      { key: 'treat_bicarbonat',          label: 'Bicarbonat (kg)' }
+    ];
+
+    // Also check dynamic stock products (treat_<product_id>)
+    sorted.forEach(function(i) {
+      Object.keys(i).forEach(function(k) {
+        if (k.startsWith('treat_') && !treatCols.find(function(c) { return c.key === k; })) {
+          var val = parseFloat(i[k]) || 0;
+          if (val > 0) {
+            treatCols.push({ key: k, label: k.replace('treat_', '').replace(/_/g, ' ') });
+          }
+        }
+      });
+    });
+
+    // Filter: keep only treatment columns where at least one intervention has value > 0
+    var usedTreatCols = treatCols.filter(function(col) {
+      return sorted.some(function(i) { return (parseFloat(i[col.key]) || 0) > 0; });
+    });
+
+    // Build rows with only relevant columns
+    var intRows = sorted.map(function(i) {
+      var row = {
+        'Data':              i.date,
+        'Tehnician':         i.technician_name || '',
+        'Clor măsurat':      i.measured_chlorine != null ? i.measured_chlorine : '',
+        'pH măsurat':        i.measured_ph != null ? i.measured_ph : ''
+      };
+      // Add optional measurement columns only if any intervention has them
+      if (sorted.some(function(x) { return x.measured_temp != null; }))
+        row['Temperatură (°C)'] = i.measured_temp != null ? i.measured_temp : '';
+      if (sorted.some(function(x) { return x.measured_hardness != null; }))
+        row['Duritate'] = i.measured_hardness != null ? i.measured_hardness : '';
+      if (sorted.some(function(x) { return x.measured_alkalinity != null; }))
+        row['Alcalinitate'] = i.measured_alkalinity != null ? i.measured_alkalinity : '';
+      if (sorted.some(function(x) { return x.measured_salinity != null; }))
+        row['Salinitate'] = i.measured_salinity != null ? i.measured_salinity : '';
+
+      // Add only used treatment columns
+      usedTreatCols.forEach(function(col) {
+        row[col.label] = i[col.key] || 0;
+      });
+
+      if (sorted.some(function(x) { return x.duration_minutes != null; }))
+        row['Durată (min)'] = i.duration_minutes != null ? i.duration_minutes : '';
+      row['Observații'] = i.observations || '';
+      return row;
+    });
+
+    var ws1 = XLSX.utils.json_to_sheet(intRows);
     XLSX.utils.book_append_sheet(wb, ws1, 'Intervenții');
 
-    // --- Sheet 2: Sumar ---
-    const totals = calcTotals(sorted);
-    const sumRows = [
-      { 'Parametru': 'Total intervenții',      'Valoare': sorted.length, 'UM': 'buc' },
-      { 'Parametru': 'Durată medie',            'Valoare': totals.avgDuration, 'UM': 'min' },
-      { 'Parametru': 'Cl granule total',        'Valoare': totals.cl_granule_gr, 'UM': 'gr' },
-      { 'Parametru': 'Cl tablete total',        'Valoare': totals.cl_tablete, 'UM': 'buc' },
-      { 'Parametru': 'Cl tablete total',        'Valoare': totals.cl_tablete_export_gr, 'UM': 'gr' },
-      { 'Parametru': 'Cl lichid total',         'Valoare': totals.cl_lichid, 'UM': 'bidoane' },
-      { 'Parametru': 'pH granule total',        'Valoare': totals.ph_granule, 'UM': 'kg' },
-      { 'Parametru': 'pH lichid total',         'Valoare': totals.ph_lichid, 'UM': 'bidoane' },
-      { 'Parametru': 'Antialgic total',         'Valoare': totals.antialgic, 'UM': 'L' },
-      { 'Parametru': 'Anticalcar total',        'Valoare': totals.anticalcar, 'UM': 'L' },
-      { 'Parametru': 'Floculant total',         'Valoare': totals.floculant, 'UM': 'L' },
-      { 'Parametru': 'Sare total',              'Valoare': totals.sare, 'UM': 'saci' },
-      { 'Parametru': 'Bicarbonat total',        'Valoare': totals.bicarbonat, 'UM': 'kg' },
+    // --- Sheet 2: Sumar (only used chemicals) ---
+    var totals = calcTotals(sorted);
+    var sumRows = [
+      { 'Parametru': 'Total intervenții', 'Valoare': sorted.length, 'UM': 'buc' },
+      { 'Parametru': 'Durată medie',      'Valoare': totals.avgDuration, 'UM': 'min' }
     ];
-    const ws2 = XLSX.utils.json_to_sheet(sumRows);
+    var sumDefs = [
+      { key: 'cl_granule_gr',       label: 'Cl granule total',  um: 'gr',      treatKey: 'treat_cl_granule_gr' },
+      { key: 'cl_tablete',          label: 'Cl tablete total',  um: 'buc',     treatKey: 'treat_cl_tablete' },
+      { key: 'cl_tablete_export_gr',label: 'Cl tablete total',  um: 'gr',      treatKey: 'treat_cl_tablete_export_gr' },
+      { key: 'cl_lichid',           label: 'Cl lichid total',   um: 'bidoane', treatKey: 'treat_cl_lichid_bidoane' },
+      { key: 'ph_granule',          label: 'pH granule total',  um: 'kg',      treatKey: 'treat_ph_granule' },
+      { key: 'ph_lichid',           label: 'pH lichid total',   um: 'bidoane', treatKey: 'treat_ph_lichid_bidoane' },
+      { key: 'antialgic',           label: 'Antialgic total',   um: 'L',       treatKey: 'treat_antialgic' },
+      { key: 'anticalcar',          label: 'Anticalcar total',  um: 'L',       treatKey: 'treat_anticalcar' },
+      { key: 'floculant',           label: 'Floculant total',   um: 'L',       treatKey: 'treat_floculant' },
+      { key: 'sare',                label: 'Sare total',        um: 'saci',    treatKey: 'treat_sare_saci' },
+      { key: 'bicarbonat',          label: 'Bicarbonat total',  um: 'kg',      treatKey: 'treat_bicarbonat' }
+    ];
+    sumDefs.forEach(function(sd) {
+      if (sorted.some(function(i) { return (parseFloat(i[sd.treatKey]) || 0) > 0; })) {
+        sumRows.push({ 'Parametru': sd.label, 'Valoare': totals[sd.key] || 0, 'UM': sd.um });
+      }
+    });
+    var ws2 = XLSX.utils.json_to_sheet(sumRows);
     setColWidths(ws2, [28, 12, 12]);
     XLSX.utils.book_append_sheet(wb, ws2, 'Sumar');
 
