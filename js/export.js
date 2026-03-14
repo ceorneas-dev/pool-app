@@ -562,12 +562,12 @@ function _buildChimicaleSheet(client, sorted, prices) {
   // Empty separator row
   data.push(new Array(12).fill(''));
 
-  // Cantitate totala row
+  // Cantitate totala row — show empty where sum is 0
   var totRow = ['Cantitate totala', sorted.length];
   chemCols.forEach(function(c) {
     var s = 0;
     sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
-    totRow.push(s);
+    totRow.push(s > 0 ? s : '');
   });
   totRow.push('', '');  // col 10, 11
   data.push(totRow);
@@ -585,12 +585,12 @@ function _buildChimicaleSheet(client, sorted, prices) {
   priceRow.push('', totalPlata);  // col 10 empty, col 11 = total
   data.push(priceRow);
 
-  // PRET TOTAL row
+  // PRET TOTAL row — show empty where quantity is 0
   var ptRow = ['PRET TOTAL', (prices.pret_interventie || 0) * sorted.length];
   chemCols.forEach(function(c) {
     var s = 0;
     sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
-    ptRow.push(s * (prices[c.priceKey] || 0));
+    ptRow.push(s > 0 ? s * (prices[c.priceKey] || 0) : '');
   });
   ptRow.push('', '');  // col 10, 11
   data.push(ptRow);

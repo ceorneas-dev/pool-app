@@ -1606,46 +1606,60 @@ function showExportChoice() {
 }
 
 
-/** Show export filter dialog — choose date range or last N interventions */
+/** Show export filter + format choice dialog */
 function showExportFilter(client, allInterventions) {
   return new Promise(function(resolve) {
     var sorted = allInterventions.slice().sort(function(a,b) { return b.date.localeCompare(a.date); });
     var defaultCount = Math.min(4, sorted.length);
-    // Default "from" date = 4th most recent intervention date
     var defaultFrom = sorted.length >= 4 ? sorted[3].date : (sorted.length ? sorted[sorted.length - 1].date : '');
+    var clientDeviz = parseInt(client.deviz_type) || 1;
 
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay open';
     overlay.style.zIndex = '300';
-    overlay.innerHTML = '<div class="modal-sheet" style="max-width:380px;margin:auto;border-radius:16px">' +
+    overlay.innerHTML = '<div class="modal-sheet" style="max-width:400px;margin:auto;border-radius:16px">' +
       '<div class="modal-handle"></div>' +
-      '<div class="modal-title">Filtru Export</div>' +
+      '<div class="modal-title">Export Deviz</div>' +
       '<div style="padding:0 16px 16px">' +
         '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">' + sorted.length + ' interventii disponibile pentru ' + escHtml(client.name) + '</p>' +
-        '<div style="display:flex;flex-direction:column;gap:10px">' +
+
+        '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Interval</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="last" checked style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">Ultimele</span>' +
-            '<input type="number" id="exp-last-n" value="' + defaultCount + '" min="1" max="' + sorted.length + '" style="width:60px;padding:6px;border:1px solid var(--slate-200);border-radius:6px;text-align:center;font-size:.9rem">' +
+            '<input type="number" id="exp-last-n" value="' + defaultCount + '" min="1" max="' + sorted.length + '" style="width:56px;padding:5px;border:1px solid var(--slate-200);border-radius:6px;text-align:center;font-size:.9rem">' +
             '<span style="font-size:.88rem">interventii</span>' +
           '</label>' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="date" style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">De la data:</span>' +
-            '<input type="date" id="exp-from-date" value="' + defaultFrom + '" style="padding:6px;border:1px solid var(--slate-200);border-radius:6px;font-size:.9rem;flex:1">' +
+            '<input type="date" id="exp-from-date" value="' + defaultFrom + '" style="padding:5px;border:1px solid var(--slate-200);border-radius:6px;font-size:.88rem;flex:1">' +
           '</label>' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="all" style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">Toate interventiile</span>' +
           '</label>' +
         '</div>' +
-        '<div style="display:flex;gap:8px;margin-top:16px">' +
+
+        '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Format deviz</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
+            '<input type="radio" name="exp-format" value="1"' + (clientDeviz === 1 ? ' checked' : '') + ' style="accent-color:var(--primary)">' +
+            '<div><div style="font-size:.88rem;font-weight:600">V1 — Deviz Chimicale</div><div style="font-size:.75rem;color:var(--text-secondary)">Tabel chimicale + preturi</div></div>' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
+            '<input type="radio" name="exp-format" value="2"' + (clientDeviz === 2 ? ' checked' : '') + ' style="accent-color:var(--primary)">' +
+            '<div><div style="font-size:.88rem;font-weight:600">V2 — Deviz Complet</div><div style="font-size:.75rem;color:var(--text-secondary)">Chimicale + Operatiuni efectuate</div></div>' +
+          '</label>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:8px">' +
           '<button class="btn-modal-cancel" style="flex:1" data-action="cancel">Anuleaza</button>' +
           '<button class="btn-modal-confirm" style="flex:1" data-action="export">Exporta</button>' +
         '</div>' +
       '</div></div>';
 
-    // Auto-select radio when interacting with inputs
     var lastN = overlay.querySelector('#exp-last-n');
     var fromDate = overlay.querySelector('#exp-from-date');
     if (lastN) lastN.onfocus = function() { overlay.querySelector('input[value="last"]').checked = true; };
@@ -1660,6 +1674,7 @@ function showExportFilter(client, allInterventions) {
       }
       if (action === 'export') {
         var mode = overlay.querySelector('input[name="exp-filter"]:checked').value;
+        var format = overlay.querySelector('input[name="exp-format"]:checked').value;
         var filtered;
         if (mode === 'last') {
           var n = parseInt(lastN.value) || 4;
@@ -1671,7 +1686,7 @@ function showExportFilter(client, allInterventions) {
           filtered = sorted;
         }
         overlay.remove();
-        resolve(filtered);
+        resolve({ interventions: filtered, format: format });
       }
     });
 
@@ -1697,15 +1712,17 @@ function showExportModal(clientId) {
         modal.classList.remove('open');
         try {
           await loadData();
-          const allCi = APP.interventions.filter(i => i.client_id === client.client_id);
-          var filtered = await showExportFilter(client, allCi);
-          if (!filtered || !filtered.length) { if (filtered !== null) showToast('Nicio interventie in intervalul selectat.', 'warning'); return; }
+          // Re-fetch client after loadData to get latest deviz_type
+          var freshClient = APP.clients.find(function(c) { return c.client_id === client.client_id; }) || client;
+          const allCi = APP.interventions.filter(i => i.client_id === freshClient.client_id);
+          var result = await showExportFilter(freshClient, allCi);
+          if (!result) return;
+          if (!result.interventions || !result.interventions.length) { showToast('Nicio interventie in intervalul selectat.', 'warning'); return; }
           showToast('Generare Excel...', 'info');
-          var devizType = client.deviz_type || 1;
-          if (devizType === 2 || devizType === '2') {
-            await exportDevizComplet(client, filtered);
+          if (result.format === '2') {
+            await exportDevizComplet(freshClient, result.interventions);
           } else {
-            await exportDevizChimicale(client, filtered);
+            await exportDevizChimicale(freshClient, result.interventions);
           }
           showToast('Export complet!', 'success');
         } catch(e) { if (e.message) showToast('Eroare export: ' + e.message, 'error'); }
