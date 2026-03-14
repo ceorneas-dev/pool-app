@@ -695,9 +695,10 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
   transition: background 0.2s;
 }
 .intervention-date::after {
-  content: ' \270E';
+  content: '  \2022 Edit Data';
   font-size: 0.7rem;
-  opacity: 0.6;
+  opacity: 0.85;
+  text-decoration: underline;
 }
 .intervention-date:active {
   opacity: 1;
@@ -1593,13 +1594,16 @@ body.dark-mode .client-card,
 body.dark-mode .stat-card,
 /* Dark mode: modal buttons and text */
 body.dark-mode .btn-modal-cancel {
-  background: #475569;
+  background: #64748b;
   color: #ffffff;
-  border: 2px solid #94a3b8;
+  border: 2px solid #e2e8f0;
   font-weight: 700;
+  font-size: 0.95rem;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 body.dark-mode .btn-modal-cancel:active {
-  background: #64748b;
+  background: #94a3b8;
+  color: #0f172a;
 }
 body.dark-mode .modal-title {
   color: #f1f5f9;
