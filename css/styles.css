@@ -1789,12 +1789,7 @@ body.dark-mode summary {
 /* ══════════════════════════════════════════════════════════════
    17. Observation Templates
    ══════════════════════════════════════════════════════════════ */
-.obs-templates {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
+/* obs-templates styles moved to ops section */
 
 .obs-chip {
   padding: 4px 10px;
@@ -1814,6 +1809,66 @@ body.dark-mode summary {
   background: var(--primary);
   color: #fff;
   border-color: var(--primary);
+}
+
+
+/* ── Operations Checklist ──────────────────────────────────── */
+.ops-checklist-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.ops-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--slate-50);
+  border: 1px solid var(--slate-200);
+  cursor: pointer;
+  font-size: .82rem;
+  color: var(--text-primary);
+  transition: background .15s, border-color .15s;
+}
+.ops-check-item:active {
+  background: var(--slate-100);
+}
+.ops-check-item:has(input:checked) {
+  background: #dcfce7;
+  border-color: #86efac;
+}
+.ops-checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #16a34a;
+  flex-shrink: 0;
+}
+body.dark-mode .ops-check-item {
+  background: #1e293b;
+  border-color: #334155;
+  color: #e2e8f0;
+}
+body.dark-mode .ops-check-item:has(input:checked) {
+  background: #14532d;
+  border-color: #22c55e;
+}
+
+/* ── Obs templates: hidden by default, shown when textarea focused ── */
+.obs-templates {
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height .3s ease, opacity .3s ease, margin .3s ease;
+  margin-top: 0;
+  margin-bottom: 0;
+}
+.obs-templates.open {
+  max-height: 200px;
+  opacity: 1;
+  margin-top: 8px;
+  margin-bottom: 8px;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2200,11 +2255,10 @@ body.dark-mode .tab-btn.active { background: var(--blue-700); }
 body.dark-mode .btn-contact { background: #334155; border-color: #475569; }
 
 /* ── 17. Observation templates ───────────────────────────────── */
-.obs-templates {
+.obs-templates.open {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-bottom: 8px;
 }
 .obs-chip {
   padding: 4px 10px;

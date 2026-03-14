@@ -1814,6 +1814,18 @@ async function saveObsTemplates(arr) {
   await put('settings', { key: 'obs_templates', value: arr });
 }
 
+
+/** Toggle observation suggestions visibility */
+function toggleObsSuggestions() {
+  var container = $('obs-templates-container');
+  var arrow = $('obs-toggle-arrow');
+  if (!container) return;
+  container.classList.toggle('open');
+  if (arrow) {
+    arrow.textContent = container.classList.contains('open') ? '▼ sugestii' : '▶ sugestii';
+  }
+}
+
 async function renderObsTemplates() {
   const container = $('obs-templates-container');
   if (!container) return;
