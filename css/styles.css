@@ -1611,6 +1611,33 @@ body.dark-mode select {
   border-color: #475569;
 }
 
+/* Dark mode: success screen text */
+body.dark-mode .success-card h2 { color: #f1f5f9; }
+body.dark-mode .success-card p  { color: #94a3b8 !important; }
+body.dark-mode .success-card    { background: #1e293b; }
+
+/* Dark mode: intervention header text */
+body.dark-mode .intervention-date        { color: #e2e8f0; }
+body.dark-mode .intervention-client-name { color: #ffffff; }
+body.dark-mode .client-info-btn          { background: rgba(255,255,255,0.15); color: #ffffff; }
+
+/* Dark mode: form labels and inputs */
+body.dark-mode .form-section-title { color: #e2e8f0; }
+body.dark-mode .measure-item label { color: #cbd5e1 !important; }
+body.dark-mode .stepper-label      { color: #e2e8f0; }
+body.dark-mode .stepper-label small { color: #94a3b8 !important; }
+
+/* Dark mode: GPS indicator */
+body.dark-mode .gps-indicator { color: #94a3b8; }
+
+/* Dark mode: wizard dots */
+body.dark-mode .wiz-dot { background: #475569; }
+body.dark-mode .wiz-dot.active { background: #60a5fa; }
+
+/* Dark mode: share buttons */
+body.dark-mode .btn-share { background: #334155; color: #e2e8f0; border-color: #475569; }
+body.dark-mode .success-share-hint { color: #94a3b8; }
+
 body.dark-mode .btn-primary,
 body.dark-mode .btn-save,
 body.dark-mode .btn-success-back {
