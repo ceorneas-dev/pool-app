@@ -513,6 +513,91 @@ function sanitizeSheetName(name) {
 
 // ── Upload to Google Drive via GAS ────────────────────────────
 
+// == Helper: format date as DD.MM.YYYY ==
+function fmtDateDMY(dateStr) {
+  if (!dateStr) return '';
+  var parts = String(dateStr).split('-');
+  if (parts.length === 3) return parts[2] + '.' + parts[1] + '.' + parts[0];
+  return dateStr;
+}
+
+// == Build chimicale sheet data (shared by V1 and V2) ==
+function _buildChimicaleSheet(client, sorted, prices) {
+  // Fixed columns — always all 8 chemicals in exact order
+  var chemCols = [
+    { key: 'treat_cl_granule_gr',       label: 'Clor Rapid',  priceKey: 'clor_rapid' },
+    { key: 'treat_cl_tablete_export_gr',label: 'Clor Lent',   priceKey: 'clor_lent' },
+    { key: 'treat_ph_granule',          label: 'pH-',         priceKey: 'ph_minus' },
+    { key: 'treat_antialgic',           label: 'Antialgic',   priceKey: 'antialgic' },
+    { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
+    { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
+    { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
+    { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' }
+  ];
+
+  var data = [];
+
+  // Row 0: client name + title + TOTAL PLATA
+  // Cols: 0=name, 1=empty, 2=title, 3-9=empty, 10=empty, 11=TOTAL PLATA
+  var h0 = [client.name, '', 'C H I M I C A L E  FOLOSITE', '', '', '', '', '', '', '', '', 'TOTAL PLATA'];
+  data.push(h0);
+
+  // Row 1: headers
+  var h1 = ['Data Interventie', 'Cant'];
+  chemCols.forEach(function(c) { h1.push(c.label); });
+  h1.push('', '');  // col 10 empty, col 11 empty
+  data.push(h1);
+
+  // Intervention rows
+  sorted.forEach(function(i) {
+    var row = [fmtDateDMY(i.date), 1];
+    chemCols.forEach(function(c) {
+      var v = parseFloat(i[c.key]) || 0;
+      row.push(v > 0 ? v : '');
+    });
+    row.push('', '');  // col 10, 11 empty
+    data.push(row);
+  });
+
+  // Empty separator row
+  data.push(new Array(12).fill(''));
+
+  // Cantitate totala row
+  var totRow = ['Cantitate totala', sorted.length];
+  chemCols.forEach(function(c) {
+    var s = 0;
+    sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
+    totRow.push(s);
+  });
+  totRow.push('', '');  // col 10, 11
+  data.push(totRow);
+
+  // Pret unitar row
+  var priceRow = ['Pret unitar', prices.pret_interventie || 0];
+  chemCols.forEach(function(c) { priceRow.push(prices[c.priceKey] || 0); });
+  // Calculate total
+  var totalPlata = (prices.pret_interventie || 0) * sorted.length;
+  chemCols.forEach(function(c) {
+    var s = 0;
+    sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
+    totalPlata += s * (prices[c.priceKey] || 0);
+  });
+  priceRow.push('', totalPlata);  // col 10 empty, col 11 = total
+  data.push(priceRow);
+
+  // PRET TOTAL row
+  var ptRow = ['PRET TOTAL', (prices.pret_interventie || 0) * sorted.length];
+  chemCols.forEach(function(c) {
+    var s = 0;
+    sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
+    ptRow.push(s * (prices[c.priceKey] || 0));
+  });
+  ptRow.push('', '');  // col 10, 11
+  data.push(ptRow);
+
+  return { data: data, totalPlata: totalPlata };
+}
+
 // == Export Format 1: Deviz Chimicale (like Bogdan Azur) ==
 function exportDevizChimicale(client, interventions) {
   return loadXLSX().then(async function() {
@@ -520,207 +605,84 @@ function exportDevizChimicale(client, interventions) {
     var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
 
-    var chemCols = [
-      { key: 'treat_cl_granule_gr',       label: 'Clor Rapid',  priceKey: 'clor_rapid' },
-      { key: 'treat_cl_tablete_export_gr',label: 'Clor Lent',   priceKey: 'clor_lent' },
-      { key: 'treat_ph_granule',          label: 'pH-',         priceKey: 'ph_minus' },
-      { key: 'treat_antialgic',           label: 'Antialgic',   priceKey: 'antialgic' },
-      { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
-      { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
-      { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
-      { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' },
-      { key: 'treat_sare_saci',           label: 'Sare',        priceKey: 'sare' }
+    var result = _buildChimicaleSheet(client, sorted, prices);
+    var ws = XLSX.utils.aoa_to_sheet(result.data);
+    ws['!cols'] = [
+      {wch:18}, {wch:6}, {wch:12}, {wch:12}, {wch:8}, {wch:10},
+      {wch:10}, {wch:12}, {wch:10}, {wch:10}, {wch:3}, {wch:14}
     ];
-
-    var usedChem = chemCols.filter(function(c) {
-      return sorted.some(function(i) { return (parseFloat(i[c.key]) || 0) > 0; });
-    });
-
-    var data = [];
-    var h0 = [client.name, '', 'C H I M I C A L E  FOLOSITE'];
-    for (var ci = 1; ci < usedChem.length; ci++) h0.push('');
-    h0.push('', 'TOTAL PLATA');
-    data.push(h0);
-
-    var h1 = ['Data Interventie', 'Cant'];
-    usedChem.forEach(function(c) { h1.push(c.label); });
-    h1.push('', '');
-    data.push(h1);
-
-    sorted.forEach(function(i) {
-      var row = [i.date, 1];
-      usedChem.forEach(function(c) {
-        var v = parseFloat(i[c.key]) || 0;
-        row.push(v > 0 ? v : '');
-      });
-      row.push('', '');
-      data.push(row);
-    });
-
-    data.push(new Array(h1.length).fill(''));
-
-    var totRow = ['Cantitate totala', sorted.length];
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      totRow.push(sum);
-    });
-    totRow.push('', '');
-    data.push(totRow);
-
-    var priceRow = ['Pret unitar', prices.pret_interventie || 0];
-    usedChem.forEach(function(c) { priceRow.push(prices[c.priceKey] || 0); });
-    var totalPlata = (prices.pret_interventie || 0) * sorted.length;
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      totalPlata += sum * (prices[c.priceKey] || 0);
-    });
-    priceRow.push('', totalPlata);
-    data.push(priceRow);
-
-    var ptRow = ['PRET TOTAL', (prices.pret_interventie || 0) * sorted.length];
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      ptRow.push(sum * (prices[c.priceKey] || 0));
-    });
-    ptRow.push('', '');
-    data.push(ptRow);
-
-    var ws = XLSX.utils.aoa_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws, 'Chimicale');
+    XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
 
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
     _uploadToDrive(wb, fname);
-    showToast('Deviz chimicale exportat: ' + fname, 'success');
     return fname;
   });
 }
 
-// == Export Format 2: Deviz Complet (chimicale + operatii) ==
+// == Export Format 2: Deviz Complet (chimicale + operatiuni) ==
 function exportDevizComplet(client, interventions) {
   return loadXLSX().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
     var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
 
-    var chemCols = [
-      { key: 'treat_cl_granule_gr',       label: 'Clor Rapid',  priceKey: 'clor_rapid' },
-      { key: 'treat_cl_tablete_export_gr',label: 'Clor Lent',   priceKey: 'clor_lent' },
-      { key: 'treat_ph_granule',          label: 'pH-',         priceKey: 'ph_minus' },
-      { key: 'treat_antialgic',           label: 'Antialgic',   priceKey: 'antialgic' },
-      { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
-      { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
-      { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
-      { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' },
-      { key: 'treat_sare_saci',           label: 'Sare',        priceKey: 'sare' }
+    // Sheet 1: Chimicale (identical structure)
+    var result = _buildChimicaleSheet(client, sorted, prices);
+    var ws1 = XLSX.utils.aoa_to_sheet(result.data);
+    ws1['!cols'] = [
+      {wch:18}, {wch:6}, {wch:12}, {wch:12}, {wch:8}, {wch:10},
+      {wch:10}, {wch:12}, {wch:10}, {wch:10}, {wch:3}, {wch:14}
     ];
+    XLSX.utils.book_append_sheet(wb, ws1, 'Sheet1');
 
-    var usedChem = chemCols.filter(function(c) {
-      return sorted.some(function(i) { return (parseFloat(i[c.key]) || 0) > 0; });
-    });
-
-    // Sheet 1: Chimicale
-    var data = [];
-    var h0 = [client.name, '', 'C H I M I C A L E  FOLOSITE'];
-    for (var ci = 1; ci < usedChem.length; ci++) h0.push('');
-    h0.push('', 'TOTAL PLATA');
-    data.push(h0);
-
-    var h1 = ['Data Interventie', 'Cant'];
-    usedChem.forEach(function(c) { h1.push(c.label); });
-    h1.push('', '');
-    data.push(h1);
-
-    sorted.forEach(function(i) {
-      var row = [i.date, 1];
-      usedChem.forEach(function(c) {
-        var v = parseFloat(i[c.key]) || 0;
-        row.push(v > 0 ? v : '');
-      });
-      row.push('', '');
-      data.push(row);
-    });
-
-    data.push(new Array(h1.length).fill(''));
-
-    var totRow = ['Cantitate totala', sorted.length];
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      totRow.push(sum);
-    });
-    totRow.push('', '');
-    data.push(totRow);
-
-    var priceRow = ['Pret unitar', prices.pret_interventie || 0];
-    usedChem.forEach(function(c) { priceRow.push(prices[c.priceKey] || 0); });
-    var totalPlata = (prices.pret_interventie || 0) * sorted.length;
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      totalPlata += sum * (prices[c.priceKey] || 0);
-    });
-    priceRow.push('', totalPlata);
-    data.push(priceRow);
-
-    var ptRow = ['PRET TOTAL', (prices.pret_interventie || 0) * sorted.length];
-    usedChem.forEach(function(c) {
-      var sum = 0;
-      sorted.forEach(function(i) { sum += parseFloat(i[c.key]) || 0; });
-      ptRow.push(sum * (prices[c.priceKey] || 0));
-    });
-    ptRow.push('', '');
-    data.push(ptRow);
-
-    var ws1 = XLSX.utils.aoa_to_sheet(data);
-    XLSX.utils.book_append_sheet(wb, ws1, 'Chimicale');
-
-    // Sheet 2: Operatii Efectuate
-    var defaultOps = (typeof DEFAULT_OPERATIONS !== 'undefined') ? DEFAULT_OPERATIONS : [
+    // Sheet 2: Operatiuni Efectuate
+    var opsList = (typeof getOperations === 'function') ? await getOperations() : [
       'Aspirare piscina','Curatare linie apa','Curatare skimmere',
       'Spalare filtru','Curatare prefiltru','Periere piscina',
-      'Analiza apei','Tratament chimic','Verificare automatizare'
+      'Analiza apei','Tratament chimic'
     ];
 
     var opsData = [];
+
+    // Row 0: header
     var oh0 = ['Data interventie', 'Servicii incluse in abonament'];
-    for (var oi = 1; oi < defaultOps.length; oi++) oh0.push('');
-    oh0.push('Verificare Automatizare');
+    for (var oi = 1; oi < opsList.length; oi++) oh0.push('');
     opsData.push(oh0);
 
+    // Row 1: operation names
     var oh1 = [''];
-    defaultOps.forEach(function(op) { oh1.push(op); });
-    oh1.push('');
+    opsList.forEach(function(op) { oh1.push(op); });
     opsData.push(oh1);
 
+    // Intervention rows
     sorted.forEach(function(i) {
-      var row = [i.date];
+      var row = [fmtDateDMY(i.date)];
       var ops = i.operations || [];
-      defaultOps.forEach(function(op) {
+      opsList.forEach(function(op) {
         row.push(ops.indexOf(op) >= 0 ? 'P' : '');
       });
-      row.push('');
       opsData.push(row);
     });
 
+    // Empty separator row
     opsData.push(new Array(oh1.length).fill(''));
 
-    var totalRow2 = ['TOTAL de plata'];
-    for (var ti = 0; ti < defaultOps.length - 1; ti++) totalRow2.push('');
-    totalRow2.push(totalPlata + ' lei');
-    totalRow2.push('');
-    opsData.push(totalRow2);
+    // TOTAL de plata row — value near the end
+    var totalRow = ['TOTAL de plata'];
+    for (var ti = 0; ti < opsList.length - 2; ti++) totalRow.push('');
+    totalRow.push(result.totalPlata + ' lei');
+    opsData.push(totalRow);
 
     var ws2 = XLSX.utils.aoa_to_sheet(opsData);
+    var opsCols = [{wch:18}];
+    opsList.forEach(function() { opsCols.push({wch:18}); });
+    ws2['!cols'] = opsCols;
     XLSX.utils.book_append_sheet(wb, ws2, 'Operatiuni');
 
     var fname = 'DevizComplet_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
     _uploadToDrive(wb, fname);
-    showToast('Deviz complet exportat: ' + fname, 'success');
     return fname;
   });
 }
