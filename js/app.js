@@ -854,6 +854,61 @@ var DEFAULT_OPERATIONS = [
   'Verificare automatizare'
 ];
 
+
+/** Get operations list from storage (falls back to DEFAULT_OPERATIONS) */
+async function getOperations() {
+  try {
+    var stored = await getByKey('settings', 'operations_list');
+    if (stored && Array.isArray(stored.value) && stored.value.length > 0) return stored.value;
+  } catch (e) {}
+  return DEFAULT_OPERATIONS.slice();
+}
+
+/** Save operations list to storage */
+async function saveOperationsList(arr) {
+  await put('settings', { key: 'operations_list', value: arr });
+}
+
+/** Render operations list in Settings panel */
+async function renderOpsSettings() {
+  var list = $('ops-settings-list');
+  if (!list) return;
+  var ops = await getOperations();
+  if (!ops.length) {
+    list.innerHTML = '<p style="font-size:.8rem;color:var(--slate-400);padding:4px 0">Nicio operatiune.</p>';
+    return;
+  }
+  list.innerHTML = ops.map(function(op, i) {
+    return '<div class="obs-tmpl-setting-row">' +
+      '<span class="obs-tmpl-setting-text">' + escHtml(op) + '</span>' +
+      '<button class="obs-tmpl-del-btn" onclick="deleteOperation(' + i + ')" title="Sterge">&#128465;</button>' +
+      '</div>';
+  }).join('');
+}
+
+/** Add a new operation */
+async function addOperation() {
+  var input = $('ops-new-input');
+  var text = input ? input.value.trim() : '';
+  if (!text) { showToast('Scrie numele operatiunii.', 'warning'); return; }
+  var ops = await getOperations();
+  if (ops.indexOf(text) !== -1) { showToast('Operatiunea exista deja.', 'warning'); return; }
+  ops.push(text);
+  await saveOperationsList(ops);
+  if (input) input.value = '';
+  renderOpsSettings();
+  showToast('Operatiune adaugata.', 'success');
+}
+
+/** Delete an operation by index */
+async function deleteOperation(index) {
+  var ops = await getOperations();
+  ops.splice(index, 1);
+  await saveOperationsList(ops);
+  renderOpsSettings();
+  showToast('Operatiune stearsa.', 'success');
+}
+
 var DEFAULT_PRICES = {
   pret_interventie: 250,
   clor_rapid: 57,
@@ -913,11 +968,13 @@ async function renderIntervention(client) {
   // Render operations checklist in step 2
   var opsContainer = $('ops-checklist');
   if (opsContainer) {
-    var opsHtml = '';
-    DEFAULT_OPERATIONS.forEach(function(op, idx) {
-      opsHtml += '<label class="ops-check-item"><input type="checkbox" id="op-' + idx + '" class="ops-checkbox" value="' + escHtml(op) + '"><span>' + escHtml(op) + '</span></label>';
+    getOperations().then(function(opsList) {
+      var opsHtml = '';
+      opsList.forEach(function(op, idx) {
+        opsHtml += '<label class="ops-check-item"><input type="checkbox" id="op-' + idx + '" class="ops-checkbox" value="' + escHtml(op) + '"><span>' + escHtml(op) + '</span></label>';
+      });
+      opsContainer.innerHTML = opsHtml;
     });
-    opsContainer.innerHTML = opsHtml;
   }
 
   APP.currentPhotos  = [];
@@ -1262,12 +1319,10 @@ async function doSaveIntervention() {
     observations: $('observations') ? $('observations').value.trim() : '',
     operations: (function() {
       var ops = [];
-      if (typeof DEFAULT_OPERATIONS !== 'undefined') {
-        DEFAULT_OPERATIONS.forEach(function(op, idx) {
-          var chk = $('op-' + idx);
-          if (chk && chk.checked) ops.push(op);
-        });
-      }
+      var checkboxes = document.querySelectorAll('.ops-checkbox');
+      checkboxes.forEach(function(chk) {
+        if (chk.checked) ops.push(chk.value);
+      });
       return ops;
     })(),
     photos:       [...APP.currentPhotos],

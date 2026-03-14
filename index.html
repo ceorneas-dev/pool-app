@@ -263,6 +263,14 @@
                placeholder="Sugestie nouă..." onkeydown="if(event.key==='Enter')addObsTemplate()">
         <button onclick="addObsTemplate()" class="obs-tmpl-add-btn">+ Adaugă</button>
       </div>
+
+      <div class="settings-section-subheader">&#9881; Operatiuni Efectuate</div>
+      <div id="ops-settings-list" style="padding:0 14px 4px"></div>
+      <div style="display:flex;gap:6px;padding:0 14px 14px">
+        <input type="text" id="ops-new-input" class="obs-tmpl-input"
+               placeholder="Operatiune noua..." onkeydown="if(event.key==='Enter')addOperation()">
+        <button onclick="addOperation()" class="obs-tmpl-add-btn">+ Adaugă</button>
+      </div>
     </div>
   </details>
       <details class="settings-section">
