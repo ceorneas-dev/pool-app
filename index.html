@@ -256,30 +256,35 @@
       </div>
 
       <!-- Obs Templates Management -->
-      <div class="settings-section-subheader">💬 Sugestii Observații</div>
-      <div id="obs-templates-settings-list" style="padding:0 14px 4px"></div>
-      <div style="display:flex;gap:6px;padding:0 14px 14px">
-        <input type="text" id="obs-template-new-input" class="obs-tmpl-input"
-               placeholder="Sugestie nouă..." onkeydown="if(event.key==='Enter')addObsTemplate()">
-        <button onclick="addObsTemplate()" class="obs-tmpl-add-btn">+ Adaugă</button>
-      </div>
+      <details style="margin:0 0 4px">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">💬 Sugestii Observații</summary>
+        <div id="obs-templates-settings-list" style="padding:0 14px 4px"></div>
+        <div style="display:flex;gap:6px;padding:0 14px 14px">
+          <input type="text" id="obs-template-new-input" class="obs-tmpl-input"
+                 placeholder="Sugestie nouă..." onkeydown="if(event.key==='Enter')addObsTemplate()">
+          <button onclick="addObsTemplate()" class="obs-tmpl-add-btn">+ Adaugă</button>
+        </div>
+      </details>
 
-      <div class="settings-section-subheader">&#9881; Operatiuni Efectuate</div>
-      <div id="ops-settings-list" style="padding:0 14px 4px"></div>
-      <div style="display:flex;gap:6px;padding:0 14px 14px">
-        <input type="text" id="ops-new-input" class="obs-tmpl-input"
-               placeholder="Operatiune noua..." onkeydown="if(event.key==='Enter')addOperation()">
-        <button onclick="addOperation()" class="obs-tmpl-add-btn">+ Adaugă</button>
-      </div>
-    </div>
-  </details>
-      <details class="settings-section">
-        <summary class="settings-section-header">Preturi Export</summary>
-        <div style="padding:12px">
+      <details style="margin:0 0 4px">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">&#9881; Operatiuni Efectuate</summary>
+        <div id="ops-settings-list" style="padding:0 14px 4px"></div>
+        <div style="display:flex;gap:6px;padding:0 14px 14px">
+          <input type="text" id="ops-new-input" class="obs-tmpl-input"
+                 placeholder="Operatiune noua..." onkeydown="if(event.key==='Enter')addOperation()">
+          <button onclick="addOperation()" class="obs-tmpl-add-btn">+ Adaugă</button>
+        </div>
+      </details>
+
+      <details style="margin:0 0 4px">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">&#128176; Preturi Export</summary>
+        <div style="padding:8px 14px 14px">
           <p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 8px">Seteaza preturile unitare pentru devizele exportate.</p>
           <button class="btn-primary" style="width:100%;padding:10px" onclick="openPricesSettings()">&#9881; Configureaza Preturi</button>
         </div>
       </details>
+    </div>
+  </details>
 
 
 </div><!-- /screen-dashboard -->
