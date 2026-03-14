@@ -1427,6 +1427,72 @@ function closeClientModal() {
   if (modal) modal.classList.remove('open');
 }
 
+
+// ── Prices Settings UI ───────────────────────────────────────
+async function openPricesSettings() {
+  var prices = await getExportPrices();
+  var modal = $('modal-prices');
+  if (!modal) return;
+  var fields = [
+    { key: 'pret_interventie', label: 'Interventie (RON)' },
+    { key: 'clor_rapid', label: 'Clor Rapid (RON/kg)' },
+    { key: 'clor_lent', label: 'Clor Lent (RON/kg)' },
+    { key: 'ph_minus', label: 'pH- (RON/kg)' },
+    { key: 'antialgic', label: 'Antialgic (RON/L)' },
+    { key: 'floculant', label: 'Floculant (RON/L)' },
+    { key: 'dedurizant', label: 'Dedurizant (RON/kg)' },
+    { key: 'ph_lichid', label: 'pH Lichid (RON/bid)' },
+    { key: 'cl_lichid', label: 'Cl Lichid (RON/bid)' },
+    { key: 'sare', label: 'Sare (RON/sac)' }
+  ];
+  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  fields.forEach(function(f) {
+    html += '<div><label style="font-size:.72rem;font-weight:600;color:var(--text-secondary)">' + f.label + '</label>';
+    html += '<input type="number" id="price-' + f.key + '" class="form-input" style="width:100%" step="0.1" value="' + (prices[f.key] || 0) + '"></div>';
+  });
+  html += '</div>';
+  $('modal-prices-body').innerHTML = html;
+  modal.classList.add('open');
+}
+
+async function savePricesSettings() {
+  var prices = {};
+  Object.keys(DEFAULT_PRICES).forEach(function(k) {
+    var el = $('price-' + k);
+    prices[k] = el ? (parseFloat(el.value) || 0) : DEFAULT_PRICES[k];
+  });
+  await saveExportPrices(prices);
+  var modal = $('modal-prices');
+  if (modal) modal.classList.remove('open');
+  showToast('Preturi salvate!', 'success');
+}
+
+/** Show export format choice dialog. */
+function showExportChoice() {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.style.zIndex = '300';
+    overlay.innerHTML = '<div class="modal-sheet" style="max-width:340px;margin:auto;border-radius:16px">' +
+      '<div class="modal-handle"></div>' +
+      '<div class="modal-title">Alege formatul export</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;padding:0 16px 16px">' +
+      '<button class="btn-primary" style="padding:12px" data-ch="standard">Raport Standard</button>' +
+      '<button class="btn-primary" style="padding:12px;background:var(--blue-600)" data-ch="chimicale">Deviz Chimicale</button>' +
+      '<button class="btn-primary" style="padding:12px;background:#16a34a" data-ch="complet">Deviz Complet (+ Operatii)</button>' +
+      '<button class="btn-modal-cancel" data-ch="">Anuleaza</button>' +
+      '</div></div>';
+    overlay.addEventListener('click', function(e) {
+      var ch = e.target.dataset.ch;
+      if (ch !== undefined || e.target === overlay) {
+        overlay.remove();
+        resolve(ch || '');
+      }
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
 // ── Export Modal ──────────────────────────────────────────────
 function showExportModal(clientId) {
   const modal = $('modal-export');
@@ -1447,9 +1513,12 @@ function showExportModal(clientId) {
         try {
           await loadData();
           const ci = APP.interventions.filter(i => i.client_id === client.client_id);
-          await exportClientXLSX(client, ci);
-          showToast('Export complet!', 'success');
-        } catch(e) { showToast('Eroare export: ' + e.message, 'error'); }
+          var choice = await showExportChoice();
+          if (choice === 'standard') await exportClientXLSX(client, ci);
+          else if (choice === 'chimicale') await exportDevizChimicale(client, ci);
+          else if (choice === 'complet') await exportDevizComplet(client, ci);
+          if (choice) showToast('Export complet!', 'success');
+        } catch(e) { if (e.message) showToast('Eroare export: ' + e.message, 'error'); }
       };
     } else {
       exportClientBtn.style.display = 'none';

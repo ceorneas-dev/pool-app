@@ -428,6 +428,12 @@
 
     <!-- Panoul Note & Foto -->
     <div class="p2-panel" id="panel-notes">
+      <!-- D2. Operatii Efectuate -->
+      <div class="form-section">
+        <div class="form-section-title">&#9881; Operatii Efectuate</div>
+        <div id="ops-checklist" class="ops-checklist-grid"></div>
+      </div>
+
       <!-- E. Observații -->
       <div class="form-section">
         <div class="form-section-title">Observații</div>
@@ -1128,5 +1134,17 @@
 <script src="js/export.js"></script>
 <script src="js/app.js"></script>
 
+
+<div id="modal-prices" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal-sheet" role="dialog">
+    <div class="modal-handle"></div>
+    <div class="modal-title">Preturi Export (RON)</div>
+    <div class="modal-body" id="modal-prices-body"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="document.getElementById('modal-prices').classList.remove('open')">Anuleaza</button>
+      <button class="btn-modal-confirm" onclick="savePricesSettings()">Salveaza</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
