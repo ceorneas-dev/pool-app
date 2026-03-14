@@ -1102,6 +1102,18 @@
       </div>
     </div>
   </div>
+
+<!-- ── Billing / Deviz Modal (admin-only) ── -->
+<div id="modal-billing" class="modal-overlay admin-only" onclick="if(event.target===this)closeBillingModal()">
+  <div class="modal-content" style="max-width:520px;max-height:85vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 id="billing-modal-title" style="margin:0;font-size:1.1rem"></h3>
+      <button style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);padding:4px" onclick="closeBillingModal()">&#10005;</button>
+    </div>
+    <div id="billing-modal-body"></div>
+  </div>
+</div>
+
 </div>
 
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>

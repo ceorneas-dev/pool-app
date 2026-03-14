@@ -2879,38 +2879,270 @@ function toggleSection(titleEl) {
 // FEATURE C — Notificare Facturare per Client
 // ════════════════════════════════════════════════════════════════
 
-/** Check if billing threshold is reached and show toast */
+/** Check if billing threshold is reached — admin-only modal */
 function checkBillingAlert(client) {
+  if (!isAdmin()) return;
   const interval = client.billing_interval_interventions;
   if (!interval || interval <= 0) return;
 
   const since = client.last_billing_date || '1970-01-01';
-  const countSince = APP.interventions.filter(i =>
+  const billable = APP.interventions.filter(i =>
     i.client_id === client.client_id && i.date > since
-  ).length; // includes the one just added (already in APP.interventions)
+  ).sort((a, b) => a.date.localeCompare(b.date));
 
-  if (countSince >= interval) {
-    showToast(`💰 ${client.name} — ${countSince} intervenții de la ultima facturare!`, 'warning', 8000);
+  if (billable.length >= interval) {
+    setTimeout(function() { showBillingModal(client, billable); }, 600);
   }
 }
 
-/** Mark a client as billed (reset last_billing_date to today) */
-async function markClientBilled() {
-  const clientId = APP._billingClientId;
+/** Show billing modal with deviz actions */
+function showBillingModal(client, interventions) {
+  var modal = $('modal-billing');
+  if (!modal) return;
+
+  APP._billingClientId = client.client_id;
+  APP._billingInterventions = interventions;
+  APP._billingClient = client;
+
+  var title = $('billing-modal-title');
+  if (title) title.innerHTML = '&#128176; Facturare: ' + escHtml(client.name);
+
+  var body = $('billing-modal-body');
+  if (!body) return;
+
+  var since = client.last_billing_date || null;
+  var sinceLabel = since ? fmtDate(since) : 'prima interven\u021bie';
+  var today = new Date().toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
+
+  var html = '<div class="billing-summary">';
+  html += '<strong>' + interventions.length + ' interven\u021bii</strong> din ' + sinceLabel + ' p\u00e2n\u0103 azi (' + today + ')';
+  html += '</div>';
+
+  // Mini table
+  html += '<table class="billing-table"><thead><tr><th>Nr.</th><th>Data</th><th>Tehnician</th><th>Produse</th></tr></thead><tbody>';
+  interventions.forEach(function(inv, idx) {
+    html += '<tr>';
+    html += '<td>' + (idx + 1) + '</td>';
+    html += '<td>' + escHtml(inv.date) + '</td>';
+    html += '<td>' + escHtml(inv.technician_name || '') + '</td>';
+    html += '<td style="font-size:.75rem">' + escHtml(_fmtTreatShort(inv)) + '</td>';
+    html += '</tr>';
+  });
+  html += '</tbody></table>';
+
+  // Action buttons
+  html += '<div class="billing-actions">';
+  html += '<button class="billing-action-btn" onclick="generateBillingExcel()"><span style="font-size:1.3rem">\ud83d\udcca</span><div><strong>Deviz Excel</strong><small>Desc\u0103rca\u021bi fi\u0219ier .xlsx</small></div></button>';
+  html += '<button class="billing-action-btn" onclick="generateBillingPdf()"><span style="font-size:1.3rem">\ud83d\udda8\ufe0f</span><div><strong>Deviz PDF</strong><small>Deschide pentru print</small></div></button>';
+  if (client.phone) {
+    html += '<button class="billing-action-btn" onclick="shareBillingWhatsApp()"><span style="font-size:1.3rem">\ud83d\udcac</span><div><strong>Trimite WhatsApp</strong><small>Rezumat pe WhatsApp</small></div></button>';
+  }
+  html += '</div>';
+
+  // Bottom actions
+  html += '<div style="display:flex;gap:8px;margin-top:14px">';
+  html += '<button class="btn-primary" style="flex:1" onclick="billingMarkAndClose()">\u2713 Marcheaz\u0103 facturat</button>';
+  html += '<button style="flex:0 0 auto;padding:8px 18px;border-radius:10px;background:var(--slate-200);color:var(--slate-600);font-weight:600" onclick="closeBillingModal()">Mai t\u00e2rziu</button>';
+  html += '</div>';
+
+  body.innerHTML = html;
+  modal.classList.add('open');
+}
+
+function closeBillingModal() {
+  var modal = $('modal-billing');
+  if (modal) modal.classList.remove('open');
+}
+
+async function billingMarkAndClose() {
+  var clientId = APP._billingClientId;
   if (!clientId) return;
-  const client = APP.clients.find(c => c.client_id === clientId);
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
   if (!client) return;
 
   client.last_billing_date = new Date().toISOString().split('T')[0];
   client.updated_at = new Date().toISOString();
   await put('clients', client);
-  APP.clients = APP.clients.map(c => c.client_id === clientId ? client : c);
+  APP.clients = APP.clients.map(function(c) { return c.client_id === clientId ? client : c; });
 
-  showToast(`✓ ${client.name} marcat ca facturat.`, 'success');
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+    }).catch(function(e) { console.warn('[SYNC] Billing push failed:', e.message); });
+  }
 
-  // Update billing badge visibility
-  const billBtn = $('btn-mark-billed');
+  closeBillingModal();
+  showToast('\u2713 ' + client.name + ' marcat ca facturat.', 'success');
+
+  var billBtn = $('btn-mark-billed');
   if (billBtn) billBtn.style.display = 'none';
+}
+
+/** Short treatment summary for billing table */
+function _fmtTreatShort(inv) {
+  var parts = [];
+  if (inv.treat_cl_granule_gr > 0) parts.push('Cl:' + inv.treat_cl_granule_gr + 'g');
+  if (inv.treat_cl_tablete > 0) parts.push('ClTab:' + inv.treat_cl_tablete);
+  if (inv.treat_ph_granule > 0) parts.push('pH:' + inv.treat_ph_granule + 'kg');
+  if (inv.treat_antialgic > 0) parts.push('Anti:' + inv.treat_antialgic + 'L');
+  if (inv.treat_anticalcar > 0) parts.push('Antical:' + inv.treat_anticalcar + 'L');
+  if (inv.treat_floculant > 0) parts.push('Floc:' + inv.treat_floculant + 'L');
+  if (inv.treat_sare_saci > 0) parts.push('Sare:' + inv.treat_sare_saci);
+  if (inv.treat_bicarbonat > 0) parts.push('Bicarb:' + inv.treat_bicarbonat + 'kg');
+  // Dynamic stock products
+  if (typeof APP !== 'undefined' && APP._stockProducts) {
+    APP._stockProducts.forEach(function(p) {
+      var val = inv['treat_' + p.product_id];
+      if (val > 0 && !parts.some(function(x) { return x.indexOf(p.name.slice(0,6)) === 0; })) {
+        parts.push(p.name.slice(0,10) + ':' + val + (p.unit || ''));
+      }
+    });
+  }
+  return parts.join(', ') || '\u2014';
+}
+
+/** Generate billing Excel */
+function generateBillingExcel() {
+  var client = APP._billingClient;
+  var interventions = APP._billingInterventions;
+  if (!client || !interventions) return;
+  exportBillingXLSX(client, interventions);
+}
+
+/** Generate billing PDF */
+function generateBillingPdf() {
+  var client = APP._billingClient;
+  var interventions = APP._billingInterventions;
+  if (!client || !interventions) return;
+
+  var printHtml = _buildBillingPrintHtml(client, interventions);
+  var w = window.open('', '_blank');
+  if (!w) { showToast('Popup blocat. Permite popups pentru acest site.', 'error'); return; }
+  w.document.write(printHtml);
+  w.document.close();
+  setTimeout(function() { w.print(); }, 400);
+}
+
+/** Build billing PDF HTML (A4 print-ready) */
+function _buildBillingPrintHtml(client, interventions) {
+  var since = client.last_billing_date || '';
+  var today = new Date().toISOString().split('T')[0];
+  var devizNr = 'D-' + today.replace(/-/g, '') + '-' + (client.client_id || '').slice(-4);
+  var totals = calcTotals(interventions);
+  var totalMin = interventions.reduce(function(s, i) { return s + (i.duration_minutes || 0); }, 0);
+
+  var rows = '';
+  interventions.forEach(function(inv, idx) {
+    rows += '<tr>';
+    rows += '<td style="text-align:center">' + (idx + 1) + '</td>';
+    rows += '<td>' + escHtml(inv.date) + '</td>';
+    rows += '<td>' + escHtml(inv.technician_name || '') + '</td>';
+    rows += '<td style="font-size:11px">' + escHtml(_fmtTreatFull(inv)) + '</td>';
+    rows += '<td style="text-align:center">' + (inv.duration_minutes || '-') + '</td>';
+    rows += '<td style="font-size:10px">' + escHtml(inv.observations || '') + '</td>';
+    rows += '</tr>';
+  });
+
+  // Totals row for products
+  var prodSummary = [];
+  if (totals.cl_granule_gr) prodSummary.push('Cl granule: ' + totals.cl_granule_gr + ' gr');
+  if (totals.cl_tablete) prodSummary.push('Cl tablete: ' + totals.cl_tablete + ' buc');
+  if (totals.ph_granule) prodSummary.push('pH granule: ' + totals.ph_granule + ' kg');
+  if (totals.antialgic) prodSummary.push('Antialgic: ' + totals.antialgic + ' L');
+  if (totals.anticalcar) prodSummary.push('Anticalcar: ' + totals.anticalcar + ' L');
+  if (totals.floculant) prodSummary.push('Floculant: ' + totals.floculant + ' L');
+  if (totals.sare) prodSummary.push('Sare: ' + totals.sare + ' saci');
+  if (totals.bicarbonat) prodSummary.push('Bicarbonat: ' + totals.bicarbonat + ' kg');
+
+  return '<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Deviz ' + escHtml(client.name) + '</title>'
+    + '<style>'
+    + '* { box-sizing: border-box; margin: 0; padding: 0; }'
+    + 'body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #111; padding: 30px; max-width: 210mm; margin: 0 auto; }'
+    + 'h1 { font-size: 18px; color: #1d4ed8; margin-bottom: 4px; }'
+    + '.header { display: flex; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #1d4ed8; }'
+    + '.header-left { line-height: 1.6; }'
+    + '.header-right { text-align: right; line-height: 1.6; }'
+    + '.label { color: #64748b; font-size: 11px; }'
+    + 'table { width: 100%; border-collapse: collapse; margin-top: 16px; }'
+    + 'th { background: #1d4ed8; color: #fff; padding: 7px 8px; font-size: 12px; text-align: left; }'
+    + 'td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; vertical-align: top; }'
+    + 'tr:nth-child(even) td { background: #f8fafc; }'
+    + '.totals { margin-top: 16px; padding: 12px; background: #eff6ff; border-radius: 6px; font-size: 12px; line-height: 1.7; }'
+    + '.totals strong { color: #1d4ed8; }'
+    + '.footer { margin-top: 30px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }'
+    + '@media print { body { padding: 15px; } .footer { position: fixed; bottom: 10px; left: 0; right: 0; } }'
+    + '</style></head><body>'
+    + '<h1>DEVIZ SERVICII PISCIN\u0102</h1>'
+    + '<div class="header">'
+    + '<div class="header-left">'
+    + '<div><span class="label">Client:</span> <strong>' + escHtml(client.name) + '</strong></div>'
+    + (client.address ? '<div><span class="label">Adres\u0103:</span> ' + escHtml(client.address) + '</div>' : '')
+    + (client.phone ? '<div><span class="label">Telefon:</span> ' + escHtml(client.phone) + '</div>' : '')
+    + '<div><span class="label">Volum piscin\u0103:</span> ' + (client.pool_volume_mc || '-') + ' m\u00b3 (' + (client.pool_type || '-') + ')</div>'
+    + '</div>'
+    + '<div class="header-right">'
+    + '<div><span class="label">Nr. deviz:</span> <strong>' + devizNr + '</strong></div>'
+    + '<div><span class="label">Data:</span> ' + today + '</div>'
+    + '<div><span class="label">Perioada:</span> ' + (since || '-') + ' \u2013 ' + today + '</div>'
+    + '</div>'
+    + '</div>'
+    + '<table><thead><tr><th>Nr.</th><th>Data</th><th>Tehnician</th><th>Produse utilizate</th><th>Durata</th><th>Observa\u021bii</th></tr></thead>'
+    + '<tbody>' + rows + '</tbody></table>'
+    + '<div class="totals">'
+    + '<strong>Total: ' + interventions.length + ' interven\u021bii</strong> \u00b7 Durat\u0103 total\u0103: ' + totalMin + ' min<br>'
+    + (prodSummary.length ? '<strong>Produse consumate:</strong> ' + prodSummary.join(' \u00b7 ') : '')
+    + '</div>'
+    + '<div class="footer">Generat de Pool Manager \u00b7 ' + today + '</div>'
+    + '</body></html>';
+}
+
+/** Full treatment summary for PDF */
+function _fmtTreatFull(inv) {
+  var parts = [];
+  if (inv.treat_cl_granule_gr > 0) parts.push('Cl granule: ' + inv.treat_cl_granule_gr + 'g');
+  if (inv.treat_cl_tablete > 0) parts.push('Cl tablete: ' + inv.treat_cl_tablete + ' buc');
+  if (inv.treat_cl_lichid_bidoane > 0) parts.push('Cl lichid: ' + inv.treat_cl_lichid_bidoane + ' bid');
+  if (inv.treat_ph_granule > 0) parts.push('pH: ' + inv.treat_ph_granule + 'kg');
+  if (inv.treat_ph_lichid_bidoane > 0) parts.push('pH lichid: ' + inv.treat_ph_lichid_bidoane + ' bid');
+  if (inv.treat_antialgic > 0) parts.push('Antialgic: ' + inv.treat_antialgic + 'L');
+  if (inv.treat_anticalcar > 0) parts.push('Anticalcar: ' + inv.treat_anticalcar + 'L');
+  if (inv.treat_floculant > 0) parts.push('Floculant: ' + inv.treat_floculant + 'L');
+  if (inv.treat_sare_saci > 0) parts.push('Sare: ' + inv.treat_sare_saci + ' saci');
+  if (inv.treat_bicarbonat > 0) parts.push('Bicarbonat: ' + inv.treat_bicarbonat + 'kg');
+  return parts.join(', ') || '\u2014';
+}
+
+/** Share billing summary via WhatsApp */
+function shareBillingWhatsApp() {
+  var client = APP._billingClient;
+  var interventions = APP._billingInterventions;
+  if (!client || !interventions) return;
+
+  var totals = calcTotals(interventions);
+  var since = client.last_billing_date || '';
+  var today = new Date().toISOString().split('T')[0];
+
+  var text = '*Rezumat servicii piscin\u0103*\n\n';
+  text += '*Client:* ' + client.name + '\n';
+  text += '*Perioada:* ' + (since || '-') + ' \u2013 ' + today + '\n';
+  text += '*Total interven\u021bii:* ' + interventions.length + '\n\n';
+  text += '*Produse consumate:*\n';
+  if (totals.cl_granule_gr) text += '\u2022 Cl granule: ' + totals.cl_granule_gr + ' gr\n';
+  if (totals.cl_tablete) text += '\u2022 Cl tablete: ' + totals.cl_tablete + ' buc\n';
+  if (totals.ph_granule) text += '\u2022 pH granule: ' + totals.ph_granule + ' kg\n';
+  if (totals.antialgic) text += '\u2022 Antialgic: ' + totals.antialgic + ' L\n';
+  if (totals.anticalcar) text += '\u2022 Anticalcar: ' + totals.anticalcar + ' L\n';
+  if (totals.floculant) text += '\u2022 Floculant: ' + totals.floculant + ' L\n';
+  if (totals.sare) text += '\u2022 Sare: ' + totals.sare + ' saci\n';
+  if (totals.bicarbonat) text += '\u2022 Bicarbonat: ' + totals.bicarbonat + ' kg\n';
+  text += '\n_Pool Manager_';
+
+  var phone = client.phone ? '4' + client.phone.replace(/\D/g, '').slice(-9) : '';
+  var url = phone
+    ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text)
+    : 'https://wa.me/?text=' + encodeURIComponent(text);
+  window.open(url, '_blank');
 }
 
 // ════════════════════════════════════════════════════════════════

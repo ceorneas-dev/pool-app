@@ -468,3 +468,88 @@ function sanitizeSheetName(name) {
 function setColWidths(ws, widths) {
   ws['!cols'] = widths.map(w => ({ wch: w }));
 }
+
+// ── Export Billing Deviz ──────────────────────────────────────
+function exportBillingXLSX(client, interventions) {
+  return loadXLSX().then(function() {
+    var wb = XLSX.utils.book_new();
+    var sorted = interventions.slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+    var since = client.last_billing_date || '';
+    var today = new Date().toISOString().split('T')[0];
+    var devizNr = 'D-' + today.replace(/-/g, '') + '-' + (client.client_id || '').slice(-4);
+
+    // Sheet 1: Deviz
+    var headerRows = [
+      { 'A': 'DEVIZ SERVICII PISCINA' },
+      { 'A': 'Client:', 'B': client.name, 'D': 'Nr. deviz:', 'E': devizNr },
+      { 'A': 'Adresa:', 'B': client.address || '-', 'D': 'Data:', 'E': today },
+      { 'A': 'Telefon:', 'B': client.phone || '-', 'D': 'Perioada:', 'E': (since || '-') + ' - ' + today },
+      { 'A': '' }
+    ];
+
+    var dataRows = sorted.map(function(inv, idx) {
+      return {
+        'Nr.': idx + 1,
+        'Data': inv.date,
+        'Tehnician': inv.technician_name || '',
+        'Cl granule (gr)': inv.treat_cl_granule_gr || 0,
+        'Cl tablete (buc)': inv.treat_cl_tablete || 0,
+        'pH granule (kg)': inv.treat_ph_granule || 0,
+        'Antialgic (L)': inv.treat_antialgic || 0,
+        'Anticalcar (L)': inv.treat_anticalcar || 0,
+        'Floculant (L)': inv.treat_floculant || 0,
+        'Sare (saci)': inv.treat_sare_saci || 0,
+        'Bicarbonat (kg)': inv.treat_bicarbonat || 0,
+        'Durata (min)': inv.duration_minutes || '',
+        'Observatii': inv.observations || ''
+      };
+    });
+
+    // Build header manually
+    var ws1 = XLSX.utils.aoa_to_sheet([
+      ['DEVIZ SERVICII PISCINA'],
+      ['Client:', client.name, '', 'Nr. deviz:', devizNr],
+      ['Adresa:', client.address || '-', '', 'Data:', today],
+      ['Telefon:', client.phone || '-', '', 'Perioada:', (since || '-') + ' - ' + today],
+      []
+    ]);
+    // Append data rows
+    XLSX.utils.sheet_add_json(ws1, dataRows, { origin: 'A6' });
+
+    // Add totals row
+    var totals = calcTotals(sorted);
+    var totalRow = sorted.length + 7; // header(5) + data header(1) + data rows
+    XLSX.utils.sheet_add_aoa(ws1, [['', 'TOTAL:', sorted.length + ' interventii',
+      totals.cl_granule_gr, totals.cl_tablete, totals.ph_granule,
+      totals.antialgic, totals.anticalcar, totals.floculant,
+      totals.sare, totals.bicarbonat,
+      sorted.reduce(function(s, i) { return s + (i.duration_minutes || 0); }, 0) + ' min', ''
+    ]], { origin: 'A' + totalRow });
+
+    setColWidths(ws1, [6, 12, 16, 14, 14, 14, 12, 12, 12, 10, 14, 12, 28]);
+    XLSX.utils.book_append_sheet(wb, ws1, 'Deviz');
+
+    // Sheet 2: Detalii produse
+    var sumRows = [
+      { 'Produs': 'Cl granule', 'Cantitate': totals.cl_granule_gr, 'UM': 'gr' },
+      { 'Produs': 'Cl tablete', 'Cantitate': totals.cl_tablete, 'UM': 'buc' },
+      { 'Produs': 'pH granule', 'Cantitate': totals.ph_granule, 'UM': 'kg' },
+      { 'Produs': 'Antialgic', 'Cantitate': totals.antialgic, 'UM': 'L' },
+      { 'Produs': 'Anticalcar', 'Cantitate': totals.anticalcar, 'UM': 'L' },
+      { 'Produs': 'Floculant', 'Cantitate': totals.floculant, 'UM': 'L' },
+      { 'Produs': 'Sare', 'Cantitate': totals.sare, 'UM': 'saci' },
+      { 'Produs': 'Bicarbonat', 'Cantitate': totals.bicarbonat, 'UM': 'kg' },
+    ].filter(function(r) { return r.Cantitate > 0; });
+    var ws2 = XLSX.utils.json_to_sheet(sumRows);
+    setColWidths(ws2, [20, 12, 10]);
+    XLSX.utils.book_append_sheet(wb, ws2, 'Produse');
+
+    // Download
+    var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    showToast('Deviz Excel descarcat: ' + fname, 'success');
+  }).catch(function(e) {
+    showToast('Eroare export: ' + e.message, 'error');
+  });
+}
+
