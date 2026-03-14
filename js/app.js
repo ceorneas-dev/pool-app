@@ -1263,12 +1263,12 @@ async function doSaveIntervention() {
       if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
       showScreen('success');
       showToast('Intervenție salvată cu succes!', 'success');
-      // Auto-return to dashboard after 1.5s
+      // Auto-return to dashboard after 1s
       setTimeout(async () => {
         await loadData();
         renderDashboard();
         showScreen('dashboard');
-      }, 1500);
+      }, 1000);
     } else {
       // Tehnicien: ecran simplu, auto-dismiss după 1s
       const durEl = $('success-duration');
