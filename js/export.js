@@ -521,84 +521,101 @@ function fmtDateDMY(dateStr) {
   return dateStr;
 }
 
-// == Build chimicale sheet data (shared by V1 and V2) ==
+// == All possible chemical columns ==
+var ALL_CHEM_COLS = [
+  { key: 'treat_cl_granule_gr',       label: 'Clor Rapid',  priceKey: 'clor_rapid' },
+  { key: 'treat_cl_tablete_export_gr',label: 'Clor Lent',   priceKey: 'clor_lent' },
+  { key: 'treat_ph_granule',          label: 'pH-',         priceKey: 'ph_minus' },
+  { key: 'treat_antialgic',           label: 'Antialgic',   priceKey: 'antialgic' },
+  { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
+  { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
+  { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
+  { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' },
+  { key: 'treat_sare_saci',           label: 'Sare',        priceKey: 'sare' }
+];
+
+// == Build chimicale sheet — only used chemicals ==
 function _buildChimicaleSheet(client, sorted, prices) {
-  // Fixed columns — always all 8 chemicals in exact order
-  var chemCols = [
-    { key: 'treat_cl_granule_gr',       label: 'Clor Rapid',  priceKey: 'clor_rapid' },
-    { key: 'treat_cl_tablete_export_gr',label: 'Clor Lent',   priceKey: 'clor_lent' },
-    { key: 'treat_ph_granule',          label: 'pH-',         priceKey: 'ph_minus' },
-    { key: 'treat_antialgic',           label: 'Antialgic',   priceKey: 'antialgic' },
-    { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
-    { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
-    { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
-    { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' }
-  ];
+  // Filter to only chemicals that have at least one non-zero value
+  var usedCols = ALL_CHEM_COLS.filter(function(c) {
+    return sorted.some(function(i) { return (parseFloat(i[c.key]) || 0) > 0; });
+  });
+
+  // Need: col0=Data, col1=Cant, col2..N=chemicals, colN+1=empty, colN+2=TOTAL PLATA
+  var totalCols = 2 + usedCols.length + 2; // data+cant + chemicals + empty + total
 
   var data = [];
 
-  // Row 0: client name + title + TOTAL PLATA
-  // Cols: 0=name, 1=empty, 2=title, 3-9=empty, 10=empty, 11=TOTAL PLATA
-  var h0 = [client.name, '', 'C H I M I C A L E  FOLOSITE', '', '', '', '', '', '', '', '', 'TOTAL PLATA'];
+  // Row 0: client name at [0], title starting at [2], TOTAL PLATA at last col
+  var h0 = new Array(totalCols).fill('');
+  h0[0] = client.name || '';
+  h0[2] = 'C H I M I C A L E  FOLOSITE';
+  h0[totalCols - 1] = 'TOTAL PLATA';
   data.push(h0);
 
-  // Row 1: headers
+  // Row 1: column headers
   var h1 = ['Data Interventie', 'Cant'];
-  chemCols.forEach(function(c) { h1.push(c.label); });
-  h1.push('', '');  // col 10 empty, col 11 empty
+  usedCols.forEach(function(c) { h1.push(c.label); });
+  h1.push('', '');  // empty + empty (under TOTAL PLATA)
   data.push(h1);
 
-  // Intervention rows
+  // Intervention data rows
   sorted.forEach(function(i) {
     var row = [fmtDateDMY(i.date), 1];
-    chemCols.forEach(function(c) {
+    usedCols.forEach(function(c) {
       var v = parseFloat(i[c.key]) || 0;
       row.push(v > 0 ? v : '');
     });
-    row.push('', '');  // col 10, 11 empty
+    row.push('', '');
     data.push(row);
   });
 
-  // Empty separator row
-  data.push(new Array(12).fill(''));
+  // Empty separator
+  data.push(new Array(totalCols).fill(''));
 
-  // Cantitate totala row — show empty where sum is 0
+  // Cantitate totala
   var totRow = ['Cantitate totala', sorted.length];
-  chemCols.forEach(function(c) {
+  usedCols.forEach(function(c) {
     var s = 0;
     sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
     totRow.push(s > 0 ? s : '');
   });
-  totRow.push('', '');  // col 10, 11
+  totRow.push('', '');
   data.push(totRow);
 
-  // Pret unitar row
-  var priceRow = ['Pret unitar', prices.pret_interventie || 0];
-  chemCols.forEach(function(c) { priceRow.push(prices[c.priceKey] || 0); });
-  // Calculate total
+  // Calculate total plata
   var totalPlata = (prices.pret_interventie || 0) * sorted.length;
-  chemCols.forEach(function(c) {
+  usedCols.forEach(function(c) {
     var s = 0;
     sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
     totalPlata += s * (prices[c.priceKey] || 0);
   });
-  priceRow.push('', totalPlata);  // col 10 empty, col 11 = total
+
+  // Pret unitar — show price for ALL chemicals (even ones not used, just matching the used columns)
+  var priceRow = ['Pret unitar', prices.pret_interventie || 0];
+  usedCols.forEach(function(c) { priceRow.push(prices[c.priceKey] || 0); });
+  priceRow.push('', totalPlata);
   data.push(priceRow);
 
-  // PRET TOTAL row — show empty where quantity is 0
+  // PRET TOTAL — only where quantity > 0
   var ptRow = ['PRET TOTAL', (prices.pret_interventie || 0) * sorted.length];
-  chemCols.forEach(function(c) {
+  usedCols.forEach(function(c) {
     var s = 0;
     sorted.forEach(function(i) { s += parseFloat(i[c.key]) || 0; });
-    ptRow.push(s > 0 ? s * (prices[c.priceKey] || 0) : '');
+    ptRow.push(s > 0 ? Math.round(s * (prices[c.priceKey] || 0) * 100) / 100 : '');
   });
-  ptRow.push('', '');  // col 10, 11
+  ptRow.push('', '');
   data.push(ptRow);
 
-  return { data: data, totalPlata: totalPlata };
+  // Column widths
+  var colWidths = [{wch:18}, {wch:6}];
+  usedCols.forEach(function() { colWidths.push({wch:12}); });
+  colWidths.push({wch:3}, {wch:14});
+
+  return { data: data, totalPlata: totalPlata, colWidths: colWidths };
 }
 
-// == Export Format 1: Deviz Chimicale (like Bogdan Azur) ==
+// == Export Format 1: Deviz Chimicale (V1) ==
 function exportDevizChimicale(client, interventions) {
   return loadXLSX().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
@@ -607,10 +624,7 @@ function exportDevizChimicale(client, interventions) {
 
     var result = _buildChimicaleSheet(client, sorted, prices);
     var ws = XLSX.utils.aoa_to_sheet(result.data);
-    ws['!cols'] = [
-      {wch:18}, {wch:6}, {wch:12}, {wch:12}, {wch:8}, {wch:10},
-      {wch:10}, {wch:12}, {wch:10}, {wch:10}, {wch:3}, {wch:14}
-    ];
+    ws['!cols'] = result.colWidths;
     XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
 
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
@@ -620,42 +634,40 @@ function exportDevizChimicale(client, interventions) {
   });
 }
 
-// == Export Format 2: Deviz Complet (chimicale + operatiuni) ==
+// == Export Format 2: Deviz Complet (V2 — chimicale + operatiuni) ==
 function exportDevizComplet(client, interventions) {
   return loadXLSX().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
     var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
 
-    // Sheet 1: Chimicale (identical structure)
+    // Sheet 1: Chimicale
     var result = _buildChimicaleSheet(client, sorted, prices);
     var ws1 = XLSX.utils.aoa_to_sheet(result.data);
-    ws1['!cols'] = [
-      {wch:18}, {wch:6}, {wch:12}, {wch:12}, {wch:8}, {wch:10},
-      {wch:10}, {wch:12}, {wch:10}, {wch:10}, {wch:3}, {wch:14}
-    ];
+    ws1['!cols'] = result.colWidths;
     XLSX.utils.book_append_sheet(wb, ws1, 'Sheet1');
 
     // Sheet 2: Operatiuni Efectuate
+    // Get operations list from settings (same as app uses)
     var opsList = (typeof getOperations === 'function') ? await getOperations() : [
       'Aspirare piscina','Curatare linie apa','Curatare skimmere',
       'Spalare filtru','Curatare prefiltru','Periere piscina',
-      'Analiza apei','Tratament chimic'
+      'Analiza apei','Tratament chimic','Verificare automatizare'
     ];
 
     var opsData = [];
 
-    // Row 0: header
+    // Row 0: headers spanning all columns
     var oh0 = ['Data interventie', 'Servicii incluse in abonament'];
     for (var oi = 1; oi < opsList.length; oi++) oh0.push('');
     opsData.push(oh0);
 
-    // Row 1: operation names
+    // Row 1: individual operation names
     var oh1 = [''];
     opsList.forEach(function(op) { oh1.push(op); });
     opsData.push(oh1);
 
-    // Intervention rows
+    // Data rows — P where operation was checked in the app
     sorted.forEach(function(i) {
       var row = [fmtDateDMY(i.date)];
       var ops = i.operations || [];
@@ -665,13 +677,14 @@ function exportDevizComplet(client, interventions) {
       opsData.push(row);
     });
 
-    // Empty separator row
+    // Empty separator
     opsData.push(new Array(oh1.length).fill(''));
 
-    // TOTAL de plata row — value near the end
+    // TOTAL de plata row
     var totalRow = ['TOTAL de plata'];
     for (var ti = 0; ti < opsList.length - 2; ti++) totalRow.push('');
     totalRow.push(result.totalPlata + ' lei');
+    totalRow.push('');
     opsData.push(totalRow);
 
     var ws2 = XLSX.utils.aoa_to_sheet(opsData);
