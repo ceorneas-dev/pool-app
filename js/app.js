@@ -1696,47 +1696,26 @@ function showExportFilter(client, allInterventions) {
 
 // ── Export Modal ──────────────────────────────────────────────
 function showExportModal(clientId) {
+  // Per-client export: go directly to filter+format dialog (no intermediate modal)
+  if (clientId) {
+    _exportClientDirect(clientId);
+    return;
+  }
+
+  // All-clients export: show modal with options
   const modal = $('modal-export');
   if (!modal) return;
 
-  const client = clientId ? APP.clients.find(c => c.client_id === clientId) : null;
-
   const exportClientBtn = $('export-client-btn');
-  const exportAllBtn    = $('export-all-btn');
+  if (exportClientBtn) exportClientBtn.style.display = 'none';
 
-  if (exportClientBtn) {
-    if (client) {
-      exportClientBtn.style.display = '';
-      exportClientBtn.querySelector('.export-option-text h4').textContent = 'Export ' + client.name;
-      exportClientBtn.onclick = async () => {
-        modal.classList.remove('open');
-        try {
-          await loadData();
-          // Re-fetch client after loadData to get latest deviz_type
-          var freshClient = APP.clients.find(function(c) { return c.client_id === client.client_id; }) || client;
-          const allCi = APP.interventions.filter(i => i.client_id === freshClient.client_id);
-          var result = await showExportFilter(freshClient, allCi);
-          if (!result) return;
-          if (!result.interventions || !result.interventions.length) { showToast('Nicio interventie in intervalul selectat.', 'warning'); return; }
-          showToast('Generare Excel...', 'info');
-          if (result.format === '2') {
-            await exportDevizComplet(freshClient, result.interventions);
-          } else {
-            await exportDevizChimicale(freshClient, result.interventions);
-          }
-          showToast('Export complet!', 'success');
-        } catch(e) { if (e.message) showToast('Eroare export: ' + e.message, 'error'); }
-      };
-    } else {
-      exportClientBtn.style.display = 'none';
-    }
-  }
-
+  const exportAllBtn = $('export-all-btn');
   if (exportAllBtn) {
     exportAllBtn.onclick = async () => {
       modal.classList.remove('open');
       showToast('Generare Excel complet...', 'info');
       try {
+        await loadData();
         await exportAllXLSX(APP.clients, APP.interventions);
         showToast('Export complet!', 'success');
       } catch(e) { showToast('Eroare export: ' + e.message, 'error'); }
@@ -1749,6 +1728,7 @@ function showExportModal(clientId) {
       modal.classList.remove('open');
       showToast('Generare Excel structurat...', 'info');
       try {
+        await loadData();
         await exportStructuredXLSX(APP.clients, APP.interventions);
         showToast('Export structurat complet!', 'success');
       } catch(e) { showToast('Eroare export: ' + e.message, 'error'); }
@@ -1756,6 +1736,33 @@ function showExportModal(clientId) {
   }
 
   modal.classList.add('open');
+}
+
+async function _exportClientDirect(clientId) {
+  try {
+    await loadData();
+    var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+    if (!client) { showToast('Client negasit.', 'error'); return; }
+    var allCi = APP.interventions.filter(function(i) { return i.client_id === clientId; });
+    if (!allCi.length) { showToast('Nicio interventie pentru acest client.', 'warning'); return; }
+
+    var result = await showExportFilter(client, allCi);
+    if (!result) return;
+    if (!result.interventions || !result.interventions.length) {
+      showToast('Nicio interventie in intervalul selectat.', 'warning');
+      return;
+    }
+
+    showToast('Generare Excel...', 'info');
+    if (result.format === '2') {
+      await exportDevizComplet(client, result.interventions);
+    } else {
+      await exportDevizChimicale(client, result.interventions);
+    }
+    showToast('Export complet!', 'success');
+  } catch(e) {
+    if (e.message) showToast('Eroare export: ' + e.message, 'error');
+  }
 }
 
 function closeExportModal() {
