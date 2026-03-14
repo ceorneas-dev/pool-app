@@ -948,9 +948,7 @@ async function renderIntervention(client) {
   const backBtn = $('btn-back');
   if (backBtn) backBtn.onclick = () => showScreen('dashboard');
 
-  // Save button
-  const saveBtn = $('btn-save');
-  if (saveBtn) saveBtn.onclick = showConfirmModal;
+  // Save button — managed by switchP2Tab()
 
   // Show CYA input only for exterior pools
   const cyaWrap = $('measure-cya-wrap');
@@ -2946,6 +2944,8 @@ function goWizardStep(step) {
   // Save bar: visible only on step 2
   const saveBar = $('save-bar');
   if (saveBar) saveBar.style.display = step === 2 ? '' : 'none';
+  // When entering step 2, default to treatment tab button state
+  if (step === 2) switchP2Tab('treatment');
 
   // Scroll to top of intervention screen
   const screen = $('screen-intervention');
@@ -3018,6 +3018,18 @@ function switchP2Tab(tab) {
     if (btn)   btn.classList.toggle('active',   t === tab);
     if (panel) panel.classList.toggle('active', t === tab);
   });
+  // Update save button based on active tab
+  var saveBtn = $('btn-save');
+  if (saveBtn) {
+    if (tab === 'treatment') {
+      saveBtn.textContent = '➡ Spre Finalizare';
+      saveBtn.disabled = false;
+      saveBtn.onclick = function() { switchP2Tab('notes'); };
+    } else {
+      saveBtn.textContent = '💾 Salvează Intervenția';
+      saveBtn.onclick = showConfirmModal;
+    }
+  }
 }
 
 /** Toggle collapsible section (used for "Ultimele intervenții") */
