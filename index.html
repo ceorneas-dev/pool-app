@@ -844,6 +844,13 @@
         <label for="cf-billing-interval">Notificare facturare (nr. intervenții)</label>
         <input type="number" id="cf-billing-interval" min="0" max="100" placeholder="4  (0 = dezactivat)" value="4" inputmode="numeric" style="width:100%">
       </div>
+      <div class="form-modal-row">
+        <label for="cf-deviz-type">Format deviz export</label>
+        <select id="cf-deviz-type" style="width:100%;padding:8px;border:1px solid var(--slate-200);border-radius:8px;font-size:.9rem;background:var(--surface)">
+          <option value="1">Versiunea 1 — Deviz Chimicale</option>
+          <option value="2">Versiunea 2 — Deviz Complet (+ Operatiuni)</option>
+        </select>
+      </div>
     </div>
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeClientFormModal()">Anulează</button>

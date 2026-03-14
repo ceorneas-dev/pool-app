@@ -1625,11 +1625,13 @@ function showExportModal(clientId) {
         try {
           await loadData();
           const ci = APP.interventions.filter(i => i.client_id === client.client_id);
-          var choice = await showExportChoice();
-          if (choice === 'standard') await exportClientXLSX(client, ci);
-          else if (choice === 'chimicale') await exportDevizChimicale(client, ci);
-          else if (choice === 'complet') await exportDevizComplet(client, ci);
-          if (choice) showToast('Export complet!', 'success');
+          var devizType = client.deviz_type || 1;
+          if (devizType === 2 || devizType === '2') {
+            await exportDevizComplet(client, ci);
+          } else {
+            await exportDevizChimicale(client, ci);
+          }
+          showToast('Export complet!', 'success');
         } catch(e) { if (e.message) showToast('Eroare export: ' + e.message, 'error'); }
       };
     } else {
@@ -2009,6 +2011,8 @@ function showEditClientModal(clientId) {
   set('cf-notes',      client.notes);
   set('cf-visit-freq', client.visit_frequency_days || 14);
   set('cf-billing-interval', client.billing_interval_interventions || '');
+  var devizSel = $('cf-deviz-type');
+  if (devizSel) devizSel.value = String(client.deviz_type || 1);
   const type = $('cf-pool-type');
   if (type) type.value = client.pool_type || 'exterior';
   $('modal-client-form').classList.add('open');
@@ -2033,6 +2037,7 @@ async function doSaveClientForm() {
     notes:               $('cf-notes')    ? $('cf-notes').value.trim()     : '',
     visit_frequency_days: parseInt($('cf-visit-freq') ? $('cf-visit-freq').value : '7') || 7,
     billing_interval_interventions: billingRaw > 0 ? billingRaw : 4,
+    deviz_type: parseInt($('cf-deviz-type') ? $('cf-deviz-type').value : '1') || 1,
     last_billing_date:   isEdit && existing ? (existing.last_billing_date || null) : null,
     active:              true,
     created_at:          isEdit ? (existing ? existing.created_at : now) : now,
