@@ -242,18 +242,42 @@
         <button id="btn-dark-mode" class="btn-settings-save" style="width:auto;padding:6px 16px" onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
       </div>
 
-      <!-- Admin-only quick actions -->
-      <div class="settings-row admin-only" style="margin-top:4px;flex-wrap:wrap;gap:8px">
-        <label style="width:100%">Acțiuni admin</label>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="showTechManager()">👥 Tehnicieni</button>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="showStockModal()">📦 Stoc</button>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="exportBackupJSON()">💾 Backup</button>
-        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📂 Restore<input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"></label>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadImportTemplate()">📋 Template Intervenții</button>
-        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Intervenții<input type="file" id="import-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="importInterventionsXLSX(this.files[0])"></label>
-        <button class="btn-settings-save" style="width:auto;padding:6px 14px" onclick="downloadClientTemplate()">📋 Template Clienți</button>
-        <label class="btn-settings-save" style="width:auto;padding:6px 14px;cursor:pointer">📥 Import Clienți<input type="file" id="import-clients-input" accept=".xlsx,.xls" style="display:none" onchange="importClientsXLSX(this.files[0])"></label>
-      </div>
+      <!-- Admin sections — collapsible -->
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">👥 Tehnicieni</summary>
+        <div style="padding:4px 14px 14px">
+          <button class="btn-settings-save" style="width:100%;padding:10px" onclick="showTechManager()">👥 Gestioneaza Tehnicieni</button>
+        </div>
+      </details>
+
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📦 Stoc</summary>
+        <div style="padding:4px 14px 14px">
+          <button class="btn-settings-save" style="width:100%;padding:10px" onclick="showStockModal()">📦 Gestioneaza Stoc</button>
+        </div>
+      </details>
+
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">💾 Backup & Restore</summary>
+        <div style="display:flex;gap:8px;padding:4px 14px 14px;flex-wrap:wrap">
+          <button class="btn-settings-save" style="flex:1;min-width:120px;padding:10px" onclick="exportBackupJSON()">💾 Backup</button>
+          <label class="btn-settings-save" style="flex:1;min-width:120px;padding:10px;cursor:pointer;text-align:center">📂 Restore<input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"></label>
+        </div>
+      </details>
+
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📥 Template & Import</summary>
+        <div style="display:flex;flex-direction:column;gap:8px;padding:4px 14px 14px">
+          <div style="display:flex;gap:8px">
+            <button class="btn-settings-save" style="flex:1;padding:8px" onclick="downloadImportTemplate()">📋 Template Interventii</button>
+            <label class="btn-settings-save" style="flex:1;padding:8px;cursor:pointer;text-align:center">📥 Import Interventii<input type="file" id="import-xlsx-input" accept=".xlsx,.xls" style="display:none" onchange="importInterventionsXLSX(this.files[0])"></label>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button class="btn-settings-save" style="flex:1;padding:8px" onclick="downloadClientTemplate()">📋 Template Clienti</button>
+            <label class="btn-settings-save" style="flex:1;padding:8px;cursor:pointer;text-align:center">📥 Import Clienti<input type="file" id="import-clients-input" accept=".xlsx,.xls" style="display:none" onchange="importClientsXLSX(this.files[0])"></label>
+          </div>
+        </div>
+      </details>
 
       <!-- Obs Templates Management -->
       <details style="margin:0 0 4px">
