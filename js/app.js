@@ -1606,25 +1606,25 @@ function showExportChoice() {
 }
 
 
-/** Show export filter + format choice dialog */
+/** Show export filter dialog — choose interval only */
 function showExportFilter(client, allInterventions) {
   return new Promise(function(resolve) {
     var sorted = allInterventions.slice().sort(function(a,b) { return b.date.localeCompare(a.date); });
     var defaultCount = Math.min(4, sorted.length);
     var defaultFrom = sorted.length >= 4 ? sorted[3].date : (sorted.length ? sorted[sorted.length - 1].date : '');
-    var clientDeviz = parseInt(client.deviz_type) || 1;
 
     var overlay = document.createElement('div');
     overlay.className = 'modal-overlay open';
     overlay.style.zIndex = '300';
     overlay.innerHTML = '<div class="modal-sheet" style="max-width:400px;margin:auto;border-radius:16px">' +
       '<div class="modal-handle"></div>' +
-      '<div class="modal-title">Export Deviz</div>' +
+      '<div class="modal-title">Export Deviz ' + escHtml(client.name) + '</div>' +
       '<div style="padding:0 16px 16px">' +
-        '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">' + sorted.length + ' interventii disponibile pentru ' + escHtml(client.name) + '</p>' +
+        '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 4px">' + sorted.length + ' interventii disponibile</p>' +
+        '<p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 12px">Format: <strong>' + (parseInt(client.deviz_type) === 2 ? 'V2 (Chimicale + Operatiuni)' : 'V1 (Chimicale)') + '</strong></p>' +
 
         '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Interval</div>' +
-        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:14px">' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="last" checked style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">Ultimele</span>' +
@@ -1639,18 +1639,6 @@ function showExportFilter(client, allInterventions) {
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="all" style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">Toate interventiile</span>' +
-          '</label>' +
-        '</div>' +
-
-        '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Format deviz</div>' +
-        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
-          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
-            '<input type="radio" name="exp-format" value="1"' + (clientDeviz === 1 ? ' checked' : '') + ' style="accent-color:var(--primary)">' +
-            '<div><div style="font-size:.88rem;font-weight:600">V1 — Deviz Chimicale</div><div style="font-size:.75rem;color:var(--text-secondary)">Tabel chimicale + preturi</div></div>' +
-          '</label>' +
-          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
-            '<input type="radio" name="exp-format" value="2"' + (clientDeviz === 2 ? ' checked' : '') + ' style="accent-color:var(--primary)">' +
-            '<div><div style="font-size:.88rem;font-weight:600">V2 — Deviz Complet</div><div style="font-size:.75rem;color:var(--text-secondary)">Chimicale + Operatiuni efectuate</div></div>' +
           '</label>' +
         '</div>' +
 
@@ -1674,7 +1662,6 @@ function showExportFilter(client, allInterventions) {
       }
       if (action === 'export') {
         var mode = overlay.querySelector('input[name="exp-filter"]:checked').value;
-        var format = overlay.querySelector('input[name="exp-format"]:checked').value;
         var filtered;
         if (mode === 'last') {
           var n = parseInt(lastN.value) || 4;
@@ -1686,7 +1673,7 @@ function showExportFilter(client, allInterventions) {
           filtered = sorted;
         }
         overlay.remove();
-        resolve({ interventions: filtered, format: format });
+        resolve(filtered);
       }
     });
 
@@ -1706,59 +1693,11 @@ function showExportModal(clientId) {
   _exportAllDirect();
 }
 
-function _exportAllDirect() {
-  var overlay = document.createElement('div');
-  overlay.className = 'modal-overlay open';
-  overlay.style.zIndex = '300';
-  overlay.innerHTML = '<div class="modal-sheet" style="max-width:400px;margin:auto;border-radius:16px">' +
-    '<div class="modal-handle"></div>' +
-    '<div class="modal-title">Export Toti Clientii</div>' +
-    '<div style="padding:0 16px 16px">' +
-      '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">Se va genera cate un sheet per client cu interventiile.</p>' +
-
-      '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Format deviz</div>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
-        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
-          '<input type="radio" name="exp-all-format" value="1" checked style="accent-color:var(--primary)">' +
-          '<div><div style="font-size:.88rem;font-weight:600">V1 \u2014 Deviz Chimicale</div><div style="font-size:.75rem;color:var(--text-secondary)">Tabel chimicale + preturi per client</div></div>' +
-        '</label>' +
-        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
-          '<input type="radio" name="exp-all-format" value="2" style="accent-color:var(--primary)">' +
-          '<div><div style="font-size:.88rem;font-weight:600">V2 \u2014 Deviz Complet</div><div style="font-size:.75rem;color:var(--text-secondary)">Chimicale + Operatiuni efectuate</div></div>' +
-        '</label>' +
-      '</div>' +
-
-      '<div style="display:flex;gap:8px">' +
-        '<button class="btn-modal-cancel" style="flex:1" data-action="cancel">Anuleaza</button>' +
-        '<button class="btn-modal-confirm" style="flex:1" data-action="export">Exporta</button>' +
-      '</div>' +
-    '</div></div>';
-
-  overlay.addEventListener('click', function(e) {
-    var action = e.target.dataset.action;
-    if (action === 'cancel' || e.target === overlay) {
-      overlay.remove();
-      return;
-    }
-    if (action === 'export') {
-      var format = overlay.querySelector('input[name="exp-all-format"]:checked').value;
-      overlay.remove();
-      _doExportAll(format);
-    }
-  });
-
-  document.body.appendChild(overlay);
-}
-
-async function _doExportAll(format) {
+async function _exportAllDirect() {
   try {
     showToast('Generare Excel...', 'info');
     await loadData();
-    if (format === '2') {
-      await exportAllDevizComplet(APP.clients, APP.interventions);
-    } else {
-      await exportAllDevizChimicale(APP.clients, APP.interventions);
-    }
+    await exportAllDevizMixed(APP.clients, APP.interventions);
     showToast('Export complet!', 'success');
   } catch(e) {
     showToast('Eroare export: ' + e.message, 'error');
@@ -1773,18 +1712,19 @@ async function _exportClientDirect(clientId) {
     var allCi = APP.interventions.filter(function(i) { return i.client_id === clientId; });
     if (!allCi.length) { showToast('Nicio interventie pentru acest client.', 'warning'); return; }
 
-    var result = await showExportFilter(client, allCi);
-    if (!result) return;
-    if (!result.interventions || !result.interventions.length) {
+    var filtered = await showExportFilter(client, allCi);
+    if (!filtered) return;
+    if (!filtered.length) {
       showToast('Nicio interventie in intervalul selectat.', 'warning');
       return;
     }
 
     showToast('Generare Excel...', 'info');
-    if (result.format === '2') {
-      await exportDevizComplet(client, result.interventions);
+    var devizType = parseInt(client.deviz_type) || 1;
+    if (devizType === 2) {
+      await exportDevizComplet(client, filtered);
     } else {
-      await exportDevizChimicale(client, result.interventions);
+      await exportDevizChimicale(client, filtered);
     }
     showToast('Export complet!', 'success');
   } catch(e) {
