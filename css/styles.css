@@ -1591,6 +1591,22 @@ body.dark-mode {
 body.dark-mode .login-card,
 body.dark-mode .client-card,
 body.dark-mode .stat-card,
+/* Dark mode: modal buttons and text */
+body.dark-mode .btn-modal-cancel {
+  background: #334155;
+  color: #f1f5f9;
+  border-color: #64748b;
+}
+body.dark-mode .btn-modal-cancel:active {
+  background: #475569;
+}
+body.dark-mode .modal-title {
+  color: #f1f5f9;
+}
+body.dark-mode .modal-body p {
+  color: #94a3b8 !important;
+}
+
 body.dark-mode .modal-sheet,
 body.dark-mode .form-section,
 body.dark-mode .prev-intervention,
