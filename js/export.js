@@ -700,6 +700,120 @@ function exportDevizComplet(client, interventions) {
   });
 }
 
+// == Export ALL clients — V1 (Deviz Chimicale per client, each as a sheet) ==
+function exportAllDevizChimicale(clients, allInterventions) {
+  return loadXLSX().then(async function() {
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+    var wb = XLSX.utils.book_new();
+    var sheetCount = 0;
+
+    clients.forEach(function(client) {
+      var ci = allInterventions.filter(function(i) { return i.client_id === client.client_id; });
+      if (!ci.length) return;
+
+      var sorted = ci.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
+      var result = _buildChimicaleSheet(client, sorted, prices);
+      var ws = XLSX.utils.aoa_to_sheet(result.data);
+      ws['!cols'] = result.colWidths;
+
+      var sheetName = sanitizeSheetName(client.name);
+      // Avoid duplicate sheet names
+      if (wb.SheetNames.indexOf(sheetName) >= 0) sheetName = sheetName.substring(0, 28) + '_' + (sheetCount + 1);
+      XLSX.utils.book_append_sheet(wb, ws, sheetName);
+      sheetCount++;
+    });
+
+    if (sheetCount === 0) {
+      showToast('Nicio interventie de exportat.', 'warning');
+      return;
+    }
+
+    var fname = 'DevizToti_V1_' + fmtDateExport(new Date()) + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    _uploadToDrive(wb, fname);
+    return fname;
+  });
+}
+
+// == Export ALL clients — V2 (Deviz Complet: chimicale + operatiuni per client) ==
+function exportAllDevizComplet(clients, allInterventions) {
+  return loadXLSX().then(async function() {
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+    var opsList = (typeof getOperations === 'function') ? await getOperations() : [
+      'Aspirare piscina','Curatare linie apa','Curatare skimmere',
+      'Spalare filtru','Curatare prefiltru','Periere piscina',
+      'Analiza apei','Tratament chimic','Verificare automatizare'
+    ];
+    var wb = XLSX.utils.book_new();
+    var sheetCount = 0;
+
+    clients.forEach(function(client) {
+      var ci = allInterventions.filter(function(i) { return i.client_id === client.client_id; });
+      if (!ci.length) return;
+
+      var sorted = ci.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
+
+      // Sheet: Chimicale for this client
+      var result = _buildChimicaleSheet(client, sorted, prices);
+      var ws1 = XLSX.utils.aoa_to_sheet(result.data);
+      ws1['!cols'] = result.colWidths;
+
+      var baseName = sanitizeSheetName(client.name);
+      var chimName = baseName.substring(0, 27) + '_Chim';
+      if (wb.SheetNames.indexOf(chimName) >= 0) chimName = chimName.substring(0, 24) + '_' + (sheetCount + 1);
+      XLSX.utils.book_append_sheet(wb, ws1, chimName);
+
+      // Sheet: Operatiuni for this client
+      var opsData = [];
+      var oh0 = ['Data interventie', 'Servicii incluse in abonament'];
+      for (var oi = 1; oi < opsList.length; oi++) oh0.push('');
+      opsData.push(oh0);
+
+      var oh1 = [''];
+      opsList.forEach(function(op) { oh1.push(op); });
+      opsData.push(oh1);
+
+      sorted.forEach(function(i) {
+        var row = [fmtDateDMY(i.date)];
+        var ops = i.operations || [];
+        opsList.forEach(function(op) {
+          row.push(ops.indexOf(op) >= 0 ? 'P' : '');
+        });
+        opsData.push(row);
+      });
+
+      opsData.push(new Array(oh1.length).fill(''));
+
+      var totalRow = ['TOTAL de plata'];
+      for (var ti = 0; ti < opsList.length - 2; ti++) totalRow.push('');
+      totalRow.push(result.totalPlata + ' lei');
+      totalRow.push('');
+      opsData.push(totalRow);
+
+      var ws2 = XLSX.utils.aoa_to_sheet(opsData);
+      var opsCols = [{wch:18}];
+      opsList.forEach(function() { opsCols.push({wch:18}); });
+      ws2['!cols'] = opsCols;
+
+      var opsName = baseName.substring(0, 28) + '_Ops';
+      if (wb.SheetNames.indexOf(opsName) >= 0) opsName = opsName.substring(0, 24) + '_' + (sheetCount + 1);
+      XLSX.utils.book_append_sheet(wb, ws2, opsName);
+
+      sheetCount++;
+    });
+
+    if (sheetCount === 0) {
+      showToast('Nicio interventie de exportat.', 'warning');
+      return;
+    }
+
+    var fname = 'DevizToti_V2_' + fmtDateExport(new Date()) + '.xlsx';
+    XLSX.writeFile(wb, fname);
+    _uploadToDrive(wb, fname);
+    return fname;
+  });
+}
+
 function _uploadToDrive(wb, fileName, mimeType) {
   if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
   try {

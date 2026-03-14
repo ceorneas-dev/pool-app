@@ -1696,46 +1696,73 @@ function showExportFilter(client, allInterventions) {
 
 // ── Export Modal ──────────────────────────────────────────────
 function showExportModal(clientId) {
-  // Per-client export: go directly to filter+format dialog (no intermediate modal)
+  // Per-client export: go directly to filter+format dialog
   if (clientId) {
     _exportClientDirect(clientId);
     return;
   }
 
-  // All-clients export: show modal with options
-  const modal = $('modal-export');
-  if (!modal) return;
+  // All-clients export: show format choice dialog
+  _exportAllDirect();
+}
 
-  const exportClientBtn = $('export-client-btn');
-  if (exportClientBtn) exportClientBtn.style.display = 'none';
+function _exportAllDirect() {
+  var overlay = document.createElement('div');
+  overlay.className = 'modal-overlay open';
+  overlay.style.zIndex = '300';
+  overlay.innerHTML = '<div class="modal-sheet" style="max-width:400px;margin:auto;border-radius:16px">' +
+    '<div class="modal-handle"></div>' +
+    '<div class="modal-title">Export Toti Clientii</div>' +
+    '<div style="padding:0 16px 16px">' +
+      '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">Se va genera cate un sheet per client cu interventiile.</p>' +
 
-  const exportAllBtn = $('export-all-btn');
-  if (exportAllBtn) {
-    exportAllBtn.onclick = async () => {
-      modal.classList.remove('open');
-      showToast('Generare Excel complet...', 'info');
-      try {
-        await loadData();
-        await exportAllXLSX(APP.clients, APP.interventions);
-        showToast('Export complet!', 'success');
-      } catch(e) { showToast('Eroare export: ' + e.message, 'error'); }
-    };
+      '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Format deviz</div>' +
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
+          '<input type="radio" name="exp-all-format" value="1" checked style="accent-color:var(--primary)">' +
+          '<div><div style="font-size:.88rem;font-weight:600">V1 \u2014 Deviz Chimicale</div><div style="font-size:.75rem;color:var(--text-secondary)">Tabel chimicale + preturi per client</div></div>' +
+        '</label>' +
+        '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px">' +
+          '<input type="radio" name="exp-all-format" value="2" style="accent-color:var(--primary)">' +
+          '<div><div style="font-size:.88rem;font-weight:600">V2 \u2014 Deviz Complet</div><div style="font-size:.75rem;color:var(--text-secondary)">Chimicale + Operatiuni efectuate</div></div>' +
+        '</label>' +
+      '</div>' +
+
+      '<div style="display:flex;gap:8px">' +
+        '<button class="btn-modal-cancel" style="flex:1" data-action="cancel">Anuleaza</button>' +
+        '<button class="btn-modal-confirm" style="flex:1" data-action="export">Exporta</button>' +
+      '</div>' +
+    '</div></div>';
+
+  overlay.addEventListener('click', function(e) {
+    var action = e.target.dataset.action;
+    if (action === 'cancel' || e.target === overlay) {
+      overlay.remove();
+      return;
+    }
+    if (action === 'export') {
+      var format = overlay.querySelector('input[name="exp-all-format"]:checked').value;
+      overlay.remove();
+      _doExportAll(format);
+    }
+  });
+
+  document.body.appendChild(overlay);
+}
+
+async function _doExportAll(format) {
+  try {
+    showToast('Generare Excel...', 'info');
+    await loadData();
+    if (format === '2') {
+      await exportAllDevizComplet(APP.clients, APP.interventions);
+    } else {
+      await exportAllDevizChimicale(APP.clients, APP.interventions);
+    }
+    showToast('Export complet!', 'success');
+  } catch(e) {
+    showToast('Eroare export: ' + e.message, 'error');
   }
-
-  const exportStructuredBtn = $('export-structured-btn');
-  if (exportStructuredBtn) {
-    exportStructuredBtn.onclick = async () => {
-      modal.classList.remove('open');
-      showToast('Generare Excel structurat...', 'info');
-      try {
-        await loadData();
-        await exportStructuredXLSX(APP.clients, APP.interventions);
-        showToast('Export structurat complet!', 'success');
-      } catch(e) { showToast('Eroare export: ' + e.message, 'error'); }
-    };
-  }
-
-  modal.classList.add('open');
 }
 
 async function _exportClientDirect(clientId) {
