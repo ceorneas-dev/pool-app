@@ -840,6 +840,45 @@ async function resetInterventionCounter(clientId) {
   renderDashboard();
 }
 
+
+// -- Operations & Prices for export --
+var DEFAULT_OPERATIONS = [
+  'Aspirare piscina',
+  'Curatare linie apa',
+  'Curatare skimmere',
+  'Spalare filtru',
+  'Curatare prefiltru',
+  'Periere piscina',
+  'Analiza apei',
+  'Tratament chimic',
+  'Verificare automatizare'
+];
+
+var DEFAULT_PRICES = {
+  pret_interventie: 250,
+  clor_rapid: 57,
+  clor_lent: 56.4,
+  ph_minus: 13,
+  antialgic: 29,
+  floculant: 25,
+  dedurizant: 32,
+  ph_lichid: 184,
+  cl_lichid: 180,
+  sare: 57
+};
+
+async function getExportPrices() {
+  try {
+    var saved = await getSetting('export_prices');
+    if (saved) return Object.assign({}, DEFAULT_PRICES, JSON.parse(saved));
+  } catch(_) {}
+  return Object.assign({}, DEFAULT_PRICES);
+}
+
+async function saveExportPrices(prices) {
+  await setSetting('export_prices', JSON.stringify(prices));
+}
+
 // ── Intervention Screen ───────────────────────────────────────
 async function renderIntervention(client) {
   // Header
@@ -871,6 +910,16 @@ async function renderIntervention(client) {
 
   // Track arrival time
   APP.arrivalTime    = new Date().toISOString();
+  // Render operations checklist in step 2
+  var opsContainer = $('ops-checklist');
+  if (opsContainer) {
+    var opsHtml = '';
+    DEFAULT_OPERATIONS.forEach(function(op, idx) {
+      opsHtml += '<label class="ops-check-item"><input type="checkbox" id="op-' + idx + '" class="ops-checkbox" value="' + escHtml(op) + '"><span>' + escHtml(op) + '</span></label>';
+    });
+    opsContainer.innerHTML = opsHtml;
+  }
+
   APP.currentPhotos  = [];
   APP.currentPosition = null;
 
@@ -1213,6 +1262,16 @@ async function doSaveIntervention() {
     rec_anti_l:   rec ? rec.antialgic_l   : null,
 
     observations: $('observations') ? $('observations').value.trim() : '',
+    operations: (function() {
+      var ops = [];
+      if (typeof DEFAULT_OPERATIONS !== 'undefined') {
+        DEFAULT_OPERATIONS.forEach(function(op, idx) {
+          var chk = $('op-' + idx);
+          if (chk && chk.checked) ops.push(op);
+        });
+      }
+      return ops;
+    })(),
     photos:       [...APP.currentPhotos],
     synced:       false,
 
@@ -1479,7 +1538,7 @@ function showExportChoice() {
       '<div style="display:flex;flex-direction:column;gap:8px;padding:0 16px 16px">' +
       '<button class="btn-primary" style="padding:12px" data-ch="standard">Raport Standard</button>' +
       '<button class="btn-primary" style="padding:12px;background:var(--blue-600)" data-ch="chimicale">Deviz Chimicale</button>' +
-      '<button class="btn-primary" style="padding:12px;background:#16a34a" data-ch="complet">Deviz Complet (+ Operatii)</button>' +
+      '<button class="btn-primary" style="padding:12px;background:#16a34a" data-ch="complet">Deviz Complet (+ Operatiuni)</button>' +
       '<button class="btn-modal-cancel" data-ch="">Anuleaza</button>' +
       '</div></div>';
     overlay.addEventListener('click', function(e) {

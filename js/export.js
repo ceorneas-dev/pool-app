@@ -682,7 +682,7 @@ function exportDevizComplet(client, interventions) {
     var defaultOps = (typeof DEFAULT_OPERATIONS !== 'undefined') ? DEFAULT_OPERATIONS : [
       'Aspirare piscina','Curatare linie apa','Curatare skimmere',
       'Spalare filtru','Curatare prefiltru','Periere piscina',
-      'Analiza apei','Tratament chimic'
+      'Analiza apei','Tratament chimic','Verificare automatizare'
     ];
 
     var opsData = [];
@@ -715,7 +715,7 @@ function exportDevizComplet(client, interventions) {
     opsData.push(totalRow2);
 
     var ws2 = XLSX.utils.aoa_to_sheet(opsData);
-    XLSX.utils.book_append_sheet(wb, ws2, 'Operatii');
+    XLSX.utils.book_append_sheet(wb, ws2, 'Operatiuni');
 
     var fname = 'DevizComplet_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
