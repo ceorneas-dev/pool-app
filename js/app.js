@@ -1445,6 +1445,7 @@ function showExportModal(clientId) {
         modal.classList.remove('open');
         showToast('Generare Excel...', 'info');
         try {
+          await loadData();
           const ci = APP.interventions.filter(i => i.client_id === client.client_id);
           await exportClientXLSX(client, ci);
           showToast('Export complet!', 'success');

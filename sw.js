@@ -3,7 +3,7 @@
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v67';
+const CACHE_NAME   = 'pool-mgmt-v68';
 const APP_SHELL    = [
   './',
   './index.html',

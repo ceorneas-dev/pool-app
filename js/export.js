@@ -94,6 +94,7 @@ function exportClientXLSX(client, interventions) {
 
     const filename = 'PoolMgr_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
+    _uploadToDrive(wb, filename);
     return filename;
   });
 }
@@ -150,6 +151,7 @@ function exportAllXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Toate_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
+    _uploadToDrive(wb, filename);
     return filename;
   });
 }
@@ -209,6 +211,7 @@ function exportStructuredXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Structurat_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
+    _uploadToDrive(wb, filename);
     return filename;
   });
 }
@@ -578,7 +581,6 @@ function exportBillingXLSX(client, interventions) {
     // Download
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname);
     _uploadToDrive(wb, fname);
     showToast('Deviz Excel descarcat: ' + fname, 'success');
   }).catch(function(e) {
