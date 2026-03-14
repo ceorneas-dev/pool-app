@@ -114,6 +114,8 @@ function doPost(e) {
       result = handleRequestAudioCall(body);
     } else if (action === 'updateAudioCall') {
       result = handleUpdateAudioCall(body);
+    } else if (action === 'saveExportToDrive') {
+      result = handleSaveExportToDrive(body);
     } else if (body._type === 'location') {
       // OwnTracks HTTP mode — trimite direct fără câmpul "action"
       result = handleOwnTracksLocation(body);
@@ -611,6 +613,37 @@ function handleUpdateAudioCall(body) {
 // "acc":15, "tst":1709123456, "tid":"DAN" }
 // tid = tracker ID configurat în OwnTracks = username-ul tehnicianului (ex: "dan", "admin")
 // Răspuns OwnTracks: { result:[] } (obligatoriu — altfel reîncercă)
+/** Save exported file to Google Drive folder "Export Interventii" */
+function handleSaveExportToDrive(body) {
+  var fileName = body.fileName || 'export.xlsx';
+  var base64Data = body.data || '';
+  var mimeType = body.mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+  if (!base64Data) return { error: 'No file data provided' };
+
+  // Find or create "Export Interventii" folder
+  var folderName = 'Export Interventii';
+  var folders = DriveApp.getFoldersByName(folderName);
+  var folder;
+  if (folders.hasNext()) {
+    folder = folders.next();
+  } else {
+    folder = DriveApp.createFolder(folderName);
+  }
+
+  // Create file from base64
+  var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
+  var file = folder.createFile(blob);
+
+  return {
+    success: true,
+    fileId: file.getId(),
+    fileName: file.getName(),
+    fileUrl: file.getUrl(),
+    folderUrl: folder.getUrl()
+  };
+}
+
 function handleOwnTracksLocation(body) {
   const { _type, lat, lon, acc, tst, tid } = body;
   if (_type !== 'location' || !lat || !lon) return { result: [] };

@@ -465,6 +465,37 @@ function sanitizeSheetName(name) {
   return (name || 'Client').replace(/[\[\]\*\/\\\?:]/g, '_').substring(0, 31);
 }
 
+
+// ── Upload to Google Drive via GAS ────────────────────────────
+function _uploadToDrive(wb, fileName, mimeType) {
+  if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
+  try {
+    var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    fetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
+      body: JSON.stringify({
+        action: 'saveExportToDrive',
+        fileName: fileName,
+        data: wbout,
+        mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    }).then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.success) {
+          showToast('Salvat in Drive: Export Interventii/' + fileName, 'success', 4000);
+        } else {
+          console.warn('[DRIVE] Save failed:', res.error);
+        }
+      }).catch(function(e) {
+        console.warn('[DRIVE] Upload failed:', e.message);
+      });
+  } catch (e) {
+    console.warn('[DRIVE] Upload error:', e.message);
+  }
+}
+
 function setColWidths(ws, widths) {
   ws['!cols'] = widths.map(w => ({ wch: w }));
 }
@@ -547,6 +578,8 @@ function exportBillingXLSX(client, interventions) {
     // Download
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
     XLSX.writeFile(wb, fname);
+    _uploadToDrive(wb, fname);
+    _uploadToDrive(wb, fname);
     showToast('Deviz Excel descarcat: ' + fname, 'success');
   }).catch(function(e) {
     showToast('Eroare export: ' + e.message, 'error');
