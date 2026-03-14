@@ -1695,13 +1695,86 @@ function showExportModal(clientId) {
 
 async function _exportAllDirect() {
   try {
-    showToast('Generare Excel...', 'info');
     await loadData();
-    await exportAllDevizMixed(APP.clients, APP.interventions);
+    var totalInt = APP.interventions.length;
+    if (!totalInt) { showToast('Nicio interventie de exportat.', 'warning'); return; }
+
+    // Show interval filter dialog (same as per-client, but for all)
+    var filterResult = await _showAllExportFilter(totalInt);
+    if (!filterResult) return;
+
+    showToast('Generare Excel...', 'info');
+    // Apply filter to each client's interventions
+    await exportAllDevizMixed(APP.clients, APP.interventions, filterResult);
     showToast('Export complet!', 'success');
   } catch(e) {
     showToast('Eroare export: ' + e.message, 'error');
   }
+}
+
+function _showAllExportFilter(totalCount) {
+  return new Promise(function(resolve) {
+    var today = new Date().toISOString().split('T')[0];
+    // Default from date: 3 months ago
+    var d = new Date();
+    d.setMonth(d.getMonth() - 3);
+    var defaultFrom = d.toISOString().split('T')[0];
+
+    var overlay = document.createElement('div');
+    overlay.className = 'modal-overlay open';
+    overlay.style.zIndex = '300';
+    overlay.innerHTML = '<div class="modal-sheet" style="max-width:400px;margin:auto;border-radius:16px">' +
+      '<div class="modal-handle"></div>' +
+      '<div class="modal-title">Export Toti Clientii</div>' +
+      '<div style="padding:0 16px 16px">' +
+        '<p style="font-size:.82rem;color:var(--text-secondary);margin:0 0 12px">' + totalCount + ' interventii totale. Formatul deviz este cel setat pe fiecare client.</p>' +
+
+        '<div style="font-size:.78rem;font-weight:600;color:var(--text-secondary);margin:0 0 6px;text-transform:uppercase">Interval</div>' +
+        '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+            '<input type="radio" name="exp-all-filter" value="last" checked style="accent-color:var(--primary)">' +
+            '<span style="font-size:.88rem">Ultimele</span>' +
+            '<input type="number" id="exp-all-last-n" value="4" min="1" max="999" style="width:56px;padding:5px;border:1px solid var(--slate-200);border-radius:6px;text-align:center;font-size:.9rem">' +
+            '<span style="font-size:.88rem">interventii / client</span>' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+            '<input type="radio" name="exp-all-filter" value="date" style="accent-color:var(--primary)">' +
+            '<span style="font-size:.88rem">De la data:</span>' +
+            '<input type="date" id="exp-all-from-date" value="' + defaultFrom + '" style="padding:5px;border:1px solid var(--slate-200);border-radius:6px;font-size:.88rem;flex:1">' +
+          '</label>' +
+          '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
+            '<input type="radio" name="exp-all-filter" value="all" style="accent-color:var(--primary)">' +
+            '<span style="font-size:.88rem">Toate interventiile</span>' +
+          '</label>' +
+        '</div>' +
+
+        '<div style="display:flex;gap:8px">' +
+          '<button class="btn-modal-cancel" style="flex:1" data-action="cancel">Anuleaza</button>' +
+          '<button class="btn-modal-confirm" style="flex:1" data-action="export">Exporta</button>' +
+        '</div>' +
+      '</div></div>';
+
+    var lastN = overlay.querySelector('#exp-all-last-n');
+    var fromDate = overlay.querySelector('#exp-all-from-date');
+    if (lastN) lastN.onfocus = function() { overlay.querySelector('input[value="last"]').checked = true; };
+    if (fromDate) fromDate.onfocus = function() { overlay.querySelector('input[value="date"]').checked = true; };
+
+    overlay.addEventListener('click', function(e) {
+      var action = e.target.dataset.action;
+      if (action === 'cancel' || e.target === overlay) {
+        overlay.remove();
+        resolve(null);
+        return;
+      }
+      if (action === 'export') {
+        var mode = overlay.querySelector('input[name="exp-all-filter"]:checked').value;
+        overlay.remove();
+        resolve({ mode: mode, lastN: parseInt(lastN.value) || 4, fromDate: fromDate.value });
+      }
+    });
+
+    document.body.appendChild(overlay);
+  });
 }
 
 async function _exportClientDirect(clientId) {

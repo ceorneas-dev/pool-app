@@ -701,7 +701,7 @@ function exportDevizComplet(client, interventions) {
 }
 
 // == Export ALL clients — Mixed V1/V2 per client.deviz_type ==
-function exportAllDevizMixed(clients, allInterventions) {
+function exportAllDevizMixed(clients, allInterventions, filter) {
   return loadXLSX().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
     var opsList = (typeof getOperations === 'function') ? await getOperations() : [
@@ -716,7 +716,16 @@ function exportAllDevizMixed(clients, allInterventions) {
       var ci = allInterventions.filter(function(i) { return i.client_id === client.client_id; });
       if (!ci.length) return;
 
-      var sorted = ci.slice().sort(function(a,b) { return a.date.localeCompare(b.date); });
+      var sorted = ci.slice().sort(function(a,b) { return b.date.localeCompare(a.date); });
+      // Apply filter
+      if (filter && filter.mode === 'last') {
+        sorted = sorted.slice(0, filter.lastN || 4);
+      } else if (filter && filter.mode === 'date' && filter.fromDate) {
+        sorted = sorted.filter(function(i) { return i.date >= filter.fromDate; });
+      }
+      // Re-sort ascending for display
+      sorted.sort(function(a,b) { return a.date.localeCompare(b.date); });
+      if (!sorted.length) return;
       var devizType = parseInt(client.deviz_type) || 1;
 
       // Sheet: Chimicale (always present for both V1 and V2)
