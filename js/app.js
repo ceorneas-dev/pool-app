@@ -470,9 +470,15 @@ function renderDashboard() {
   if (isAdmin()) {
     var billingCount = _getBillableClients().length;
     var elBilling = $('stat-billing-count');
-    if (elBilling) elBilling.textContent = billingCount;
+    if (elBilling) {
+      elBilling.textContent = billingCount;
+      elBilling.style.color = billingCount > 0 ? 'var(--danger)' : '';
+    }
     var billingCard = $('stat-billing-card');
-    if (billingCard) billingCard.style.display = '';
+    if (billingCard) {
+      var lbl = billingCard.querySelector('.stat-label');
+      if (lbl) lbl.style.color = billingCount > 0 ? 'var(--danger)' : '';
+    }
   }
 
   updateSyncBadge();

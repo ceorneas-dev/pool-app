@@ -365,7 +365,7 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 /* Stats */
 .stats-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 10px;
   padding: 14px 12px 8px;
 }
