@@ -366,16 +366,24 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 10px;
+  gap: 6px;
   padding: 14px 12px 8px;
 }
 
 .stat-card {
   background: white;
   border-radius: var(--radius);
-  padding: 14px 10px;
+  padding: 10px 4px;
   text-align: center;
   box-shadow: var(--shadow-sm);
+  min-width: 0;
+}
+
+.stat-card .stat-label {
+  font-size: .7rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .stat-card .stat-value {
