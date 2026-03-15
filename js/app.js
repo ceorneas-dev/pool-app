@@ -681,15 +681,8 @@ async function renderClientList(searchTerm) {
   const counts = await Promise.all(filtered.map(f => getUnreportedCount(f.client.client_id)));
   const thr    = APP.alertThreshold;
 
-  // Toast warning — o singură dată per sesiune
-  if (!APP.alertShown) {
-    const overLimit = filtered.filter((f, i) => counts[i] >= thr);
-    if (overLimit.length) {
-      const names = overLimit.map(f => f.client.name).join(', ');
-      showToast(`⚠ ${overLimit.length} client(i) cu ${thr}+ intervenții neraportate: ${names}`, 'warning', 8000);
-      APP.alertShown = true;
-    }
-  }
+  // Billing alert removed — De Facturat stat card handles this now
+  APP.alertShown = true;
 
   list.innerHTML = filtered.map(({ client, urgency }, idx) => {
     const cnt       = counts[idx];
