@@ -472,7 +472,7 @@ function renderDashboard() {
     var elBilling = $('stat-billing-count');
     if (elBilling) elBilling.textContent = billingCount;
     var billingCard = $('stat-billing-card');
-    if (billingCard) billingCard.style.display = billingCount > 0 ? '' : 'none';
+    if (billingCard) billingCard.style.display = '';
   }
 
   updateSyncBadge();
