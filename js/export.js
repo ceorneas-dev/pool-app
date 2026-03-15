@@ -663,7 +663,7 @@ function _buildChimicaleSheet(client, sorted, prices, chemCols) {
   var numChem = chemCols.length;
   var COLS = 2 + numChem + 1; // A=Data, B=Cant, [chemicals], last=Total plată
   var lastCol = COLS - 1;
-  var NR = Math.max(10, sorted.length); // minimum 10 data rows
+  var NR = sorted.length; // only rows with actual interventions
   var FR = 9;  // first data row (0-indexed) = row 10
   var ws = {};
   var merges = [];
@@ -840,9 +840,9 @@ function _buildChimicaleSheet(client, sorted, prices, chemCols) {
     ws[XLSX.utils.encode_cell({ r: totRow, c: sc + 2 })] = _cellF('SUM(' + colL20 + firstDataExcel + ':' + colL20 + lastDataExcel + ')',
       { fill: F_HEADER, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N) });
   }
-  // Last col in totRow: light fill
+  // Last col in totRow: same blue as rest of row
   ws[XLSX.utils.encode_cell({ r: totRow, c: lastCol })] = _cellS('',
-    { fill: F_DATA_BK, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
+    { fill: F_HEADER, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
 
   // ═══ Preț unitar row ═══
   var pretRow = totRow + 1;
@@ -908,7 +908,7 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   });
 
   var numOps = allOps.length;
-  var NR = 17;           // 17 data rows (rows 10-26)
+  var NR = sorted.length; // only rows with actual interventions
   var FR = 9;            // first data row 0-indexed
   var LR = 25;           // last data row 0-indexed
   var NCOLS = 1 + numOps; // A + ops columns
@@ -1089,45 +1089,50 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
     }
   }
 
-  // ═══ ROW 27 (idx 26): Total intervenții efectuate ═══
-  // Python: A27=label, B27=COUNTA(A10:A26), C27:I27 merged empty
-  ws[XLSX.utils.encode_cell({ r: 26, c: 0 })] = _cellS('Total interven\u021Bii efectuate',
+  // ═══ Total intervenții efectuate row ═══
+  var totRow2 = FR + NR; // row right after data
+  var firstDataExcel2 = FR + 1; // Excel row (1-indexed)
+  var lastDataExcel2 = FR + NR;
+
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii efectuate',
     { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
-  // B27: COUNTA formula counting dates
-  ws[XLSX.utils.encode_cell({ r: 26, c: 1 })] = _cellF('COUNTA(A10:A26)',
+  // B: COUNTA formula counting dates
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 1 })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
     { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_THIN_N) });
-  // C27:LC merged empty
+  // C:LC merged empty
   if (LC >= 2) {
-    ws[XLSX.utils.encode_cell({ r: 26, c: 2 })] = _cellS('',
+    ws[XLSX.utils.encode_cell({ r: totRow2, c: 2 })] = _cellS('',
       { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
     for (var mc = 3; mc <= LC; mc++) {
-      ws[XLSX.utils.encode_cell({ r: 26, c: mc })] = _cellS('', { fill: F_SUBHDR, border: _brd(S_MED, S_THIN_N, null, mc === LC ? S_MED : null) });
+      ws[XLSX.utils.encode_cell({ r: totRow2, c: mc })] = _cellS('', { fill: F_SUBHDR, border: _brd(S_MED, S_THIN_N, null, mc === LC ? S_MED : null) });
     }
-    merges.push({ s: { r: 26, c: 2 }, e: { r: 26, c: LC } });
+    merges.push({ s: { r: totRow2, c: 2 }, e: { r: totRow2, c: LC } });
   }
 
-  // ═══ ROW 28 (idx 27): Separator ═══
-  _mergeFill(ws, merges, 27, 0, LC, '', { fill: F_LIGHT1, border: _brd(null, null, S_MED, S_MED) });
+  // ═══ Separator row ═══
+  var sepRow2 = totRow2 + 1;
+  _mergeFill(ws, merges, sepRow2, 0, LC, '', { fill: F_LIGHT1, border: _brd(null, null, S_MED, S_MED) });
 
-  // ═══ ROW 29 (idx 28): TOTAL DE PLATĂ (RON) ═══ (Python: A29:F29, G29:I29)
-  // Dynamic: label takes ~2/3, value takes ~1/3
+  // ═══ TOTAL DE PLATĂ row ═══
+  var payRow2 = sepRow2 + 1;
   var payLblEnd = Math.max(Math.floor(NCOLS * 2 / 3) - 1, 0);
-  if (NCOLS === 9) payLblEnd = 5; // A-F (0-5)
+  if (NCOLS === 9) payLblEnd = 5;
   var payValStart = payLblEnd + 1;
-  _mergeFill(ws, merges, 28, 0, payLblEnd, 'TOTAL DE PLAT\u0102 (RON)',
+  _mergeFill(ws, merges, payRow2, 0, payLblEnd, 'TOTAL DE PLAT\u0102 (RON)',
     { fill: F_TOT_DK, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_MED, S_THIN_M) });
-  _mergeFill(ws, merges, 28, payValStart, LC, totalPlata || '',
+  _mergeFill(ws, merges, payRow2, payValStart, LC, totalPlata || '',
     { fill: F_TOT_DK, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_MED, S_MED, S_MED) });
 
-  // ═══ ROW 30 (idx 29): Footer ═══ (Python: A30:E30, F30:I30)
+  // ═══ Footer row ═══
+  var footRow2 = payRow2 + 1;
   var footEnd1 = Math.max(Math.floor(NCOLS * 5 / 9) - 1, 0);
-  if (NCOLS === 9) footEnd1 = 4; // A-E (0-4)
-  _mergeFill(ws, merges, 29, 0, footEnd1, '  Document generat de S.C. Aquatis Engineering S.R.L.',
+  if (NCOLS === 9) footEnd1 = 4;
+  _mergeFill(ws, merges, footRow2, 0, footEnd1, '  Document generat de S.C. Aquatis Engineering S.R.L.',
     { fill: F_HEADER, font: _fnt('Arial', 7.5, false), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(null, S_MED, S_MED, null) });
-  _mergeFill(ws, merges, 29, footEnd1 + 1, LC, FIRMA_WEB + '  |  ' + FIRMA_TELEFON + '  ',
+  _mergeFill(ws, merges, footRow2, footEnd1 + 1, LC, FIRMA_WEB + '  |  ' + FIRMA_TELEFON + '  ',
     { fill: F_HEADER, font: _fnt('Arial', 7.5, false), alignment: { horizontal: 'right', vertical: 'center' }, border: _brd(null, S_MED, null, S_MED) });
 
-  ws['!ref'] = 'A1:' + lastColLetter + '30';
+  ws['!ref'] = 'A1:' + lastColLetter + (footRow2 + 1);
   ws['!merges'] = merges;
   return ws;
 }
