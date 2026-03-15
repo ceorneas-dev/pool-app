@@ -233,6 +233,76 @@ function pullData() {
       console.log('[SYNC] Pulled', parsed.length, 'treatment rules');
     }
 
+    // Pull interventions from server and merge with local
+    if (data.interventions && data.interventions.length) {
+      const mergeInterventions = (async function() {
+        const localAll = await getAll('interventions');
+        const localMap = {};
+        localAll.forEach(function(i) { localMap[i.intervention_id] = i; });
+
+        let added = 0, updated = 0;
+        for (const ri of data.interventions) {
+          const parsed = {
+            intervention_id:     ri.intervention_id,
+            client_id:           ri.client_id,
+            client_name:         ri.client_name || '',
+            technician_id:       ri.technician_id,
+            technician_name:     ri.technician_name || '',
+            date:                ri.date,
+            created_at:          ri.created_at || '',
+            measured_chlorine:   ri.measured_chlorine !== '' ? parseFloat(ri.measured_chlorine) || null : null,
+            measured_ph:         ri.measured_ph !== '' ? parseFloat(ri.measured_ph) || null : null,
+            measured_temp:       ri.measured_temp !== '' ? parseFloat(ri.measured_temp) || null : null,
+            measured_hardness:   ri.measured_hardness !== '' ? parseFloat(ri.measured_hardness) || null : null,
+            measured_alkalinity: ri.measured_alkalinity !== '' ? parseFloat(ri.measured_alkalinity) || null : null,
+            measured_salinity:   ri.measured_salinity !== '' ? parseFloat(ri.measured_salinity) || null : null,
+            measured_tc:         ri.measured_tc !== '' ? parseFloat(ri.measured_tc) || null : null,
+            measured_cya:        ri.measured_cya !== '' ? parseFloat(ri.measured_cya) || null : null,
+            rec_cl_gr:           ri.rec_cl_gr !== '' ? parseFloat(ri.rec_cl_gr) || null : null,
+            rec_cl_tab:          ri.rec_cl_tab !== '' ? parseFloat(ri.rec_cl_tab) || null : null,
+            rec_ph_kg:           ri.rec_ph_kg !== '' ? parseFloat(ri.rec_ph_kg) || null : null,
+            rec_anti_l:          ri.rec_anti_l !== '' ? parseFloat(ri.rec_anti_l) || null : null,
+            treat_cl_granule_gr:      parseFloat(ri.treat_cl_granule_gr) || 0,
+            treat_cl_tablete:         parseFloat(ri.treat_cl_tablete) || 0,
+            treat_cl_tablete_export_gr: parseFloat(ri.treat_cl_tablete_export_gr) || 0,
+            treat_cl_lichid_bidoane:  parseFloat(ri.treat_cl_lichid_bidoane) || 0,
+            treat_ph_granule:         parseFloat(ri.treat_ph_granule) || 0,
+            treat_ph_lichid_bidoane:  parseFloat(ri.treat_ph_lichid_bidoane) || 0,
+            treat_antialgic:          parseFloat(ri.treat_antialgic) || 0,
+            treat_anticalcar:         parseFloat(ri.treat_anticalcar) || 0,
+            treat_floculant:          parseFloat(ri.treat_floculant) || 0,
+            treat_sare_saci:          parseFloat(ri.treat_sare_saci) || 0,
+            treat_bicarbonat:         parseFloat(ri.treat_bicarbonat) || 0,
+            observations:        ri.observations || '',
+            geo_lat:             ri.geo_lat !== '' ? parseFloat(ri.geo_lat) || null : null,
+            geo_lng:             ri.geo_lng !== '' ? parseFloat(ri.geo_lng) || null : null,
+            geo_accuracy:        ri.geo_accuracy !== '' ? parseFloat(ri.geo_accuracy) || null : null,
+            arrival_time:        ri.arrival_time || null,
+            departure_time:      ri.departure_time || null,
+            duration_minutes:    ri.duration_minutes !== '' ? parseFloat(ri.duration_minutes) || null : null,
+            synced:              true
+          };
+
+          const local = localMap[parsed.intervention_id];
+          if (!local) {
+            // New from server
+            try { await put('interventions', parsed); added++; } catch(e) {
+              console.warn('[SYNC] Intervention put failed:', parsed.intervention_id, e.message);
+            }
+          } else if (local.synced === false) {
+            // Local has unsynced changes — keep local version
+          } else {
+            // Both synced — update with server version
+            try { await put('interventions', parsed); updated++; } catch(e) {
+              console.warn('[SYNC] Intervention update failed:', parsed.intervention_id, e.message);
+            }
+          }
+        }
+        console.log('[SYNC] Pulled interventions: ' + added + ' added, ' + updated + ' updated (server total: ' + data.interventions.length + ')');
+      })();
+      tasks.push(mergeInterventions);
+    }
+
     return Promise.all(tasks);
   });
 }

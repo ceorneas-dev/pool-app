@@ -142,7 +142,7 @@ function handlePull(params) {
   if (type === 'all' || type === 'rules') {
     result.treatment_rules = sheetToObjects('treatment_rules', RULES_COLS);
   }
-  if (type === 'interventions') {
+  if (type === 'all' || type === 'interventions') {
     const techId = params.tech_id || '';
     const all    = sheetToObjects('interventions', INTERVENTIONS_COLS);
     result.interventions = techId ? all.filter(i => i.technician_id === techId) : all;
