@@ -3422,7 +3422,7 @@ async function deleteIntervention(interventionId, clientId) {
   if (!confirm('Sigur vrei sa stergi aceasta interventie?')) return;
 
   try {
-    await deleteByKey('interventions', interventionId);
+    await remove('interventions', interventionId);
     APP.interventions = APP.interventions.filter(function(i) { return i.intervention_id !== interventionId; });
 
     // If synced, notify GAS
