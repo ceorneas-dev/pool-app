@@ -364,30 +364,30 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 
 /* Stats */
 .stats-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 6px;
-  padding: 14px 12px 8px;
+  display: flex;
+  gap: 5px;
+  padding: 14px 8px 8px;
 }
 
 .stat-card {
   background: white;
   border-radius: var(--radius);
-  padding: 10px 4px;
+  padding: 8px 2px;
   text-align: center;
   box-shadow: var(--shadow-sm);
   min-width: 0;
+  flex: 1 1 0;
 }
 
 .stat-card .stat-label {
-  font-size: .7rem;
+  font-size: .65rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .stat-card .stat-value {
-  font-size: 1.75rem;
+  font-size: 1.4rem;
   font-weight: 800;
   color: var(--blue-700);
   line-height: 1;
