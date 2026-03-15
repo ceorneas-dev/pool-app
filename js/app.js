@@ -739,7 +739,7 @@ async function renderClientList(searchTerm) {
       </div>
       <div class="client-actions">
         <button class="client-action-btn" onclick="openClientIntervention('${client.client_id}')">➕ Intervenție nouă</button>
-        ${admin ? `<button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">📋 Istoric</button>` : ''}
+        <button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">📋 Istoric</button>
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
@@ -3380,12 +3380,13 @@ function _renderHistoryList(clientId, allInterventions) {
     if (i.duration_minutes != null) {
       html += '<span class="prev-int-duration">⏱ ' + i.duration_minutes + ' min</span>';
     }
+    // Edit: all users; Delete: admin only
+    html += '<span style="display:flex;gap:4px;margin-left:auto">';
+    html += '<button onclick="editIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--blue-100);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--blue-700);cursor:pointer">✏️</button>';
     if (isAdmin()) {
-      html += '<span style="display:flex;gap:4px;margin-left:auto">';
-      html += '<button onclick="editIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--blue-100);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--blue-700);cursor:pointer">✏️</button>';
       html += '<button onclick="deleteIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--red-100,#fee2e2);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--danger);cursor:pointer">🗑️</button>';
-      html += '</span>';
     }
+    html += '</span>';
     html += '</div>';
     html += '<div class="prev-int-tech">👤 ' + escHtml(i.technician_name || '') + '</div>';
     html += '<div class="prev-int-measures">';
@@ -3442,7 +3443,6 @@ async function deleteIntervention(interventionId, clientId) {
 }
 
 function editIntervention(interventionId, clientId) {
-  if (!isAdmin()) return;
   var intervention = APP.interventions.find(function(i) { return i.intervention_id === interventionId; });
   if (!intervention) { showToast('Interventie negasita.', 'error'); return; }
 

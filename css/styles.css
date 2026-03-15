@@ -452,6 +452,11 @@ body.dark-mode .header-sync-btn:hover { background: rgba(255,255,255,0.1); }
   -webkit-overflow-scrolling: touch;
 }
 
+/* Technicians: no admin stats/settings, so client list can be taller */
+body.role-technician #client-list {
+  max-height: 65vh;
+}
+
 .client-card {
   background: white;
   border-radius: var(--radius);
