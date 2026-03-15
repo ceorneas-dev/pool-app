@@ -1698,7 +1698,7 @@ function showExportFilter(client, allInterventions) {
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
             '<input type="radio" name="exp-filter" value="last" checked style="accent-color:var(--primary)">' +
             '<span style="font-size:.88rem">Ultimele</span>' +
-            '<input type="number" id="exp-last-n" value="' + defaultCount + '" min="1" style="width:56px;padding:5px;border:1px solid var(--slate-200);border-radius:6px;text-align:center;font-size:.9rem">' +
+            '<input type="number" id="exp-last-n" value="' + defaultCount + '" min="1" max="1000" style="width:56px;padding:5px;border:1px solid var(--slate-200);border-radius:6px;text-align:center;font-size:.9rem">' +
             '<span style="font-size:.88rem">interventii</span>' +
           '</label>' +
           '<label style="display:flex;align-items:center;gap:8px;cursor:pointer">' +
