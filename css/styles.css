@@ -4246,3 +4246,35 @@ body.dark-mode .billing-action-btn:hover { background: #1a2744; }
 .billing-action-btn strong { display: block; font-size: .88rem; }
 .billing-action-btn small { display: block; font-size: .72rem; color: var(--text-secondary); }
 
+
+
+/* §35 Billing List Screen */
+.billing-list-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border: 1px solid var(--slate-200);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.billing-list-info { flex: 1; min-width: 0; }
+.billing-list-actions { display: flex; gap: 8px; margin-left: 10px; flex-shrink: 0; }
+.billing-list-btn {
+  width: 40px; height: 40px;
+  border-radius: 10px;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.billing-list-btn.export { background: var(--blue-100); color: var(--blue-700); }
+.billing-list-btn.export:hover { background: var(--blue-200); }
+.billing-list-btn.reset { background: var(--emerald-100); color: var(--emerald-700); }
+.billing-list-btn.reset:hover { background: var(--emerald-200); }
+
+body.dark-mode .billing-list-card { background: var(--dm-surface); border-color: var(--dm-border); }
+body.dark-mode .billing-list-btn.export { background: #1e3a8a; color: #93c5fd; }
+body.dark-mode .billing-list-btn.reset { background: #064e3b; color: #6ee7b7; }

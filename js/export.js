@@ -136,7 +136,7 @@ function exportClientXLSX(client, interventions) {
 
     const filename = 'PoolMgr_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
-    _uploadToDrive(wb, filename);
+    _uploadToDrive(wb, filename, null, client.name);
     return filename;
   });
 }
@@ -193,7 +193,7 @@ function exportAllXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Toate_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
-    _uploadToDrive(wb, filename);
+    _uploadToDrive(wb, filename, null, client.name);
     return filename;
   });
 }
@@ -253,7 +253,7 @@ function exportStructuredXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Structurat_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
-    _uploadToDrive(wb, filename);
+    _uploadToDrive(wb, filename, null, client.name);
     return filename;
   });
 }
@@ -629,7 +629,7 @@ function exportDevizChimicale(client, interventions) {
 
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname);
+    _uploadToDrive(wb, fname, null, client ? client.name : null);
     return fname;
   });
 }
@@ -695,7 +695,7 @@ function exportDevizComplet(client, interventions) {
 
     var fname = 'DevizComplet_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname);
+    _uploadToDrive(wb, fname, null, client ? client.name : null);
     return fname;
   });
 }
@@ -793,12 +793,12 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
 
     var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname);
+    _uploadToDrive(wb, fname, null, client ? client.name : null);
     return fname;
   });
 }
 
-function _uploadToDrive(wb, fileName, mimeType) {
+function _uploadToDrive(wb, fileName, mimeType, clientName) {
   if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
   try {
     var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
@@ -815,7 +815,7 @@ function _uploadToDrive(wb, fileName, mimeType) {
     }).then(function(r) { return r.json(); })
       .then(function(res) {
         if (res.success) {
-          showToast('Salvat in Drive: Export Interventii/' + fileName, 'success', 4000);
+          showToast('Salvat in Drive: Export Interventii/' + (clientName ? clientName + '/' : '') + fileName, 'success', 4000);
         } else {
           console.warn('[DRIVE] Save failed:', res.error);
         }
@@ -909,7 +909,7 @@ function exportBillingXLSX(client, interventions) {
     // Download
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname);
+    _uploadToDrive(wb, fname, null, client ? client.name : null);
     showToast('Deviz Excel descarcat: ' + fname, 'success');
   }).catch(function(e) {
     showToast('Eroare export: ' + e.message, 'error');

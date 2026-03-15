@@ -631,6 +631,17 @@ function handleSaveExportToDrive(body) {
     folder = DriveApp.createFolder(folderName);
   }
 
+  // If clientName provided, find or create client subfolder
+  var clientName = body.clientName || '';
+  if (clientName) {
+    var subFolders = folder.getFoldersByName(clientName);
+    if (subFolders.hasNext()) {
+      folder = subFolders.next();
+    } else {
+      folder = folder.createFolder(clientName);
+    }
+  }
+
   // Create file from base64
   var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, fileName);
   var file = folder.createFile(blob);

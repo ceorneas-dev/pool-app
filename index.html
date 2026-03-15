@@ -195,12 +195,6 @@
   <details id="settings-section" class="admin-only" style="margin:0 12px 100px;border-radius:12px;overflow:hidden;box-shadow:var(--shadow-sm)" ontoggle="if(this.open)renderObsTemplatesSettings()">
     <summary style="padding:12px 14px;font-size:.85rem;font-weight:700;color:var(--slate-600);cursor:pointer;list-style:none">⚙️ Setări</summary>
     <div>
-      <!-- Dark mode — available to all, always visible -->
-      <div class="settings-row" style="margin-top:4px">
-        <label>Mod intunecat</label>
-        <button id="btn-dark-mode" class="btn-settings-save" style="width:auto;padding:6px 16px" onclick="toggleDarkMode()">🌙 Toggle Dark Mode</button>
-      </div>
-
       <!-- API & Securitate -->
       <details style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">🌐 API & Securitate</summary>
@@ -320,6 +314,12 @@
           <button class="btn-primary" style="width:100%;padding:10px" onclick="openPricesSettings()">&#9881; Configureaza Preturi</button>
         </div>
       </details>
+
+      <!-- Dark mode — last item -->
+      <div class="settings-row" style="margin:4px 0 0;padding:10px 14px">
+        <label>🌙 Mod intunecat</label>
+        <button id="btn-dark-mode" class="btn-settings-save" style="width:auto;padding:6px 16px" onclick="toggleDarkMode()">🌙 Toggle</button>
+      </div>
     </div>
   </details>
 
@@ -588,6 +588,21 @@
     </div>
     <div id="map-hist-info" class="map-hist-info" style="display:none"></div>
   </div>
+</div>
+
+<!-- ════════════════════════════════════
+     SCREEN: BILLING LIST (De Facturat)
+════════════════════════════════════ -->
+<div id="screen-billing-list" class="screen">
+  <div class="screen-header" style="background:linear-gradient(135deg,var(--danger),#b91c1c);color:#fff">
+    <button class="back-btn" onclick="showScreen('dashboard')" style="color:#fff">&larr;</button>
+    <h2 style="margin:0;font-size:1.1rem">De Facturat</h2>
+    <div style="display:flex;gap:8px">
+      <button onclick="exportAllBilling()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 10px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer">&#128230; Export Toate</button>
+      <button onclick="resetAllBilling()" style="background:rgba(255,255,255,.2);border:none;color:#fff;padding:6px 10px;border-radius:8px;font-size:.8rem;font-weight:600;cursor:pointer">&#8634; Reset Total</button>
+    </div>
+  </div>
+  <div id="billing-list-content" style="padding:12px"></div>
 </div>
 
 <!-- ════════════════════════════════════

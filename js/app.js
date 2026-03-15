@@ -466,6 +466,15 @@ function renderDashboard() {
   if (el_today)   el_today.textContent   = todayCount;
   if (el_pending) el_pending.textContent = APP.pendingSync;
 
+  // Billing count (admin only)
+  if (isAdmin()) {
+    var billingCount = _getBillableClients().length;
+    var elBilling = $('stat-billing-count');
+    if (elBilling) elBilling.textContent = billingCount;
+    var billingCard = $('stat-billing-card');
+    if (billingCard) billingCard.style.display = billingCount > 0 ? '' : 'none';
+  }
+
   updateSyncBadge();
   renderClientList('');
   renderAdminStats();
@@ -3240,6 +3249,183 @@ function toggleSection(titleEl) {
   body.style.display = isHidden ? '' : 'none';
   const span = titleEl.querySelector('span') || titleEl;
   span.textContent = span.textContent.replace(/^[▶▼]\s*/, (isHidden ? '▼ ' : '▶ '));
+}
+
+// ════════════════════════════════════════════════════════════════
+// BILLING LIST SCREEN — De Facturat
+// ════════════════════════════════════════════════════════════════
+
+/** Get all clients that reached billing threshold */
+function _getBillableClients() {
+  if (!isAdmin()) return [];
+  return APP.clients.filter(function(client) {
+    var interval = client.billing_interval_interventions;
+    if (!interval || interval <= 0) return false;
+    var since = client.last_billing_date || '1970-01-01';
+    var count = APP.interventions.filter(function(i) {
+      return i.client_id === client.client_id && i.date > since;
+    }).length;
+    return count >= interval;
+  }).map(function(client) {
+    var since = client.last_billing_date || '1970-01-01';
+    var billable = APP.interventions.filter(function(i) {
+      return i.client_id === client.client_id && i.date > since;
+    }).sort(function(a, b) { return a.date.localeCompare(b.date); });
+    return { client: client, interventions: billable, count: billable.length };
+  });
+}
+
+/** Show billing list screen */
+function showBillingListScreen() {
+  if (!isAdmin()) return;
+  showScreen('billing-list');
+  renderBillingList();
+}
+
+/** Render the billing list */
+function renderBillingList() {
+  var container = $('billing-list-content');
+  if (!container) return;
+
+  var items = _getBillableClients();
+  if (!items.length) {
+    container.innerHTML = '<div style="text-align:center;padding:40px 20px;color:var(--text-secondary)">' +
+      '<div style="font-size:2.5rem;margin-bottom:12px">&#9989;</div>' +
+      '<p style="font-size:1rem;font-weight:600">Niciun client de facturat</p>' +
+      '<p style="font-size:.85rem">Toti clientii sunt la zi cu facturarea.</p></div>';
+    return;
+  }
+
+  var html = '<div style="margin-bottom:12px;font-size:.85rem;color:var(--text-secondary)">' +
+    items.length + ' client(i) de facturat</div>';
+
+  items.forEach(function(item) {
+    var c = item.client;
+    var since = c.last_billing_date ? fmtDate(c.last_billing_date) : 'prima interventie';
+    var interval = c.billing_interval_interventions || 4;
+
+    html += '<div class="billing-list-card">' +
+      '<div class="billing-list-info">' +
+        '<div style="font-weight:700;font-size:.95rem">' + escHtml(c.name) + '</div>' +
+        '<div style="font-size:.8rem;color:var(--text-secondary)">' +
+          item.count + ' interventii (prag: ' + interval + ') &middot; din ' + since +
+        '</div>' +
+      '</div>' +
+      '<div class="billing-list-actions">' +
+        '<button class="billing-list-btn export" onclick="exportBillingClient(\'' + c.client_id + '\')" title="Export Excel">&#128230;</button>' +
+        '<button class="billing-list-btn reset" onclick="resetBillingClient(\'' + c.client_id + '\')" title="Marcheaza facturat">&#8634;</button>' +
+      '</div>' +
+    '</div>';
+  });
+
+  container.innerHTML = html;
+}
+
+/** Export one client's billing deviz */
+async function exportBillingClient(clientId) {
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client) return;
+  var since = client.last_billing_date || '1970-01-01';
+  var billable = APP.interventions.filter(function(i) {
+    return i.client_id === clientId && i.date > since;
+  }).sort(function(a, b) { return a.date.localeCompare(b.date); });
+
+  if (!billable.length) { showToast('Nicio interventie de exportat.', 'warning'); return; }
+
+  showToast('Generare deviz ' + client.name + '...', 'info');
+  try {
+    var devizType = parseInt(client.deviz_type) || 1;
+    if (devizType === 2) {
+      await exportDevizComplet(client, billable);
+    } else {
+      await exportDevizChimicale(client, billable);
+    }
+    showToast('Export complet: ' + client.name, 'success');
+  } catch (e) {
+    showToast('Eroare export: ' + e.message, 'error');
+  }
+}
+
+/** Reset one client's billing (mark as billed) */
+async function resetBillingClient(clientId) {
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client) return;
+
+  client.last_billing_date = new Date().toISOString().split('T')[0];
+  client.updated_at = new Date().toISOString();
+  await put('clients', client);
+  APP.clients = APP.clients.map(function(c) { return c.client_id === clientId ? client : c; });
+
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+    }).catch(function(e) { console.warn('[SYNC] Billing push failed:', e.message); });
+  }
+
+  showToast(client.name + ' marcat ca facturat.', 'success');
+  renderBillingList();
+  var elBilling = $('stat-billing-count');
+  if (elBilling) elBilling.textContent = _getBillableClients().length;
+}
+
+/** Export all billing clients */
+async function exportAllBilling() {
+  var items = _getBillableClients();
+  if (!items.length) { showToast('Niciun client de facturat.', 'warning'); return; }
+
+  showToast('Export ' + items.length + ' clienti...', 'info');
+  var errors = 0;
+  for (var idx = 0; idx < items.length; idx++) {
+    var item = items[idx];
+    try {
+      var devizType = parseInt(item.client.deviz_type) || 1;
+      if (devizType === 2) {
+        await exportDevizComplet(item.client, item.interventions);
+      } else {
+        await exportDevizChimicale(item.client, item.interventions);
+      }
+    } catch (e) {
+      errors++;
+      console.warn('[BILLING] Export error for', item.client.name, e.message);
+    }
+  }
+  showToast('Export complet: ' + (items.length - errors) + ' clienti.' + (errors ? ' (' + errors + ' erori)' : ''), errors ? 'warning' : 'success');
+}
+
+/** Reset all billing clients */
+async function resetAllBilling() {
+  var items = _getBillableClients();
+  if (!items.length) { showToast('Niciun client de facturat.', 'warning'); return; }
+
+  var today = new Date().toISOString().split('T')[0];
+  var now = new Date().toISOString();
+  var updated = [];
+
+  for (var idx = 0; idx < items.length; idx++) {
+    var client = items[idx].client;
+    client.last_billing_date = today;
+    client.updated_at = now;
+    await put('clients', client);
+    updated.push(client);
+  }
+
+  APP.clients = APP.clients.map(function(c) {
+    var u = updated.find(function(x) { return x.client_id === c.client_id; });
+    return u || c;
+  });
+
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: updated })
+    }).catch(function(e) { console.warn('[SYNC] Billing reset push failed:', e.message); });
+  }
+
+  showToast(updated.length + ' clienti marcati ca facturati.', 'success');
+  renderBillingList();
+  var elBilling = $('stat-billing-count');
+  if (elBilling) elBilling.textContent = 0;
 }
 
 // ════════════════════════════════════════════════════════════════
