@@ -3,7 +3,7 @@
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v95';
+const CACHE_NAME   = 'pool-mgmt-v96';
 const APP_SHELL    = [
   './',
   './index.html',
@@ -42,7 +42,7 @@ self.addEventListener('install', event => {
         )
       );
     }).then(() => {
-      console.log('[SW] v38 installed');
+      console.log('[SW] v96 installed');
       return self.skipWaiting();
     })
   );
@@ -59,7 +59,7 @@ self.addEventListener('activate', event => {
         })
       )
     ).then(() => {
-      console.log('[SW] v38 activated');
+      console.log('[SW] v96 activated');
       return self.clients.claim();
     })
   );

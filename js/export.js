@@ -193,7 +193,7 @@ function exportAllXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Toate_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
-    _uploadToDrive(wb, filename, null, client.name);
+    _uploadToDrive(wb, filename, null, null);
     return filename;
   });
 }
@@ -253,7 +253,7 @@ function exportStructuredXLSX(clients, allInterventions) {
 
     const filename = 'PoolMgr_Structurat_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, filename);
-    _uploadToDrive(wb, filename, null, client.name);
+    _uploadToDrive(wb, filename, null, null);
     return filename;
   });
 }

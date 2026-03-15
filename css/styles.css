@@ -21,7 +21,7 @@
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
   --slate-300: #cbd5e1;
-  --slate-400: #94a3b8;
+  --slate-400: #cbd5e1;
   --slate-500: #64748b;
   --slate-600: #475569;
   --slate-700: #334155;
@@ -1574,7 +1574,7 @@ body.dark-mode {
   /* Semantic tokens (dark mode) */
   --text: #e2e8f0;
   --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
+  --text-secondary: #cbd5e1;
   --bg: #0f172a;
   --background: #0f172a;
   --surface: #1e293b;
@@ -1588,7 +1588,7 @@ body.dark-mode {
   --slate-200: #334155;
   --slate-300: #475569;
   --slate-400: #64748b;
-  --slate-500: #94a3b8;
+  --slate-500: #cbd5e1;
   --slate-600: #cbd5e1;
   --slate-700: #e2e8f0;
   --slate-800: #f1f5f9;
@@ -1615,14 +1615,14 @@ body.dark-mode .btn-modal-cancel {
   text-shadow: 0 1px 2px rgba(0,0,0,0.3);
 }
 body.dark-mode .btn-modal-cancel:active {
-  background: #94a3b8 !important;
+  background: #cbd5e1 !important;
   color: #0f172a !important;
 }
 body.dark-mode .modal-title {
   color: #f1f5f9;
 }
 body.dark-mode .modal-body p {
-  color: #94a3b8 !important;
+  color: #cbd5e1 !important;
 }
 
 body.dark-mode .modal-sheet,
@@ -1647,7 +1647,7 @@ body.dark-mode select {
 
 /* Dark mode: success screen text */
 body.dark-mode .success-card h2 { color: #f1f5f9; }
-body.dark-mode .success-card p  { color: #94a3b8 !important; }
+body.dark-mode .success-card p  { color: #cbd5e1 !important; }
 body.dark-mode .success-card    { background: #1e293b; }
 
 /* Dark mode: intervention header text */
@@ -1659,10 +1659,10 @@ body.dark-mode .client-info-btn          { background: rgba(255,255,255,0.15); c
 body.dark-mode .form-section-title { color: #e2e8f0; }
 body.dark-mode .measure-item label { color: #cbd5e1 !important; }
 body.dark-mode .stepper-label      { color: #e2e8f0; }
-body.dark-mode .stepper-label small { color: #94a3b8 !important; }
+body.dark-mode .stepper-label small { color: #cbd5e1 !important; }
 
 /* Dark mode: GPS indicator */
-body.dark-mode .gps-indicator { color: #94a3b8; }
+body.dark-mode .gps-indicator { color: #cbd5e1; }
 
 /* Dark mode: wizard dots */
 body.dark-mode .wiz-dot { background: #475569; }
@@ -1670,7 +1670,7 @@ body.dark-mode .wiz-dot.active { background: #60a5fa; }
 
 /* Dark mode: share buttons */
 body.dark-mode .btn-share { background: #334155; color: #e2e8f0; border-color: #475569; }
-body.dark-mode .success-share-hint { color: #94a3b8; }
+body.dark-mode .success-share-hint { color: #cbd5e1; }
 
 body.dark-mode .btn-primary,
 body.dark-mode .btn-save,
@@ -1686,7 +1686,7 @@ body.dark-mode .client-action-btn {
 
 body.dark-mode .tab-btn {
   background: #334155;
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 body.dark-mode .tab-btn.active {
   background: var(--blue-700);
@@ -1695,7 +1695,7 @@ body.dark-mode .tab-btn.active {
 
 body.dark-mode .obs-chip {
   background: #334155;
-  color: #94a3b8;
+  color: #cbd5e1;
   border-color: #475569;
 }
 body.dark-mode .obs-chip:hover {
@@ -1705,7 +1705,7 @@ body.dark-mode .obs-chip:hover {
 
 body.dark-mode .settings-row label,
 body.dark-mode summary {
-  color: #94a3b8;
+  color: #cbd5e1;
 }
 
 /* ══════════════════════════════════════════════════════════════
@@ -2138,7 +2138,7 @@ body.dark-mode {
   --slate-200: #334155;
   --slate-300: #475569;
   --slate-400: #64748b;
-  --slate-500: #94a3b8;
+  --slate-500: #cbd5e1;
   --slate-600: #cbd5e1;
   --slate-700: #e2e8f0;
   --slate-800: #f1f5f9;
@@ -3195,7 +3195,7 @@ body.dark-mode .info-rule,
 body.dark-mode .info-interdict,
 body.dark-mode .info-formula-row { border-color: #334155; color: #e2e8f0; }
 body.dark-mode .info-param-note,
-body.dark-mode .info-formula-note { color: #94a3b8; }
+body.dark-mode .info-formula-note { color: #cbd5e1; }
 body.dark-mode .info-formula-row code { background: #334155; color: #e2e8f0; }
 body.dark-mode .status-badge.status-ok     { background: #14532d; color: #86efac; }
 body.dark-mode .status-badge.status-warn   { background: #713f12; color: #fde68a; }
@@ -3276,7 +3276,7 @@ body.dark-mode .drum-popup {
   box-shadow: 0 8px 40px rgba(0,0,0,0.55);
 }
 body.dark-mode .drum-popup-label {
-  color: #94a3b8;
+  color: #cbd5e1;
   border-bottom-color: rgba(255,255,255,0.07);
 }
 body.dark-mode .drum-popup-center-line {
@@ -3286,7 +3286,7 @@ body.dark-mode .drum-popup-center-line {
 }
 body.dark-mode .drum-popup-item { color: #e2e8f0; }
 body.dark-mode .drum-popup-actions { border-top-color: rgba(255,255,255,0.07); }
-body.dark-mode .btn-drum-cancel { border-color: rgba(255,255,255,0.12); color: #94a3b8; }
+body.dark-mode .btn-drum-cancel { border-color: rgba(255,255,255,0.12); color: #cbd5e1; }
 
 /* ══════════════════════════════════════════════════════════════
    MAP SCREEN — Hartă GPS Tehnicieni (Leaflet.js)
@@ -3402,7 +3402,7 @@ body.dark-mode .btn-drum-cancel { border-color: rgba(255,255,255,0.12); color: #
 /* Dark mode */
 body.dark-mode .map-header { background: var(--primary); }
 body.dark-mode .map-legend { background: var(--surface); border-top-color: var(--border); }
-body.dark-mode .map-no-api { color: #94a3b8; }
+body.dark-mode .map-no-api { color: #cbd5e1; }
 body.dark-mode .map-history-panel { background: var(--surface); }
 body.dark-mode .map-hist-title { color: #cbd5e1; }
 
@@ -4283,6 +4283,6 @@ body.dark-mode .billing-action-btn:hover { background: #1a2744; }
 .billing-list-btn.reset { background: var(--emerald-100); color: var(--emerald-700); }
 .billing-list-btn.reset:hover { background: var(--emerald-200); }
 
-body.dark-mode .billing-list-card { background: var(--dm-surface); border-color: var(--dm-border); }
+body.dark-mode .billing-list-card { background: #1e293b; border-color: #334155; }
 body.dark-mode .billing-list-btn.export { background: #1e3a8a; color: #93c5fd; }
 body.dark-mode .billing-list-btn.reset { background: #064e3b; color: #6ee7b7; }
