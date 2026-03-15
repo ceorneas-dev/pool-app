@@ -199,11 +199,13 @@ function setupConnectivityIndicator() {
     const badge = $('conn-badge');
     if (!badge) return;
     if (navigator.onLine) {
-      badge.textContent = '🟢 Online';
-      badge.className = 'conn-badge online';
+      badge.textContent = '\u{1F7E2}';
+      badge.className = 'conn-dot online';
+      badge.title = 'Online';
     } else {
-      badge.textContent = '🔴 Offline';
-      badge.className = 'conn-badge offline';
+      badge.textContent = '\u{1F534}';
+      badge.className = 'conn-dot offline';
+      badge.title = 'Offline';
     }
   }
   window.addEventListener('online',  () => { update(); forceSync().catch(() => {}); });
@@ -484,6 +486,7 @@ function renderDashboard() {
   updateSyncBadge();
   renderClientList('');
   renderAdminStats();
+
 
   // Search
   const searchInput = $('search-input');
@@ -989,6 +992,13 @@ async function renderIntervention(client) {
         opsHtml += '<label class="ops-check-item"><input type="checkbox" id="op-' + idx + '" class="ops-checkbox" value="' + escHtml(op) + '"><span>' + escHtml(op) + '</span></label>';
       });
       opsContainer.innerHTML = opsHtml;
+      // If editing, re-check the operations
+      if (APP._editingIntervention && APP._editingIntervention.operations) {
+        var editOps = APP._editingIntervention.operations;
+        document.querySelectorAll('.ops-checkbox').forEach(function(chk) {
+          if (editOps.indexOf(chk.value) >= 0) chk.checked = true;
+        });
+      }
     });
   }
 
@@ -1018,7 +1028,7 @@ async function renderIntervention(client) {
 
   // Back button
   const backBtn = $('btn-back');
-  if (backBtn) backBtn.onclick = () => showScreen('dashboard');
+  if (backBtn) backBtn.onclick = () => { APP._editingIntervention = null; showScreen('dashboard'); };
 
   // Save button — managed by switchP2Tab()
 
@@ -1070,6 +1080,63 @@ function showSetLocationPrompt(client, pos) {
   put('clients', client).then(() => {
     APP.clients = APP.clients.map(c => c.client_id === client.client_id ? client : c);
   });
+}
+
+function _prefillInterventionForm(intv) {
+  // Date
+  if (intv.date) {
+    APP._interventionDate = intv.date;
+    var dateEl = $('intervention-date');
+    if (dateEl) {
+      var d = new Date(intv.date + 'T12:00:00');
+      dateEl.textContent = d.toLocaleDateString('ro-RO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+    }
+    var picker = $('intervention-date-picker');
+    if (picker) picker.value = intv.date;
+  }
+
+  // Measured values
+  var measuredFields = {
+    'm-chlorine': intv.measured_chlorine,
+    'm-ph': intv.measured_ph,
+    'm-temp': intv.measured_temp,
+    'm-hardness': intv.measured_hardness,
+    'm-alkalinity': intv.measured_alkalinity,
+    'm-salinity': intv.measured_salinity,
+    'm-tc': intv.measured_tc,
+    'm-cya': intv.measured_cya
+  };
+  Object.keys(measuredFields).forEach(function(id) {
+    var el = $(id);
+    if (el && measuredFields[id] != null) el.value = measuredFields[id];
+  });
+
+  // Observations
+  var obs = $('observations');
+  if (obs && intv.observations) obs.value = intv.observations;
+
+  // Treatment stepper values - use setTimeout to wait for renderTreatmentSteppers
+  setTimeout(function() {
+    Object.keys(intv).forEach(function(key) {
+      if (key.startsWith('treat_') && intv[key]) {
+        var inputId = 't-' + key.substring(6); // treat_xxx -> t-xxx
+        var el = $(inputId);
+        if (el) el.value = intv[key];
+      }
+    });
+  }, 500);
+
+  // Photos
+  if (intv.photos && intv.photos.length) {
+    APP.currentPhotos = [].concat(intv.photos);
+    renderPhotoGrid();
+  }
+
+  // Update recommendation with pre-filled values
+  updateRecommendation();
+
+  // Show edit indicator
+  showToast('Editezi interventie din ' + fmtDate(intv.date), 'info');
 }
 
 function resetInterventionForm() {
@@ -1390,6 +1457,7 @@ async function doSaveIntervention() {
       if (hint) { hint.style.display = 'none'; hint.textContent = ''; }
       showScreen('success');
       showToast('Intervenție salvată cu succes!', 'success');
+      APP._editingIntervention = null;
       // Auto-return to dashboard after 1s
       setTimeout(async () => {
         await loadData();
@@ -1406,6 +1474,7 @@ async function doSaveIntervention() {
       if (copyBtn) copyBtn.style.display = 'none';
       showScreen('success');
       showToast('✓ Intervenție salvată!', 'success');
+      APP._editingIntervention = null;
       setTimeout(async () => {
         await loadData();
         renderDashboard();
@@ -1491,24 +1560,14 @@ function showClientDetails(clientId) {
       <div class="client-detail-row"><span class="detail-label">Locație GPS</span><span class="detail-value">${hasLocation ? '✅ Setată' : '❌ Nesetată'}</span></div>
       ${client.notes ? `<div class="client-detail-row"><span class="detail-label">Note</span><span class="detail-value">${escHtml(client.notes)}</span></div>` : ''}
     </div>
-    <div class="client-detail-section">
-      <h4>Ultimele ${Math.min(ci.length, 5)} intervenții</h4>
-      ${ci.slice(0, 5).map(i => `
-        <div class="prev-intervention">
-          <div class="prev-int-header">
-            <span class="prev-int-date">${fmtDate(i.date)}</span>
-            ${i.duration_minutes != null ? `<span class="prev-int-duration">⏱ ${i.duration_minutes} min</span>` : ''}
-          </div>
-          <div class="prev-int-tech">👤 ${escHtml(i.technician_name || '')}</div>
-          <div class="prev-int-measures">
-            <span class="prev-measure">Cl: <strong>${i.measured_chlorine ?? '—'}</strong></span>
-            <span class="prev-measure">pH: <strong>${i.measured_ph ?? '—'}</strong></span>
-            <span class="prev-measure">Cl.gr: <strong>${i.treat_cl_granule_gr || 0}gr</strong></span>
-            <span class="prev-measure">pH.gr: <strong>${i.treat_ph_granule || 0}kg</strong></span>
-          </div>
-        </div>
-      `).join('')}
-      ${ci.length === 0 ? '<p style="color:var(--slate-400);font-size:.85rem">Nicio intervenție.</p>' : ''}
+    <div class="client-detail-section" id="history-section">
+      <h4>Istoric intervenții (${ci.length})</h4>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <label style="font-size:.8rem;color:var(--text-secondary)">Din data:</label>
+        <input type="date" id="history-date-filter" onchange="filterHistoryByDate('${clientId}')" style="font-size:.8rem;padding:4px 8px;border:1px solid var(--slate-300);border-radius:6px;background:var(--bg-primary);color:var(--text-primary)">
+        <button onclick="document.getElementById('history-date-filter').value='';filterHistoryByDate('${clientId}')" style="font-size:.7rem;padding:3px 8px;border:1px solid var(--slate-300);border-radius:6px;background:var(--bg-secondary);color:var(--text-secondary);cursor:pointer">Toate</button>
+      </div>
+      <div id="history-list"></div>
     </div>
     ${ci.length >= 2 ? `
     <div class="client-detail-section">
@@ -1526,6 +1585,9 @@ function showClientDetails(clientId) {
 
   $('modal-client-title').textContent = client.name;
   modal.classList.add('open');
+
+  // Render history list
+  _renderHistoryList(clientId, ci);
 
   if (ci.length >= 2) {
     requestAnimationFrame(() => drawParamsChart(clientId));
@@ -1979,6 +2041,29 @@ function switchTab(tab) {
   if (allBtn) allBtn.classList.toggle('active', tab === 'all');
   if (dueBtn) dueBtn.classList.toggle('active', tab === 'due');
   renderClientList($('search-input') ? $('search-input').value : '');
+}
+
+// ── Manual Sync ──────────────────────────────────────────────
+async function manualSync() {
+  var btn = $('btn-manual-sync');
+  var icon = $('sync-icon');
+  var text = null; // sync-text removed, button is icon-only
+  if (btn) btn.disabled = true;
+  if (icon) icon.style.animation = 'spin 1s linear infinite';
+  if (text) text.textContent = 'Se sincronizeaza...';
+
+  try {
+    await forceSync();
+    await loadData();
+    renderDashboard();
+    showToast('Sincronizare completa!', 'success');
+  } catch (e) {
+    showToast('Eroare sincronizare: ' + e.message, 'error');
+  }
+
+  if (btn) btn.disabled = false;
+  if (icon) icon.style.animation = '';
+  if (text) text.textContent = 'Sincronizeaza';
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -3255,6 +3340,122 @@ function toggleSection(titleEl) {
   body.style.display = isHidden ? '' : 'none';
   const span = titleEl.querySelector('span') || titleEl;
   span.textContent = span.textContent.replace(/^[▶▼]\s*/, (isHidden ? '▼ ' : '▶ '));
+}
+
+// ── History List Rendering ────────────────────────────────────
+function _renderHistoryList(clientId, allInterventions) {
+  var container = $('history-list');
+  if (!container) return;
+
+  var dateFilter = $('history-date-filter');
+  var fromDate = dateFilter ? dateFilter.value : '';
+  var filtered = allInterventions;
+  if (fromDate) {
+    filtered = allInterventions.filter(function(i) { return i.date >= fromDate; });
+  }
+
+  if (filtered.length === 0) {
+    container.innerHTML = '<p style="color:var(--slate-400);font-size:.85rem">Nicio intervenție' + (fromDate ? ' din această perioadă' : '') + '.</p>';
+    return;
+  }
+
+  var html = '';
+  filtered.forEach(function(i) {
+    var chems = [];
+    if (i.treat_cl_granule_gr > 0) chems.push('Cl.gr: ' + i.treat_cl_granule_gr + 'g');
+    if (i.treat_cl_tablete > 0) chems.push('Cl.tab: ' + i.treat_cl_tablete);
+    if (i.treat_ph_granule > 0) chems.push('pH: ' + i.treat_ph_granule + 'kg');
+    if (i.treat_antialgic > 0) chems.push('Anti: ' + i.treat_antialgic + 'L');
+    if (i.treat_floculant > 0) chems.push('Floc: ' + i.treat_floculant + 'L');
+    if (i.treat_bicarbonat > 0) chems.push('Dedur: ' + i.treat_bicarbonat + 'kg');
+    if (i.treat_ph_lichid_bidoane > 0) chems.push('pH.L: ' + i.treat_ph_lichid_bidoane);
+    if (i.treat_cl_lichid_bidoane > 0) chems.push('Cl.L: ' + i.treat_cl_lichid_bidoane);
+    if (i.treat_sare_saci > 0) chems.push('Sare: ' + i.treat_sare_saci);
+
+    var ops = (i.operations || []).join(', ');
+
+    html += '<div class="prev-intervention" style="position:relative">';
+    html += '<div class="prev-int-header">';
+    html += '<span class="prev-int-date">' + fmtDate(i.date) + '</span>';
+    if (i.duration_minutes != null) {
+      html += '<span class="prev-int-duration">⏱ ' + i.duration_minutes + ' min</span>';
+    }
+    if (isAdmin()) {
+      html += '<span style="display:flex;gap:4px;margin-left:auto">';
+      html += '<button onclick="editIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--blue-100);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--blue-700);cursor:pointer">✏️</button>';
+      html += '<button onclick="deleteIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--red-100,#fee2e2);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--danger);cursor:pointer">🗑️</button>';
+      html += '</span>';
+    }
+    html += '</div>';
+    html += '<div class="prev-int-tech">👤 ' + escHtml(i.technician_name || '') + '</div>';
+    html += '<div class="prev-int-measures">';
+    html += '<span class="prev-measure">Cl: <strong>' + (i.measured_chlorine != null ? i.measured_chlorine : '—') + '</strong></span>';
+    html += '<span class="prev-measure">pH: <strong>' + (i.measured_ph != null ? i.measured_ph : '—') + '</strong></span>';
+    html += '</div>';
+    if (chems.length) {
+      html += '<div class="prev-int-measures" style="margin-top:2px"><span class="prev-measure" style="font-size:.75rem;color:var(--text-secondary)">' + chems.join(' · ') + '</span></div>';
+    }
+    if (ops) {
+      html += '<div style="font-size:.72rem;color:var(--emerald-600);margin-top:2px">✓ ' + escHtml(ops) + '</div>';
+    }
+    if (i.observations) {
+      html += '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px;font-style:italic">"' + escHtml(i.observations) + '"</div>';
+    }
+    if (!i.synced) {
+      html += '<span style="font-size:.65rem;color:var(--amber-600);display:block;margin-top:2px">⚠ Nesincronizat</span>';
+    }
+    html += '</div>';
+  });
+
+  container.innerHTML = html;
+}
+
+function filterHistoryByDate(clientId) {
+  var ci = APP.interventions.filter(function(i) { return i.client_id === clientId; })
+    .sort(function(a, b) { return b.date.localeCompare(a.date); });
+  _renderHistoryList(clientId, ci);
+}
+
+// ── Delete / Edit Intervention ────────────────────────────────
+async function deleteIntervention(interventionId, clientId) {
+  if (!isAdmin()) return;
+  if (!confirm('Sigur vrei sa stergi aceasta interventie?')) return;
+
+  try {
+    await deleteByKey('interventions', interventionId);
+    APP.interventions = APP.interventions.filter(function(i) { return i.intervention_id !== interventionId; });
+
+    // If synced, notify GAS
+    if (isSyncConfigured()) {
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'delete_intervention', data: { intervention_id: interventionId } })
+      }).catch(function(e) { console.warn('[SYNC] Delete push failed:', e.message); });
+    }
+
+    showToast('Interventie stearsa.', 'success');
+    // Refresh the details modal
+    showClientDetails(clientId);
+  } catch (e) {
+    showToast('Eroare: ' + e.message, 'error');
+  }
+}
+
+function editIntervention(interventionId, clientId) {
+  if (!isAdmin()) return;
+  var intervention = APP.interventions.find(function(i) { return i.intervention_id === interventionId; });
+  if (!intervention) { showToast('Interventie negasita.', 'error'); return; }
+
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client) return;
+
+  // Close history modal
+  var modal = $('modal-client');
+  if (modal) modal.classList.remove('open');
+
+  // Open intervention screen with pre-filled data
+  APP._editingIntervention = intervention;
+  openClientIntervention(clientId);
 }
 
 // ════════════════════════════════════════════════════════════════

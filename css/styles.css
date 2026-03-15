@@ -362,6 +362,27 @@ body.dark-mode .login-link-btn:hover { color: #e2e8f0; }
 .conn-badge.online { color: #86efac; }
 .conn-badge.offline { color: #fca5a5; }
 
+.conn-dot {
+  font-size: 0.7rem;
+  cursor: default;
+  line-height: 1;
+}
+
+.header-sync-btn {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 6px;
+  line-height: 1;
+  transition: background .15s;
+}
+.header-sync-btn:hover { background: rgba(255,255,255,0.15); }
+.header-sync-btn:active { transform: scale(0.9); }
+
+body.dark-mode .header-sync-btn:hover { background: rgba(255,255,255,0.1); }
+
 /* Stats */
 .stats-grid {
   display: flex;

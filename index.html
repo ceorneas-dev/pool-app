@@ -95,7 +95,10 @@
     <div class="header-right">
       <button class="nav-menu-btn" onclick="toggleNavMenu()" title="Meniu">&#9776;</button>
       <button class="nav-menu-btn admin-only" onclick="openSettingsFromHeader()" title="Setări" style="font-size:1.2rem">&#9881;</button>
-      <span id="conn-badge" class="conn-badge online">🟢 Online</span>
+      <span id="conn-badge" class="conn-dot online" title="Online">&#x1F7E2;</span>
+      <button id="btn-manual-sync" onclick="manualSync()" class="header-sync-btn" title="Sincronizeaza">
+        <span id="sync-icon">&#128260;</span>
+      </button>
       <span id="sync-badge" class="sync-badge" title="Intervenții nesincronizate"></span>
     </div>
   </div>
