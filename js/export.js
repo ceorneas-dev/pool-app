@@ -834,20 +834,22 @@ function _buildChimicaleSheet(client, sorted, prices) {
       { fill: fillBK, font: _fnt('Arial', 9, false, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(topB, botB, S_THIN_L, S_MED) });
   }
 
-  // ═══ ROW 20 (idx 19): Cantitate totală ═══ (Python: A separate, B separate, C-J formulas, K separate)
+  // ═══ ROW 20 (idx 19): Cantitate totală ═══
   ws[XLSX.utils.encode_cell({ r: 19, c: 0 })] = _cellS('Cantitate total\u0103',
     { fill: F_HEADER, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_MED, S_THIN_N) });
-  ws[XLSX.utils.encode_cell({ r: 19, c: 1 })] = _cellS('',
-    { fill: F_HEADER, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N) });
+  // B20: SUM of Cant column (B10:B19)
+  ws[XLSX.utils.encode_cell({ r: 19, c: 1 })] = _cellF('SUM(B10:B19)',
+    { fill: F_HEADER, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N) });
   for (var sc = 0; sc < 8; sc++) {
     var colL20 = String.fromCharCode(67 + sc); // C=67
     ws[XLSX.utils.encode_cell({ r: 19, c: sc + 2 })] = _cellF('SUM(' + colL20 + '10:' + colL20 + '19)',
       { fill: F_HEADER, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N) });
   }
+  // K20: light fill (not dark blue like the rest of row 20)
   ws[XLSX.utils.encode_cell({ r: 19, c: 10 })] = _cellS('',
-    { fill: F_HEADER, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
+    { fill: F_DATA_BK, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
 
-  // ═══ ROW 21 (idx 20): Preț unitar (RON) ═══ (Python: A separate, B separate, C-J prices, K separate)
+  // ═══ ROW 21 (idx 20): Preț unitar (RON) ═══
   ws[XLSX.utils.encode_cell({ r: 20, c: 0 })] = _cellS('Pre\u021B unitar (RON)',
     { fill: F_LIGHT2, font: _fnt('Arial', 8.5, false, '0D2D5A'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(S_THIN_L, S_THIN_L, S_MED, S_THIN_L) });
   ws[XLSX.utils.encode_cell({ r: 20, c: 1 })] = _cellS('',
@@ -860,17 +862,18 @@ function _buildChimicaleSheet(client, sorted, prices) {
   ws[XLSX.utils.encode_cell({ r: 20, c: 10 })] = _cellS('',
     { fill: F_LIGHT2, border: _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_MED) });
 
-  // ═══ ROW 22 (idx 21): TOTAL GENERAL (RON) ═══ (Python: A separate, B separate, C-J formulas, K=SUM)
-  ws[XLSX.utils.encode_cell({ r: 21, c: 0 })] = _cellS('TOTAL GENERAL (RON)',
+  // ═══ ROW 22 (idx 21): TOTAL GENERAL ═══
+  ws[XLSX.utils.encode_cell({ r: 21, c: 0 })] = _cellS('TOTAL GENERAL',
     { fill: F_MID, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_MED, S_THIN_M) });
-  ws[XLSX.utils.encode_cell({ r: 21, c: 1 })] = _cellS('',
-    { fill: F_MID, border: _brd(S_THIN_M, S_THIN_M, S_THIN_M, S_THIN_M) });
+  // B22: =B20*B21 (cant totală × preț unitar din B)
+  ws[XLSX.utils.encode_cell({ r: 21, c: 1 })] = _cellF('B20*B21',
+    { fill: F_MID, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_THIN_M, S_THIN_M) });
   for (var gc = 0; gc < 8; gc++) {
     var gCol = String.fromCharCode(67 + gc);
     ws[XLSX.utils.encode_cell({ r: 21, c: gc + 2 })] = _cellF(gCol + '20*' + gCol + '21',
       { fill: F_MID, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_THIN_M, S_THIN_M) });
   }
-  ws[XLSX.utils.encode_cell({ r: 21, c: 10 })] = _cellF('SUM(C22,D22,E22,F22,G22,H22,I22,J22)',
+  ws[XLSX.utils.encode_cell({ r: 21, c: 10 })] = _cellF('SUM(B22:J22)',
     { fill: F_MID, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_N, S_THIN_N, S_THIN_N, S_MED) });
 
   // ═══ ROW 23 (idx 22): Footer ═══ (Python: A23:G23, H23:K23)
