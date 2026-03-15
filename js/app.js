@@ -930,16 +930,7 @@ async function deleteOperation(index) {
 }
 
 var DEFAULT_PRICES = {
-  pret_interventie: 250,
-  clor_rapid: 57,
-  clor_lent: 56.4,
-  ph_minus: 13,
-  antialgic: 29,
-  floculant: 25,
-  dedurizant: 32,
-  ph_lichid: 184,
-  cl_lichid: 180,
-  sare: 57
+  pret_interventie: 250
 };
 
 async function getExportPrices() {
@@ -1619,41 +1610,51 @@ function closeClientModal() {
 }
 
 
-// ── Prices Settings UI ───────────────────────────────────────
+// ── Prices Settings UI (dynamic, based on stock products) ────
 async function openPricesSettings() {
   var prices = await getExportPrices();
+  var stockProducts = await getAllStock();
   var modal = $('modal-prices');
   if (!modal) return;
-  var fields = [
-    { key: 'pret_interventie', label: 'Interventie (RON)' },
-    { key: 'clor_rapid', label: 'Clor Rapid (RON/kg)' },
-    { key: 'clor_lent', label: 'Clor Lent (RON/kg)' },
-    { key: 'ph_minus', label: 'pH- (RON/kg)' },
-    { key: 'antialgic', label: 'Antialgic (RON/L)' },
-    { key: 'floculant', label: 'Floculant (RON/L)' },
-    { key: 'dedurizant', label: 'Dedurizant (RON/kg)' },
-    { key: 'ph_lichid', label: 'pH Lichid (RON/bid)' },
-    { key: 'cl_lichid', label: 'Cl Lichid (RON/bid)' },
-    { key: 'sare', label: 'Sare (RON/sac)' }
-  ];
-  var html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
-  fields.forEach(function(f) {
-    html += '<div><label style="font-size:.72rem;font-weight:600;color:var(--text-secondary)">' + f.label + '</label>';
-    html += '<input type="number" id="price-' + f.key + '" class="form-input" style="width:100%" step="0.1" value="' + (prices[f.key] || 0) + '"></div>';
+
+  // Fixed field: preț intervenție
+  var html = '<div style="margin-bottom:12px"><label style="font-size:.78rem;font-weight:700;color:var(--text-secondary)">Pre\u021B interven\u021Bie (RON)</label>';
+  html += '<input type="number" id="price-pret_interventie" class="form-input" style="width:100%" step="0.5" value="' + (prices.pret_interventie || 250) + '"></div>';
+
+  // Dynamic fields from stock products
+  html += '<p style="font-size:.78rem;font-weight:700;color:var(--text-secondary);margin:8px 0 6px">Pre\u021Buri chimicale:</p>';
+  html += '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">';
+  stockProducts.forEach(function(p) {
+    var label = escHtml(p.name) + ' (RON/' + escHtml(p.unit || 'buc') + ')';
+    html += '<div><label style="font-size:.72rem;font-weight:600;color:var(--text-secondary)">' + label + '</label>';
+    html += '<input type="number" id="price-' + p.product_id + '" class="form-input" style="width:100%" step="0.1" value="' + (prices[p.product_id] || 0) + '"></div>';
   });
   html += '</div>';
+  if (!stockProducts.length) {
+    html += '<p style="font-size:.82rem;color:var(--slate-400)">Niciun produs \u00EEn stoc. Ad\u0103uga\u021Bi produse din Set\u0103ri \u2192 Stoc.</p>';
+  }
+
   $('modal-prices-body').innerHTML = html;
+  // Store product IDs for save
+  modal._stockProductIds = stockProducts.map(function(p) { return p.product_id; });
   modal.classList.add('open');
 }
 
 async function savePricesSettings() {
   var prices = {};
-  Object.keys(DEFAULT_PRICES).forEach(function(k) {
-    var el = $('price-' + k);
-    prices[k] = el ? (parseFloat(el.value) || 0) : DEFAULT_PRICES[k];
-  });
-  await saveExportPrices(prices);
+  // Fixed field
+  var pretEl = $('price-pret_interventie');
+  prices.pret_interventie = pretEl ? (parseFloat(pretEl.value) || 250) : 250;
+
+  // Dynamic product prices
   var modal = $('modal-prices');
+  var ids = (modal && modal._stockProductIds) || [];
+  ids.forEach(function(pid) {
+    var el = $('price-' + pid);
+    if (el) prices[pid] = parseFloat(el.value) || 0;
+  });
+
+  await saveExportPrices(prices);
   if (modal) modal.classList.remove('open');
   showToast('Preturi salvate!', 'success');
 }
