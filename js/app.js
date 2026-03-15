@@ -2009,7 +2009,14 @@ function escHtml(str) {
 
 function fmtDate(isoDate) {
   if (!isoDate) return '';
-  const d = new Date(isoDate + 'T12:00:00');
+  // Handle both YYYY-MM-DD and full Date strings
+  var d;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(isoDate)) {
+    d = new Date(isoDate + 'T12:00:00');
+  } else {
+    d = new Date(isoDate);
+  }
+  if (isNaN(d.getTime())) return '';
   return d.toLocaleDateString('ro-RO', { day: '2-digit', month: 'long', year: 'numeric' });
 }
 
