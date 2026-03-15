@@ -116,6 +116,8 @@ function doPost(e) {
       result = handleUpdateAudioCall(body);
     } else if (action === 'saveExportToDrive') {
       result = handleSaveExportToDrive(body);
+    } else if (action === 'sendEmail') {
+      result = handleSendEmail(body);
     } else if (body._type === 'location') {
       // OwnTracks HTTP mode — trimite direct fără câmpul "action"
       result = handleOwnTracksLocation(body);
@@ -653,6 +655,25 @@ function handleSaveExportToDrive(body) {
     fileUrl: file.getUrl(),
     folderUrl: folder.getUrl()
   };
+}
+
+function handleSendEmail(body) {
+  var to = body.to || '';
+  var subject = body.subject || 'Pool Manager - Notificare';
+  var emailBody = body.body || '';
+
+  if (!to) return { error: 'No email address provided' };
+
+  try {
+    MailApp.sendEmail({
+      to: to,
+      subject: subject,
+      body: emailBody
+    });
+    return { success: true };
+  } catch (e) {
+    return { error: 'Email send failed: ' + e.message };
+  }
 }
 
 function handleOwnTracksLocation(body) {

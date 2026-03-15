@@ -530,18 +530,71 @@ var ALL_CHEM_COLS = [
   { key: 'treat_floculant',           label: 'Floculant',   priceKey: 'floculant' },
   { key: 'treat_bicarbonat',          label: 'Dedurizant',  priceKey: 'dedurizant' },
   { key: 'treat_ph_lichid_bidoane',   label: 'Ph Lichid',   priceKey: 'ph_lichid' },
-  { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' },
-  { key: 'treat_sare_saci',           label: 'Sare',        priceKey: 'sare' }
+  { key: 'treat_cl_lichid_bidoane',   label: 'Cl Lichid',   priceKey: 'cl_lichid' }
 ];
 
-// ── Styled Deviz Helpers (xlsx-js-style) ─────────────────────────
+// ── Styled Deviz Constants (matching Python templates) ─────────────
 
-var _BORDER_THIN = {
-  top:    { style: 'thin', color: { rgb: 'B0B0B0' } },
-  bottom: { style: 'thin', color: { rgb: 'B0B0B0' } },
-  left:   { style: 'thin', color: { rgb: 'B0B0B0' } },
-  right:  { style: 'thin', color: { rgb: 'B0B0B0' } }
+// -- Border styles --
+var S_MED    = { style: 'medium', color: { rgb: '000000' } };
+var S_THIN_L = { style: 'thin',   color: { rgb: 'A8C8E8' } };
+var S_THIN_M = { style: 'thin',   color: { rgb: '1E5FA8' } };
+var S_THIN_N = { style: 'thin',   color: { rgb: '0D2D5A' } };
+var S_DOT    = { style: 'dotted', color: { rgb: '4A7A99' } };
+
+function _brd(top, bot, lft, rgt) {
+  var b = {};
+  if (top) b.top = top;
+  if (bot) b.bottom = bot;
+  if (lft) b.left = lft;
+  if (rgt) b.right = rgt;
+  return b;
+}
+
+// -- Fill colors --
+var F_NAVY    = { fgColor: { rgb: '0D2D5A' } };
+var F_MID     = { fgColor: { rgb: '1D507F' } };
+var F_ACCENT  = { fgColor: { rgb: '4DB8E8' } };
+var F_HEADER  = { fgColor: { rgb: '8DB4E2' } };
+var F_HDRDARK = { fgColor: { rgb: '1F4E79' } };
+var F_LIGHT1  = { fgColor: { rgb: 'E8F3FB' } };
+var F_LIGHT2  = { fgColor: { rgb: 'EDF4FB' } };
+var F_DATA_A  = { fgColor: { rgb: 'E0EEF8' } };
+var F_DATA_BK = { fgColor: { rgb: 'F0F6FB' } };
+var F_WHITE   = { fgColor: { rgb: 'FFFFFF' } };
+// V2-specific fills
+var F_HDRDARK2 = { fgColor: { rgb: '333F50' } };
+var F_SUBHDR   = { fgColor: { rgb: '3560A0' } };
+var F_DATA_E   = { fgColor: { rgb: 'D6E8F6' } };
+var F_DATA_O   = { fgColor: { rgb: 'FFFFFF' } };
+var F_TOT_DK   = { fgColor: { rgb: '223B6A' } };
+var F_TOT_HDR  = { fgColor: { rgb: '333F50' } };
+
+// -- Font presets --
+function _fnt(name, sz, bold, color) {
+  var f = { name: name || 'Arial', sz: sz || 10 };
+  if (bold) f.bold = true;
+  if (color) f.color = { rgb: color };
+  return f;
+}
+
+// -- Company info --
+var FIRMA_NUME    = 'S.C. AQUATIS ENGINEERING S.R.L.';
+var FIRMA_ADRESA  = 'Str. Eufrosina Popescu 50, Sector 3';
+var FIRMA_EMAIL   = 'office@aquatis.ro';
+var FIRMA_WEB     = 'www.aquatis.ro';
+var FIRMA_TELEFON = '0721.137.178';
+var FIRMA_J       = 'J40/18144/2007';
+var FIRMA_CUI     = 'RO22479681';
+var FIRMA_IBAN    = 'RO77RNCB0074092331280001';
+
+// -- Default prices --
+var DEFAULT_PRICES = {
+  clor_rapid: 57, clor_lent: 56.4, ph_minus: 13, antialgic: 29,
+  floculant: 25, dedurizant: 32, ph_lichid: 184, cl_lichid: 180
 };
+
+// ── Styled Deviz Helpers (xlsx-js-style) ─────────────────────────
 
 function _cellS(v, s) {
   if (v === null || v === undefined) v = '';
@@ -582,777 +635,575 @@ function _fillEmptyCells(ws, rowIdx, colCount, style) {
   }
 }
 
-// == Build styled V1 chimicale sheet ==
+function _setCell(ws, r, c, val, style) {
+  var ref = XLSX.utils.encode_cell({ r: r, c: c });
+  if (val !== null && val !== undefined && typeof val === 'object' && (val.hasOwnProperty('v') || val.hasOwnProperty('f'))) {
+    ws[ref] = val;
+  } else {
+    var t = typeof val === 'number' ? 'n' : 's';
+    ws[ref] = { t: t, v: (val === null || val === undefined) ? '' : val, s: style || {} };
+  }
+}
+
+function _mergeFill(ws, merges, r, cStart, cEnd, val, style) {
+  ws[XLSX.utils.encode_cell({ r: r, c: cStart })] = _cellS(val, style);
+  for (var c = cStart + 1; c <= cEnd; c++) {
+    ws[XLSX.utils.encode_cell({ r: r, c: c })] = _cellS('', style);
+  }
+  if (cEnd > cStart) merges.push({ s: { r: r, c: cStart }, e: { r: r, c: cEnd } });
+}
+
+// ── V1: Build Chimicale Sheet ──────────────────────────────────────
 function _buildChimicaleSheet(client, sorted, prices) {
-  var usedCols = ALL_CHEM_COLS.filter(function(c) {
-    return sorted.some(function(i) { return (parseFloat(i[c.key]) || 0) > 0; });
-  });
-
-  var numChem = usedCols.length;
-  var totalCols = 2 + numChem + 2; // A=Data, B=Cant, chemicals, empty sep, Total plata
-  var lastCol = totalCols - 1;
-  var lastChemCol = 2 + numChem - 1; // last chemical column index
-  var sepCol = 2 + numChem; // empty separator column index
-
+  var NR = 10; // fixed 10 data rows
+  var COLS = 11; // A-K
   var ws = {};
   var merges = [];
-  var r = 0; // current row
 
-  // Today's date
+  // Column widths A-K
+  ws['!cols'] = [
+    { wch: 16 }, { wch: 8 }, { wch: 10 }, { wch: 8 }, { wch: 8 },
+    { wch: 10 }, { wch: 8 }, { wch: 11 }, { wch: 10 }, { wch: 8 }, { wch: 13 }
+  ];
+
+  // Row heights (0-indexed)
+  ws['!rows'] = [
+    { hpt: 3.95 },  // row 0 (1)
+    { hpt: 48 },     // row 1 (2)
+    { hpt: 3 },      // row 2 (3)
+    { hpt: 20.1 },   // row 3 (4)
+    { hpt: 18 },     // row 4 (5)
+    { hpt: 15.95 },  // row 5 (6)
+    { hpt: 3.95 },   // row 6 (7)
+    { hpt: 26.1 },   // row 7 (8)
+    { hpt: 32.1 }    // row 8 (9)
+  ];
+  // rows 9-18: data rows (height 18)
+  for (var dr = 0; dr < NR; dr++) ws['!rows'].push({ hpt: 18 });
+  // row 19 (20): 20.1, row 20 (21): 17.1, row 21 (22): 21.95, row 22 (23): 20.25
+  ws['!rows'].push({ hpt: 20.1 });
+  ws['!rows'].push({ hpt: 17.1 });
+  ws['!rows'].push({ hpt: 21.95 });
+  ws['!rows'].push({ hpt: 20.25 });
+
+  // Date helpers
   var today = new Date();
   var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
   var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
-
-  // Period from interventions
   var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
   var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
   var period = firstDate + ' - ' + lastDate;
-
-  // Doc number
   var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
 
-  // Styles
-  var sNavy = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { color: { rgb: 'FFFFFF' }, sz: 1 }, border: _BORDER_THIN };
-  var sAccent = { fill: { fgColor: { rgb: '4DB8E8' } }, font: { sz: 1 }, border: _BORDER_THIN };
-  var sTitle = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 12, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sLabelRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sValueRow = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sSepRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 1 }, border: _BORDER_THIN };
-  var sHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-  var sSubHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 8.5, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-  var sCompany1 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sCompany2 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-  var sCompany3 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 8.5 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
+  // Chemical column labels (fixed C-J = cols 2-9)
+  var chemLabels = ['Clor\nRapid', 'Clor\nLent', 'pH\u2212', 'Anti-\nalgi\u0107', 'Flocu-\nlant', 'Deduri-\nzant', 'pH\nLichid', 'Cl\nLichid'];
+  var chemKeys = ['treat_cl_granule_gr', 'treat_cl_tablete_export_gr', 'treat_ph_granule', 'treat_antialgic', 'treat_floculant', 'treat_bicarbonat', 'treat_ph_lichid_bidoane', 'treat_cl_lichid_bidoane'];
+  var priceKeys = ['clor_rapid', 'clor_lent', 'ph_minus', 'antialgic', 'floculant', 'dedurizant', 'ph_lichid', 'cl_lichid'];
 
-  // === ROW 0: Dark navy banner ===
-  _fillEmptyCells(ws, r, totalCols, sNavy);
-  merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: lastCol } });
-  r++;
+  // ─── ROW 0 (row 1): Navy bar ───
+  var sNavyBar = { fill: F_NAVY, font: _fnt('Arial', 1, false, 'FFFFFF') };
+  _mergeFill(ws, merges, 0, 0, 10, '', sNavyBar);
 
-  // === ROW 1: Company info (3 sections) ===
-  var thirdW = Math.floor(totalCols / 3);
-  var sec1End = thirdW - 1;
-  var sec2End = thirdW * 2 - 1;
-  var sec3End = lastCol;
+  // ─── ROW 1 (row 2): Company info — 3 sections ───
+  var bdrCompany = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L);
+  var sComp1 = { fill: F_HEADER, font: _fnt('Arial', 11, true), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_MED, S_MED, S_THIN_L) };
+  var sComp2 = { fill: F_HEADER, font: _fnt('Arial', 9, false), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_MED, S_THIN_L, S_THIN_L) };
+  var sComp3 = { fill: F_HEADER, font: _fnt('Arial', 8.5, false), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_MED, S_THIN_L, S_MED) };
 
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('S.C. AQUATIS ENGINEERING S.R.L.', sCompany1);
-  for (var ci = 1; ci <= sec1End; ci++) ws[XLSX.utils.encode_cell({ r: r, c: ci })] = _cellS('', sCompany1);
-  merges.push({ s: { r: r, c: 0 }, e: { r: r, c: sec1End } });
+  _mergeFill(ws, merges, 1, 0, 3, FIRMA_NUME + '\n' + FIRMA_ADRESA, sComp1);   // A2:D2
+  _mergeFill(ws, merges, 1, 4, 6, FIRMA_EMAIL + '\n' + FIRMA_WEB + '\n' + FIRMA_TELEFON, sComp2); // E2:G2
+  _mergeFill(ws, merges, 1, 7, 10, FIRMA_J + '\nCUI: ' + FIRMA_CUI + '\nIBAN: ' + FIRMA_IBAN, sComp3); // H2:K2
 
-  ws[XLSX.utils.encode_cell({ r: r, c: sec1End + 1 })] = _cellS('office@aquatis.ro\nwww.aquatis.ro', sCompany2);
-  for (var ci2 = sec1End + 2; ci2 <= sec2End; ci2++) ws[XLSX.utils.encode_cell({ r: r, c: ci2 })] = _cellS('', sCompany2);
-  merges.push({ s: { r: r, c: sec1End + 1 }, e: { r: r, c: sec2End } });
+  // ─── ROW 2 (row 3): Accent bar ───
+  var sAccentBar = { fill: F_ACCENT, font: _fnt('Arial', 1, false, '4DB8E8') };
+  _mergeFill(ws, merges, 2, 0, 10, '', sAccentBar);
 
-  ws[XLSX.utils.encode_cell({ r: r, c: sec2End + 1 })] = _cellS('J40/18144/2007\nCUI: RO22479695', sCompany3);
-  for (var ci3 = sec2End + 2; ci3 <= sec3End; ci3++) ws[XLSX.utils.encode_cell({ r: r, c: ci3 })] = _cellS('', sCompany3);
-  merges.push({ s: { r: r, c: sec2End + 1 }, e: { r: r, c: sec3End } });
-  r++;
+  // ─── ROW 3 (row 4): Title ───
+  var sTitle = { fill: F_MID, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_M, S_MED, S_MED) };
+  _mergeFill(ws, merges, 3, 0, 10, 'RAPORT INTERVEN\u021AII \u2014 CHIMICALE PISCIN\u0102', sTitle);
 
-  // === ROW 2: Accent line ===
-  _fillEmptyCells(ws, r, totalCols, sAccent);
-  merges.push({ s: { r: r, c: 0 }, e: { r: r, c: lastCol } });
-  r++;
+  // ─── ROW 4 (row 5): Labels ───
+  var sLabel = { fill: F_LIGHT1, font: _fnt('Arial', 8, true, '404040'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_L, S_DOT, S_THIN_L, S_THIN_L) };
+  _mergeFill(ws, merges, 4, 0, 2, 'Client', sLabel);         // A5:C5
+  _mergeFill(ws, merges, 4, 3, 5, 'Perioada raportata', sLabel); // D5:F5
+  _mergeFill(ws, merges, 4, 6, 8, 'Nr. Document', sLabel);    // G5:I5
+  _mergeFill(ws, merges, 4, 9, 10, 'Data emiterii', sLabel);  // J5:K5
 
-  // === ROW 3: Title ===
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('RAPORT INTERVEN\u021AII \u2014 CHIMICALE FOLOSITE', sTitle);
-  _fillEmptyCells(ws, r, totalCols, sTitle);
-  merges.push({ s: { r: r, c: 0 }, e: { r: r, c: lastCol } });
-  r++;
+  // ─── ROW 5 (row 6): Values ───
+  var sValue = { fill: F_WHITE, font: _fnt('Arial', 10, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_DOT, S_THIN_L, S_THIN_L, S_THIN_L) };
+  _mergeFill(ws, merges, 5, 0, 2, client.name || '', sValue);
+  _mergeFill(ws, merges, 5, 3, 5, period, sValue);
+  _mergeFill(ws, merges, 5, 6, 8, docNr, sValue);
+  _mergeFill(ws, merges, 5, 9, 10, todayStr, sValue);
 
-  // === ROW 4: Labels row ===
-  var labQ = Math.floor(totalCols / 4);
-  var labGroups = [
-    { label: 'Client', start: 0, end: labQ - 1 },
-    { label: 'Luna / Perioada', start: labQ, end: labQ * 2 - 1 },
-    { label: 'Nr. Document', start: labQ * 2, end: labQ * 3 - 1 },
-    { label: 'Data emiterii', start: labQ * 3, end: lastCol }
-  ];
-  labGroups.forEach(function(g) {
-    ws[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(g.label, sLabelRow);
-    for (var lc = g.start + 1; lc <= g.end; lc++) ws[XLSX.utils.encode_cell({ r: r, c: lc })] = _cellS('', sLabelRow);
-    merges.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-  });
-  r++;
+  // ─── ROW 6 (row 7): Separator ───
+  var sSep = { fill: F_LIGHT1, font: _fnt('Arial', 1, false, 'E8F3FB') };
+  _mergeFill(ws, merges, 6, 0, 10, '', sSep);
 
-  // === ROW 5: Values row ===
-  var valValues = [client.name || '', period, docNr, todayStr];
-  labGroups.forEach(function(g, gi) {
-    ws[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(valValues[gi], sValueRow);
-    for (var vc = g.start + 1; vc <= g.end; vc++) ws[XLSX.utils.encode_cell({ r: r, c: vc })] = _cellS('', sValueRow);
-    merges.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-  });
-  r++;
+  // ─── ROW 7 (row 8): Header row 1 ───
+  var bdrHdr = _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N);
+  var sHdr1 = { fill: F_HDRDARK, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrHdr };
+  var sHdrChem = { fill: F_HEADER, font: _fnt('Arial', 10, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrHdr };
+  var sHdrTotal = { fill: F_HDRDARK, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrHdr };
 
-  // === ROW 6: Separator ===
-  _fillEmptyCells(ws, r, totalCols, sSepRow);
-  merges.push({ s: { r: r, c: 0 }, e: { r: r, c: lastCol } });
-  r++;
+  // A8:A9 "Data interventie" merged
+  _setCell(ws, 7, 0, '', sHdr1);
+  ws[XLSX.utils.encode_cell({ r: 7, c: 0 })] = _cellS('Data\ninterven\u021Bie', sHdr1);
+  _setCell(ws, 8, 0, '', sHdr1);
+  merges.push({ s: { r: 7, c: 0 }, e: { r: 8, c: 0 } });
 
-  // === ROW 7: Header row 1 ===
-  var headerRow1 = r;
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Data\ninterven\u021Bie', sHeader);
-  ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS('Cant.\n(l/kg)', sHeader);
+  // B8:B9 "Cant." merged
+  ws[XLSX.utils.encode_cell({ r: 7, c: 1 })] = _cellS('Cant.\n(l/kg)', sHdr1);
+  _setCell(ws, 8, 1, '', sHdr1);
+  merges.push({ s: { r: 7, c: 1 }, e: { r: 8, c: 1 } });
 
-  if (numChem > 0) {
-    ws[XLSX.utils.encode_cell({ r: r, c: 2 })] = _cellS('CHIMICALE FOLOSITE', { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN });
-    for (var hc = 3; hc <= lastChemCol; hc++) {
-      ws[XLSX.utils.encode_cell({ r: r, c: hc })] = _cellS('', sHeader);
-    }
-    if (numChem > 1) {
-      merges.push({ s: { r: r, c: 2 }, e: { r: r, c: lastChemCol } });
+  // C8:J8 "CHIMICALE FOLOSITE" merged
+  _mergeFill(ws, merges, 7, 2, 9, 'CHIMICALE FOLOSITE', sHdrChem);
+
+  // K8:K9 "Total plata" merged
+  ws[XLSX.utils.encode_cell({ r: 7, c: 10 })] = _cellS('Total\nplat\u0103', sHdrTotal);
+  _setCell(ws, 8, 10, '', sHdrTotal);
+  merges.push({ s: { r: 7, c: 10 }, e: { r: 8, c: 10 } });
+
+  // ─── ROW 8 (row 9): Sub-headers (chemical names) ───
+  var bdrSub = _brd(S_THIN_N, S_MED, S_THIN_N, S_THIN_N);
+  var sSubHdr = { fill: F_HEADER, font: _fnt('Arial', 8, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrSub };
+  for (var ci = 0; ci < 8; ci++) {
+    ws[XLSX.utils.encode_cell({ r: 8, c: ci + 2 })] = _cellS(chemLabels[ci], sSubHdr);
+  }
+
+  // ─── ROWS 9-18 (rows 10-19): Data rows ───
+  var bdrDataL = _brd(S_THIN_L, S_THIN_L, S_MED, S_THIN_L);
+  var bdrDataM = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L);
+  var bdrDataR = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_MED);
+
+  for (var di = 0; di < NR; di++) {
+    var rowIdx = 9 + di;
+    var fillD = (di % 2 === 0) ? F_DATA_A : F_WHITE;
+    var sDataL = { fill: fillD, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataL };
+    var sDataM = { fill: fillD, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataM };
+    var sDataR = { fill: fillD, font: _fnt('Arial', 9, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataR };
+
+    if (di < sorted.length) {
+      var intv = sorted[di];
+      // A: date
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })] = _cellS(fmtDateDMY(intv.date), sDataL);
+      // B: cant (sum of all chems)
+      var totalCant = 0;
+      for (var ck = 0; ck < chemKeys.length; ck++) {
+        totalCant += (parseFloat(intv[chemKeys[ck]]) || 0);
+      }
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 1 })] = _cellS(totalCant > 0 ? totalCant : '', sDataM);
+      // C-J: chemical values
+      for (var cc = 0; cc < 8; cc++) {
+        var val = parseFloat(intv[chemKeys[cc]]) || 0;
+        ws[XLSX.utils.encode_cell({ r: rowIdx, c: cc + 2 })] = _cellS(val > 0 ? val : '', sDataM);
+      }
+      // K: total plata for this row (sum of qty * price for each chem)
+      var rowTotal = 0;
+      for (var cp = 0; cp < 8; cp++) {
+        var qty = parseFloat(intv[chemKeys[cp]]) || 0;
+        var price = prices[priceKeys[cp]] || DEFAULT_PRICES[priceKeys[cp]] || 0;
+        rowTotal += qty * price;
+      }
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 10 })] = _cellS('', sDataR);
+    } else {
+      // Empty data row
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })] = _cellS('', sDataL);
+      for (var ec = 1; ec < 10; ec++) {
+        ws[XLSX.utils.encode_cell({ r: rowIdx, c: ec })] = _cellS('', sDataM);
+      }
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 10 })] = _cellS('', sDataR);
     }
   }
 
-  // Separator col empty
-  ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', sHeader);
+  // ─── ROW 19 (row 20): Cantitate totala ───
+  var bdrTotL = _brd(S_MED, S_THIN_M, S_MED, S_THIN_M);
+  var bdrTotM = _brd(S_MED, S_THIN_M, S_THIN_M, S_THIN_M);
+  var bdrTotR = _brd(S_MED, S_THIN_M, S_THIN_M, S_MED);
+  var sTotLabel = { fill: F_DATA_BK, font: _fnt('Arial', 9, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTotL };
+  var sTotVal   = { fill: F_DATA_BK, font: _fnt('Arial', 9, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTotM };
+  var sTotR     = { fill: F_DATA_BK, font: _fnt('Arial', 9, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTotR };
 
-  // Total plata header (merged with row 8)
-  ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellS('Total plat\u0103\n(RON)', sHeader);
-  r++;
+  _mergeFill(ws, merges, 19, 0, 1, 'Cantitate total\u0103', sTotLabel);
+  // SUM formulas for C20:J20 (cols 2-9, rows 10-19 = 0-indexed 9-18)
+  for (var sc = 0; sc < 8; sc++) {
+    var colLetter = String.fromCharCode(67 + sc); // C=67
+    var formula = 'SUM(' + colLetter + '10:' + colLetter + '19)';
+    ws[XLSX.utils.encode_cell({ r: 19, c: sc + 2 })] = _cellF(formula, sTotVal);
+  }
+  ws[XLSX.utils.encode_cell({ r: 19, c: 10 })] = _cellS('', sTotR);
 
-  // === ROW 8: Sub-headers ===
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('', sSubHeader);
-  ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS('', sSubHeader);
+  // ─── ROW 20 (row 21): Pret unitar ───
+  var sPretLabel = { fill: F_LIGHT1, font: _fnt('Arial', 9, true, '404040'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_MED, S_THIN_M) };
+  var sPretVal   = { fill: F_LIGHT1, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_THIN_M, S_THIN_M) };
+  var sPretR     = { fill: F_LIGHT1, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_M, S_THIN_M, S_THIN_M, S_MED) };
 
-  // Merge A7:A8, B7:B8
-  merges.push({ s: { r: headerRow1, c: 0 }, e: { r: r, c: 0 } });
-  merges.push({ s: { r: headerRow1, c: 1 }, e: { r: r, c: 1 } });
+  _mergeFill(ws, merges, 20, 0, 1, 'Pre\u021B unitar', sPretLabel);
+  for (var pc = 0; pc < 8; pc++) {
+    var prc = prices[priceKeys[pc]] || DEFAULT_PRICES[priceKeys[pc]] || 0;
+    ws[XLSX.utils.encode_cell({ r: 20, c: pc + 2 })] = _cellS(prc, sPretVal);
+  }
+  ws[XLSX.utils.encode_cell({ r: 20, c: 10 })] = _cellS('', sPretR);
 
-  // Chemical sub-headers
-  usedCols.forEach(function(c, ci2) {
-    ws[XLSX.utils.encode_cell({ r: r, c: 2 + ci2 })] = _cellS(c.label, sSubHeader);
-  });
+  // ─── ROW 21 (row 22): TOTAL GENERAL ───
+  var bdrGenL = _brd(S_MED, S_MED, S_MED, S_THIN_N);
+  var bdrGenM = _brd(S_MED, S_MED, S_THIN_N, S_THIN_N);
+  var bdrGenR = _brd(S_MED, S_MED, S_THIN_N, S_MED);
+  var sGenLabel = { fill: F_HDRDARK, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrGenL };
+  var sGenVal   = { fill: F_MID, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrGenM };
+  var sGenTot   = { fill: F_NAVY, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrGenR };
 
-  ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', sSubHeader);
+  _mergeFill(ws, merges, 21, 0, 1, 'TOTAL GENERAL', sGenLabel);
+  // Formulas: =C20*C21 for each chem column
+  for (var gc = 0; gc < 8; gc++) {
+    var gColLetter = String.fromCharCode(67 + gc);
+    var gFormula = gColLetter + '20*' + gColLetter + '21';
+    ws[XLSX.utils.encode_cell({ r: 21, c: gc + 2 })] = _cellF(gFormula, sGenVal);
+  }
+  // K22 = SUM(C22:J22)
+  ws[XLSX.utils.encode_cell({ r: 21, c: 10 })] = _cellF('SUM(C22:J22)', sGenTot);
 
-  // Merge lastCol row7:row8
-  ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellS('', sHeader);
-  merges.push({ s: { r: headerRow1, c: lastCol }, e: { r: r, c: lastCol } });
-  r++;
+  // ─── ROW 22 (row 23): Footer ───
+  var bdrFoot = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L);
+  var sFootL = { fill: F_LIGHT1, font: _fnt('Arial', 8.5, false, '555555'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrFoot };
+  var sFootR = { fill: F_LIGHT1, font: _fnt('Arial', 8.5, false, '555555'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrFoot };
 
-  // === DATA ROWS ===
-  var dataStartRow = r;
-  sorted.forEach(function(inv, idx) {
-    var isEven = idx % 2 === 0;
-    var bgColor = isEven ? 'E0EEF8' : 'F0F6FB';
-    var sDataCell = { fill: { fgColor: { rgb: bgColor } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sDateCell = { fill: { fgColor: { rgb: bgColor } }, font: { sz: 9 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
+  _mergeFill(ws, merges, 22, 0, 4, 'Pre\u021Burile sunt exprimate \u00EEn lei/kg.\nCantit\u0103\u021Bile sunt exprimate \u00EEn grame.', sFootL);
+  _mergeFill(ws, merges, 22, 5, 10, 'Generat automat \u2014 Pool Manager\n' + FIRMA_NUME, sFootR);
 
-    ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS(fmtDateDMY(inv.date), sDateCell);
-    ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS(1, sDataCell);
-
-    usedCols.forEach(function(c, ci3) {
-      var val = parseFloat(inv[c.key]) || 0;
-      ws[XLSX.utils.encode_cell({ r: r, c: 2 + ci3 })] = _cellS(val > 0 ? val : '', sDataCell);
-    });
-
-    ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', { fill: { fgColor: { rgb: bgColor } }, border: _BORDER_THIN });
-    ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellS('', sDataCell);
-    r++;
-  });
-  var dataEndRow = r - 1;
-
-  // === Empty separator row ===
-  _fillEmptyCells(ws, r, totalCols, { border: _BORDER_THIN });
-  r++;
-
-  // === Cantitate totala row ===
-  var totRowIdx = r;
-  var sTotRow = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sTotLabel = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Cantitate total\u0103', sTotLabel);
-  ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS(sorted.length, sTotRow);
-
-  usedCols.forEach(function(c, ci4) {
-    var colLetter = XLSX.utils.encode_cell({ r: 0, c: 2 + ci4 }).replace(/[0-9]/g, '');
-    var formula = 'SUM(' + colLetter + (dataStartRow + 1) + ':' + colLetter + (dataEndRow + 1) + ')';
-    ws[XLSX.utils.encode_cell({ r: r, c: 2 + ci4 })] = _cellF(formula, sTotRow);
-  });
-
-  ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', sTotRow);
-  ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellS('', sTotRow);
-  r++;
-
-  // === Pret unitar row ===
-  var priceRowIdx = r;
-  var sPriceRow = { fill: { fgColor: { rgb: 'EDF4FB' } }, font: { sz: 8.5 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sPriceLabel = { fill: { fgColor: { rgb: 'EDF4FB' } }, font: { sz: 8.5 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Pre\u021B unitar (RON)', sPriceLabel);
-  ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS(prices.pret_interventie || 0, sPriceRow);
-
-  usedCols.forEach(function(c, ci5) {
-    ws[XLSX.utils.encode_cell({ r: r, c: 2 + ci5 })] = _cellS(prices[c.priceKey] || 0, sPriceRow);
-  });
-
-  ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', sPriceRow);
-  ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellS('', sPriceRow);
-  r++;
-
-  // === TOTAL GENERAL row ===
-  var totalGenRowIdx = r;
-  var sTotalGen = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-  var sTotalGenLabel = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-  var sTotalGenFinal = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('TOTAL GENERAL (RON)', sTotalGenLabel);
-
-  // B col: formula = B_tot * B_price
-  var bTotRef = XLSX.utils.encode_cell({ r: totRowIdx, c: 1 });
-  var bPriceRef = XLSX.utils.encode_cell({ r: priceRowIdx, c: 1 });
-  ws[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellF(bTotRef + '*' + bPriceRef, sTotalGen);
-
-  var genFormulaRefs = [XLSX.utils.encode_cell({ r: r, c: 1 })];
-
-  usedCols.forEach(function(c, ci6) {
-    var colIdx = 2 + ci6;
-    var totRef = XLSX.utils.encode_cell({ r: totRowIdx, c: colIdx });
-    var priRef = XLSX.utils.encode_cell({ r: priceRowIdx, c: colIdx });
-    ws[XLSX.utils.encode_cell({ r: r, c: colIdx })] = _cellF(totRef + '*' + priRef, sTotalGen);
-    genFormulaRefs.push(XLSX.utils.encode_cell({ r: r, c: colIdx }));
-  });
-
-  ws[XLSX.utils.encode_cell({ r: r, c: sepCol })] = _cellS('', sTotalGen);
-
-  // Last col: SUM of all total general values
-  var sumFormula = genFormulaRefs.join('+');
-  ws[XLSX.utils.encode_cell({ r: r, c: lastCol })] = _cellF(sumFormula, sTotalGenFinal);
-  r++;
-
-  // === Footer row ===
-  var sFooterL = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-  var sFooterR = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'right', vertical: 'center' }, border: _BORDER_THIN };
-
-  var halfCols = Math.floor(totalCols / 2);
-  ws[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Toate pre\u021Burile sunt exprimate \u00een RON, f\u0103r\u0103 TVA', sFooterL);
-  for (var fc = 1; fc < halfCols; fc++) ws[XLSX.utils.encode_cell({ r: r, c: fc })] = _cellS('', sFooterL);
-  merges.push({ s: { r: r, c: 0 }, e: { r: r, c: halfCols - 1 } });
-
-  ws[XLSX.utils.encode_cell({ r: r, c: halfCols })] = _cellS('S.C. Aquatis Engineering S.R.L.', sFooterR);
-  for (var fc2 = halfCols + 1; fc2 <= lastCol; fc2++) ws[XLSX.utils.encode_cell({ r: r, c: fc2 })] = _cellS('', sFooterR);
-  merges.push({ s: { r: r, c: halfCols }, e: { r: r, c: lastCol } });
-  r++;
-
-  // Set sheet range
-  ws['!ref'] = XLSX.utils.encode_cell({ r: 0, c: 0 }) + ':' + XLSX.utils.encode_cell({ r: r - 1, c: lastCol });
+  // Set sheet ref and merges
+  ws['!ref'] = 'A1:K23';
   ws['!merges'] = merges;
 
-  // Column widths
-  var cols = [{ wch: 16 }, { wch: 8 }];
-  for (var wc = 0; wc < numChem; wc++) cols.push({ wch: 10 });
-  cols.push({ wch: 3 }); // separator
-  cols.push({ wch: 13 }); // total plata
-  ws['!cols'] = cols;
-
-  return { ws: ws, totalPlata: 0, usedCols: usedCols, dataStartRow: dataStartRow, dataEndRow: dataEndRow, totRowIdx: totRowIdx, priceRowIdx: priceRowIdx, totalGenRowIdx: totalGenRowIdx };
+  return ws;
 }
 
-// == Export Format 1: Deviz Chimicale (V1) — Styled ==
+// ── V2: Build Servicii Sheet ───────────────────────────────────────
+function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
+  // Build operations list: start with defaults, add any extras from interventions
+  var defaultOps = [
+    'Aspirare piscina', 'Curatare linie apa', 'Curatare skimmere',
+    'Spalare filtru', 'Curatare prefiltru', 'Periere piscina',
+    'Analiza apei', 'Tratament chimic'
+  ];
+  // Use provided opsList or defaults
+  var allOps = (opsList && opsList.length) ? opsList.slice() : defaultOps.slice();
+  // Scan interventions for any operations not yet in the list
+  sorted.forEach(function(intv) {
+    (intv.operations || []).forEach(function(op) {
+      if (op && allOps.indexOf(op) < 0) allOps.push(op);
+    });
+  });
+
+  var numOps = allOps.length;
+  var NR = 17; // fixed 17 data rows
+  var COLS = 1 + numOps; // A=Data + operation columns
+  var lastCol = COLS - 1;
+  var ws = {};
+  var merges = [];
+
+  // Display labels for known operations (wrap on /)
+  var knownLabels = {
+    'Aspirare piscina': 'Aspirare\npiscin\u0103',
+    'Curatare linie apa': 'Cur\u0103\u021Bare\nlinie ap\u0103',
+    'Curatare skimmere': 'Cur\u0103\u021Bare\nskimmere',
+    'Spalare filtru': 'Sp\u0103lare\nfiltru',
+    'Curatare prefiltru': 'Cur\u0103\u021Bare\nprefiltru',
+    'Periere piscina': 'Periere\npiscin\u0103',
+    'Analiza apei': 'Analiza\napei',
+    'Tratament chimic': 'Tratament\nchimic',
+    'Verificare automatizare': 'Verificare\nautomatizare'
+  };
+
+  // Column widths
+  var colWidths = [{ wch: 13 }]; // A = date
+  for (var cw = 0; cw < numOps; cw++) colWidths.push({ wch: 11 });
+  ws['!cols'] = colWidths;
+
+  // Row heights (0-indexed)
+  ws['!rows'] = [
+    { hpt: 3.95 },   // row 0 (1)
+    { hpt: 52 },      // row 1 (2)
+    { hpt: 3 },       // row 2 (3)
+    { hpt: 20.1 },    // row 3 (4)
+    { hpt: 15.95 },   // row 4 (5)
+    { hpt: 17.1 },    // row 5 (6)
+    { hpt: 3.95 },    // row 6 (7)
+    { hpt: 21.95 },   // row 7 (8)
+    { hpt: 45.95 }    // row 8 (9)
+  ];
+  // rows 9-25: data rows (height 20.1)
+  for (var dr = 0; dr < NR; dr++) ws['!rows'].push({ hpt: 20.1 });
+  // row 26 (27): 20.1, row 27 (28): 6, row 28 (29): 24, row 29 (30): 15
+  ws['!rows'].push({ hpt: 20.1 });
+  ws['!rows'].push({ hpt: 6 });
+  ws['!rows'].push({ hpt: 24 });
+  ws['!rows'].push({ hpt: 15 });
+
+  // ─── ROW 0 (row 1): Navy bar ───
+  var sNavyBar = { fill: F_NAVY, font: _fnt('Arial', 1, false, 'FFFFFF') };
+  // Date helpers
+  var today = new Date();
+  var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
+  var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
+  var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
+  var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
+  var period = firstDate + ' - ' + lastDate;
+  var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
+
+  // Helper to get column letter (0=A, 1=B, ..., 25=Z, 26=AA)
+  function colLetter(ci) { return XLSX.utils.encode_col(ci); }
+  var lastColLetter = colLetter(lastCol);
+
+  // ─── ROW 0 (row 1): Navy bar ───
+  var sNavyBar = { fill: F_NAVY, font: _fnt('Arial', 1, false, 'FFFFFF') };
+  _mergeFill(ws, merges, 0, 0, lastCol, '', sNavyBar);
+
+  // ─── ROW 1 (row 2): Company info — 3 sections ───
+  var third = Math.max(Math.floor(COLS / 3), 1);
+  var s1End = Math.min(third - 1, lastCol);
+  var s2End = Math.min(third * 2 - 1, lastCol);
+  var s3End = lastCol;
+
+  var sComp1 = { fill: F_HEADER, font: _fnt('Arial', 9, true), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_THIN_L, S_MED, S_THIN_L) };
+  var sComp2 = { fill: F_HEADER, font: _fnt('Arial', 9, false), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_THIN_L, S_THIN_L, S_THIN_L) };
+  var sComp3 = { fill: F_HEADER, font: _fnt('Arial', 8.5, false), alignment: { horizontal: 'left', vertical: 'center', wrapText: true }, border: _brd(S_MED, S_THIN_L, S_THIN_L, S_MED) };
+
+  _mergeFill(ws, merges, 1, 0, s1End, FIRMA_NUME + '\n' + FIRMA_ADRESA, sComp1);
+  _mergeFill(ws, merges, 1, s1End + 1, s2End, '  ' + FIRMA_EMAIL + '\n  ' + FIRMA_WEB + '\n  ' + FIRMA_TELEFON, sComp2);
+  _mergeFill(ws, merges, 1, s2End + 1, s3End, '  ' + FIRMA_J + '\n  CUI: ' + FIRMA_CUI + '\n  ' + FIRMA_IBAN, sComp3);
+
+  // ─── ROW 2 (row 3): Accent bar ───
+  var sAccentBar = { fill: F_ACCENT, font: _fnt('Arial', 1, false, '4DB8E8') };
+  _mergeFill(ws, merges, 2, 0, lastCol, '', sAccentBar);
+
+  // ─── ROW 3 (row 4): Title ───
+  var sTitleV2 = { fill: F_MID, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_M, S_MED, S_MED) };
+  _mergeFill(ws, merges, 3, 0, lastCol, 'RAPORT SERVICII \u2014 ABONAMENT \u00CENTRE\u021AINERE PISCIN\u0102', sTitleV2);
+
+  // ─── ROW 4 (row 5): Labels ───
+  var sLabelV2 = { fill: F_LIGHT1, font: _fnt('Arial', 8, true, '404040'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_L, S_DOT, S_THIN_L, S_THIN_L) };
+  var labQ = Math.max(Math.floor(COLS / 4), 1);
+  var lab1End = Math.min(labQ - 1, lastCol);
+  var lab2End = Math.min(labQ * 2 - 1, lastCol);
+  var lab3End = Math.min(labQ * 3 - 1, lastCol);
+  _mergeFill(ws, merges, 4, 0, lab1End, 'Client', sLabelV2);
+  _mergeFill(ws, merges, 4, lab1End + 1, lab2End, 'Perioada raportare', sLabelV2);
+  _mergeFill(ws, merges, 4, lab2End + 1, lab3End, 'Nr. Document', sLabelV2);
+  _mergeFill(ws, merges, 4, lab3End + 1, lastCol, 'Data Emiterii', sLabelV2);
+
+  // ─── ROW 5 (row 6): Values ───
+  var sValueV2 = { fill: F_WHITE, font: _fnt('Arial', 10, true, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_DOT, S_THIN_L, S_THIN_L, S_THIN_L) };
+  _mergeFill(ws, merges, 5, 0, lab1End, client.name || '', sValueV2);
+  _mergeFill(ws, merges, 5, lab1End + 1, lab2End, period, sValueV2);
+  _mergeFill(ws, merges, 5, lab2End + 1, lab3End, docNr, sValueV2);
+  _mergeFill(ws, merges, 5, lab3End + 1, lastCol, todayStr, sValueV2);
+
+  // ─── ROW 6 (row 7): Separator ───
+  var sSepV2 = { fill: F_LIGHT1, font: _fnt('Arial', 1, false, 'E8F3FB') };
+  _mergeFill(ws, merges, 6, 0, lastCol, '', sSepV2);
+
+  // ─── ROW 7 (row 8): Header row 1 ───
+  var bdrHdr2 = _brd(S_MED, S_THIN_N, S_THIN_N, S_THIN_N);
+  var sHdr1V2 = { fill: F_HDRDARK2, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrHdr2 };
+  var sHdrSvc = { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrHdr2 };
+
+  // A8:A9 "Data interventie" merged
+  ws[XLSX.utils.encode_cell({ r: 7, c: 0 })] = _cellS('Data\ninterven\u021Bie', sHdr1V2);
+  _setCell(ws, 8, 0, '', sHdr1V2);
+  merges.push({ s: { r: 7, c: 0 }, e: { r: 8, c: 0 } });
+
+  // B8:lastCol-1 "SERVICII INCLUSE IN ABONAMENT" merged
+  var svcMergeEnd = Math.max(lastCol - 1, 1);
+  _mergeFill(ws, merges, 7, 1, svcMergeEnd, 'SERVICII INCLUSE \u00CEN ABONAMENT', sHdrSvc);
+  // Last col header cell
+  if (lastCol > svcMergeEnd) {
+    ws[XLSX.utils.encode_cell({ r: 7, c: lastCol })] = _cellS('', sHdr1V2);
+  }
+
+  // ─── ROW 8 (row 9): Sub-headers (service names) ───
+  var bdrSub2 = _brd(S_THIN_N, S_MED, S_THIN_N, S_THIN_N);
+  var sSubHdrV2 = { fill: F_SUBHDR, font: _fnt('Arial', 8, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: bdrSub2 };
+  for (var si = 0; si < numOps; si++) {
+    var opName = allOps[si];
+    var label = knownLabels[opName] || opName.replace(/ /g, '\n');
+    ws[XLSX.utils.encode_cell({ r: 8, c: si + 1 })] = _cellS(label, sSubHdrV2);
+  }
+
+  // ─── ROWS 9-25 (rows 10-26): Data rows ───
+  var bdrDataL2 = _brd(S_THIN_L, S_THIN_L, S_MED, S_THIN_L);
+  var bdrDataM2 = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L);
+  var bdrDataR2 = _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_MED);
+
+  for (var di = 0; di < NR; di++) {
+    var rowIdx = 9 + di;
+    var fillD = (di % 2 === 0) ? F_DATA_E : F_DATA_O;
+    var sDateCell = { fill: fillD, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataL2 };
+    var sSvcCell  = { fill: fillD, font: _fnt('Arial', 11, true, '1B6B3A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataM2 };
+    var sSvcEmpty = { fill: fillD, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataM2 };
+    var sSvcCellR = { fill: fillD, font: _fnt('Arial', 11, true, '1B6B3A'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataR2 };
+    var sLastCell = { fill: fillD, font: _fnt('Arial', 9, false, '333333'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrDataR2 };
+
+    if (di < sorted.length) {
+      var intv = sorted[di];
+      // A: date
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })] = _cellS(fmtDateDMY(intv.date), sDateCell);
+      // B onwards: check services by exact match
+      var ops = intv.operations || [];
+      for (var sc = 0; sc < numOps; sc++) {
+        var matched = ops.indexOf(allOps[sc]) >= 0;
+        var isLast = (sc === numOps - 1);
+        if (matched) {
+          ws[XLSX.utils.encode_cell({ r: rowIdx, c: sc + 1 })] = _cellS('\u2713', isLast ? sSvcCellR : sSvcCell);
+        } else {
+          ws[XLSX.utils.encode_cell({ r: rowIdx, c: sc + 1 })] = _cellS('', isLast ? sLastCell : sSvcEmpty);
+        }
+      }
+    } else {
+      // Empty data row
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })] = _cellS('', sDateCell);
+      for (var ec = 1; ec < numOps; ec++) {
+        ws[XLSX.utils.encode_cell({ r: rowIdx, c: ec })] = _cellS('', sSvcEmpty);
+      }
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: lastCol })] = _cellS('', sLastCell);
+    }
+  }
+
+  // ─── ROW 26 (row 27): Total interventii efectuate ───
+  var bdrTot2L = _brd(S_MED, S_MED, S_MED, S_THIN_N);
+  var bdrTot2M = _brd(S_MED, S_MED, S_THIN_N, S_THIN_N);
+  var bdrTot2R = _brd(S_MED, S_MED, S_THIN_N, S_MED);
+  var sTotLabelV2 = { fill: F_TOT_HDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTot2L };
+  var sTotValV2   = { fill: F_TOT_DK, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTot2M };
+  var sTotRV2     = { fill: F_TOT_DK, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrTot2R };
+
+  ws[XLSX.utils.encode_cell({ r: 26, c: 0 })] = _cellS('Total interven\u021Bii efectuate', sTotLabelV2);
+  // COUNTA formulas for each ops column (rows 10-26)
+  for (var tc = 0; tc < numOps; tc++) {
+    var tCol = colLetter(tc + 1);
+    var tFormula = 'COUNTA(' + tCol + '10:' + tCol + '26)';
+    var isLast = (tc === numOps - 1);
+    ws[XLSX.utils.encode_cell({ r: 26, c: tc + 1 })] = _cellF(tFormula, isLast ? sTotRV2 : sTotValV2);
+  }
+
+  // ─── ROW 27 (row 28): Separator ───
+  var sSep2 = { fill: F_LIGHT1, font: _fnt('Arial', 1, false, 'E8F3FB') };
+  _mergeFill(ws, merges, 27, 0, lastCol, '', sSep2);
+
+  // ─── ROW 28 (row 29): TOTAL DE PLATA ───
+  var payLabelEnd = Math.max(lastCol - 2, 0);
+  var payValStart = payLabelEnd + 1;
+  var bdrPayL = _brd(S_MED, S_MED, S_MED, S_THIN_N);
+  var bdrPayR = _brd(S_MED, S_MED, S_THIN_N, S_MED);
+  var sPayLabel = { fill: F_HDRDARK2, font: _fnt('Arial', 11, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrPayL };
+  var sPayVal   = { fill: F_NAVY, font: _fnt('Arial', 12, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: bdrPayR };
+
+  _mergeFill(ws, merges, 28, 0, payLabelEnd, 'TOTAL DE PLAT\u0102', sPayLabel);
+  _mergeFill(ws, merges, 28, payValStart, lastCol, totalPlata || '', sPayVal);
+
+  // ─── ROW 29 (row 30): Footer ───
+  var sFootV2 = { fill: F_LIGHT1, font: _fnt('Arial', 8.5, false, '555555'), alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L) };
+  var footHalf = Math.floor(COLS / 2);
+  _mergeFill(ws, merges, 29, 0, footHalf - 1, 'Generat automat \u2014 Pool Manager', sFootV2);
+  _mergeFill(ws, merges, 29, footHalf, lastCol, FIRMA_NUME, sFootV2);
+
+  // Set sheet ref and merges
+  ws['!ref'] = 'A1:' + lastColLetter + '30';
+  ws['!merges'] = merges;
+
+  return ws;
+}
+
+// ── Export Deviz Chimicale (V1 only) ───────────────────────────────
 function exportDevizChimicale(client, interventions) {
   return loadXLSX().then(async function() {
-    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
-    var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : DEFAULT_PRICES;
 
-    var result = _buildChimicaleSheet(client, sorted, prices);
-    XLSX.utils.book_append_sheet(wb, result.ws, 'Raport Interventii');
+    var wb = XLSX.utils.book_new();
+    var ws = _buildChimicaleSheet(client, sorted, prices);
+    var sheetName = sanitizeSheetName(client.name || 'Chimicale');
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
-    var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
+    var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname, null, client ? client.name : null);
+    _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
 }
 
-// == Export Format 2: Deviz Complet (V2 — Chimicale + Servicii Abonament) — Styled ==
+// ── Export Deviz Complet (V1 + V2 in same workbook) ────────────────
 function exportDevizComplet(client, interventions) {
   return loadXLSX().then(async function() {
-    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
-    var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : DEFAULT_PRICES;
+    var opsList = (typeof getOperations === 'function') ? await getOperations() : null;
 
-    // Sheet 1: Chimicale (V1 styled)
-    var chemResult = _buildChimicaleSheet(client, sorted, prices);
-    XLSX.utils.book_append_sheet(wb, chemResult.ws, 'Raport Interventii');
+    var wb = XLSX.utils.book_new();
 
-    // Sheet 2: Servicii Abonament (V2 styled)
-    var opsList = (typeof getOperations === 'function') ? await getOperations() : [
-      'Aspirare piscina', 'Curatare linie apa', 'Curatare skimmere',
-      'Spalare filtru', 'Curatare prefiltru', 'Periere piscina',
-      'Analiza apei', 'Tratament chimic', 'Verificare automatizare'
-    ];
+    // Sheet 1: Chimicale (V1)
+    var ws1 = _buildChimicaleSheet(client, sorted, prices);
+    var name1 = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Chim');
+    XLSX.utils.book_append_sheet(wb, ws1, name1);
 
-    var numOps = opsList.length;
-    var v2TotalCols = 1 + numOps; // A=Data + operation columns
-    var v2LastCol = v2TotalCols - 1;
+    // Sheet 2: Servicii (V2)
+    var ws2 = _buildServiciiSheet(client, sorted, '', opsList);
+    var name2 = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Serv');
+    XLSX.utils.book_append_sheet(wb, ws2, name2);
 
-    var ws2 = {};
-    var merges2 = [];
-    var r = 0;
-
-    // Today
-    var today = new Date();
-    var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
-    var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
-    var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
-    var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
-    var period = firstDate + ' - ' + lastDate;
-    var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
-
-    // Styles
-    var sNavy = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { color: { rgb: 'FFFFFF' }, sz: 1 }, border: _BORDER_THIN };
-    var sAccent = { fill: { fgColor: { rgb: '4DB8E8' } }, font: { sz: 1 }, border: _BORDER_THIN };
-    var sTitle = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 12, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sLabelRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sValueRow = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sSepRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 1 }, border: _BORDER_THIN };
-    var sHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-    var sSubHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 8, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-    var sCompany1 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sCompany2 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-    var sCompany3 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 8.5 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-
-    // === ROW 0: Dark navy banner ===
-    _fillEmptyCells(ws2, r, v2TotalCols, sNavy);
-    merges2.push({ s: { r: 0, c: 0 }, e: { r: 0, c: v2LastCol } });
-    r++;
-
-    // === ROW 1: Company info ===
-    var thirdW = Math.floor(v2TotalCols / 3);
-    var sec1End = Math.max(thirdW - 1, 0);
-    var sec2End = Math.max(thirdW * 2 - 1, sec1End + 1);
-    var sec3End = v2LastCol;
-
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('S.C. AQUATIS ENGINEERING S.R.L.', sCompany1);
-    for (var ci = 1; ci <= sec1End; ci++) ws2[XLSX.utils.encode_cell({ r: r, c: ci })] = _cellS('', sCompany1);
-    if (sec1End > 0) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: sec1End } });
-
-    ws2[XLSX.utils.encode_cell({ r: r, c: sec1End + 1 })] = _cellS('office@aquatis.ro\nwww.aquatis.ro', sCompany2);
-    for (var ci2 = sec1End + 2; ci2 <= sec2End; ci2++) ws2[XLSX.utils.encode_cell({ r: r, c: ci2 })] = _cellS('', sCompany2);
-    if (sec2End > sec1End + 1) merges2.push({ s: { r: r, c: sec1End + 1 }, e: { r: r, c: sec2End } });
-
-    ws2[XLSX.utils.encode_cell({ r: r, c: sec2End + 1 })] = _cellS('J40/18144/2007\nCUI: RO22479695', sCompany3);
-    for (var ci3 = sec2End + 2; ci3 <= sec3End; ci3++) ws2[XLSX.utils.encode_cell({ r: r, c: ci3 })] = _cellS('', sCompany3);
-    if (sec3End > sec2End + 1) merges2.push({ s: { r: r, c: sec2End + 1 }, e: { r: r, c: sec3End } });
-    r++;
-
-    // === ROW 2: Accent line ===
-    _fillEmptyCells(ws2, r, v2TotalCols, sAccent);
-    merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // === ROW 3: Title ===
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('RAPORT SERVICII \u2014 ABONAMENT \u00cENTRE\u021aINERE', sTitle);
-    _fillEmptyCells(ws2, r, v2TotalCols, sTitle);
-    merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // === ROW 4: Labels ===
-    var labQ2 = Math.floor(v2TotalCols / 4);
-    if (labQ2 < 1) labQ2 = 1;
-    var labGroups2 = [
-      { label: 'Client', start: 0, end: Math.min(labQ2 - 1, v2LastCol) },
-      { label: 'Luna / Perioada', start: Math.min(labQ2, v2LastCol), end: Math.min(labQ2 * 2 - 1, v2LastCol) },
-      { label: 'Nr. Document', start: Math.min(labQ2 * 2, v2LastCol), end: Math.min(labQ2 * 3 - 1, v2LastCol) },
-      { label: 'Data emiterii', start: Math.min(labQ2 * 3, v2LastCol), end: v2LastCol }
-    ];
-    labGroups2.forEach(function(g) {
-      if (g.start > v2LastCol) return;
-      ws2[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(g.label, sLabelRow);
-      for (var lc = g.start + 1; lc <= g.end; lc++) ws2[XLSX.utils.encode_cell({ r: r, c: lc })] = _cellS('', sLabelRow);
-      if (g.end > g.start) merges2.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-    });
-    r++;
-
-    // === ROW 5: Values ===
-    var valValues2 = [client.name || '', period, docNr, todayStr];
-    labGroups2.forEach(function(g, gi) {
-      if (g.start > v2LastCol) return;
-      ws2[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(valValues2[gi], sValueRow);
-      for (var vc = g.start + 1; vc <= g.end; vc++) ws2[XLSX.utils.encode_cell({ r: r, c: vc })] = _cellS('', sValueRow);
-      if (g.end > g.start) merges2.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-    });
-    r++;
-
-    // === ROW 6: Separator ===
-    _fillEmptyCells(ws2, r, v2TotalCols, sSepRow);
-    merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // === ROW 7: Header row 1 ===
-    var v2HeaderRow1 = r;
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Data\ninterven\u021Bie', sHeader);
-
-    if (numOps > 0) {
-      ws2[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS('SERVICII INCLUSE \u00cEN ABONAMENT', { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN });
-      for (var hc = 2; hc <= v2LastCol; hc++) ws2[XLSX.utils.encode_cell({ r: r, c: hc })] = _cellS('', sHeader);
-      if (numOps > 1) merges2.push({ s: { r: r, c: 1 }, e: { r: r, c: v2LastCol } });
-    }
-    r++;
-
-    // === ROW 8: Sub-headers (operation names) ===
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('', sSubHeader);
-    // Merge A7:A8
-    merges2.push({ s: { r: v2HeaderRow1, c: 0 }, e: { r: r, c: 0 } });
-
-    // Operation name wrapping: split on space to add \n
-    var opNameWrap = {
-      'Aspirare piscina': 'Aspirare\npiscin\u0103',
-      'Curatare linie apa': 'Cur\u0103\u021Bare\nlinie ap\u0103',
-      'Curatare skimmere': 'Cur\u0103\u021Bare\nskimmere',
-      'Spalare filtru': 'Sp\u0103lare\nfiltru',
-      'Curatare prefiltru': 'Cur\u0103\u021Bare\nprefiltru',
-      'Periere piscina': 'Periere\npiscin\u0103',
-      'Analiza apei': 'Analiza\napei',
-      'Tratament chimic': 'Tratament\nchimic',
-      'Verificare automatizare': 'Verificare\nautomatizare'
-    };
-    opsList.forEach(function(op, oi) {
-      var label = opNameWrap[op] || op.replace(/ /g, '\n');
-      ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellS(label, sSubHeader);
-    });
-    r++;
-
-    // === DATA ROWS ===
-    var v2DataStart = r;
-    sorted.forEach(function(inv, idx) {
-      var isEven = idx % 2 === 0;
-      var bgColor = isEven ? 'E0EEF8' : 'F0F6FB';
-      var sDataCell = { fill: { fgColor: { rgb: bgColor } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-      var sCheckCell = { fill: { fgColor: { rgb: bgColor } }, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-
-      ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS(fmtDateDMY(inv.date), sDataCell);
-
-      var ops = inv.operations || [];
-      opsList.forEach(function(op, oi) {
-        var hasOp = ops.indexOf(op) >= 0;
-        ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellS(hasOp ? '\u2713' : '', hasOp ? sCheckCell : sDataCell);
-      });
-      r++;
-    });
-    var v2DataEnd = r - 1;
-
-    // === Empty filler rows (visual space, up to ~3 extra) ===
-    var fillerRows = Math.max(0, 3 - sorted.length);
-    for (var fi = 0; fi < fillerRows; fi++) {
-      _fillEmptyCells(ws2, r, v2TotalCols, { border: _BORDER_THIN });
-      r++;
-    }
-
-    // === Total interventii efectuate row ===
-    var sTotalDark = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-    var sTotalDarkL = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Total interven\u021Bii efectuate', sTotalDarkL);
-    opsList.forEach(function(op, oi) {
-      var colLetter = XLSX.utils.encode_cell({ r: 0, c: 1 + oi }).replace(/[0-9]/g, '');
-      var formula = 'COUNTIF(' + colLetter + (v2DataStart + 1) + ':' + colLetter + (v2DataEnd + 1) + ',"\u2713")';
-      ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellF(formula, sTotalDark);
-    });
-    r++;
-
-    // === Separator row ===
-    _fillEmptyCells(ws2, r, v2TotalCols, sSepRow);
-    merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // === TOTAL DE PLATA row ===
-    // Calculate total from chemResult — get the grand total from the V1 sheet
-    // We need the actual total: recalculate
-    var totalPlata = (prices.pret_interventie || 0) * sorted.length;
-    var usedChemCols = chemResult.usedCols || [];
-    usedChemCols.forEach(function(c) {
-      var s = 0;
-      sorted.forEach(function(inv) { s += parseFloat(inv[c.key]) || 0; });
-      totalPlata += s * (prices[c.priceKey] || 0);
-    });
-
-    var sTotalPay = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-    var sTotalPayVal = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-
-    var payLabelEnd = Math.max(v2LastCol - 2, 0);
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('TOTAL DE PLAT\u0102 (RON)', sTotalPay);
-    for (var pc = 1; pc <= payLabelEnd; pc++) ws2[XLSX.utils.encode_cell({ r: r, c: pc })] = _cellS('', sTotalPay);
-    if (payLabelEnd > 0) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: payLabelEnd } });
-
-    var payValStart = payLabelEnd + 1;
-    ws2[XLSX.utils.encode_cell({ r: r, c: payValStart })] = _cellS(totalPlata + ' lei', sTotalPayVal);
-    for (var pv = payValStart + 1; pv <= v2LastCol; pv++) ws2[XLSX.utils.encode_cell({ r: r, c: pv })] = _cellS('', sTotalPayVal);
-    if (v2LastCol > payValStart) merges2.push({ s: { r: r, c: payValStart }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // === Footer row ===
-    var sFooterL = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-    var sFooterR = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'right', vertical: 'center' }, border: _BORDER_THIN };
-
-    var halfCols2 = Math.floor(v2TotalCols / 2);
-    ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Document generat de S.C. Aquatis Engineering S.R.L.', sFooterL);
-    for (var fc = 1; fc < halfCols2; fc++) ws2[XLSX.utils.encode_cell({ r: r, c: fc })] = _cellS('', sFooterL);
-    if (halfCols2 > 1) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: halfCols2 - 1 } });
-
-    ws2[XLSX.utils.encode_cell({ r: r, c: halfCols2 })] = _cellS('www.aquatis.ro  |  0721.137.100', sFooterR);
-    for (var fc2 = halfCols2 + 1; fc2 <= v2LastCol; fc2++) ws2[XLSX.utils.encode_cell({ r: r, c: fc2 })] = _cellS('', sFooterR);
-    if (v2LastCol > halfCols2) merges2.push({ s: { r: r, c: halfCols2 }, e: { r: r, c: v2LastCol } });
-    r++;
-
-    // Set sheet range
-    ws2['!ref'] = XLSX.utils.encode_cell({ r: 0, c: 0 }) + ':' + XLSX.utils.encode_cell({ r: r - 1, c: v2LastCol });
-    ws2['!merges'] = merges2;
-
-    // Column widths
-    var v2Cols = [{ wch: 16 }, { wch: 13 }];
-    for (var wc = 1; wc < numOps; wc++) v2Cols.push({ wch: 10 });
-    ws2['!cols'] = v2Cols;
-
-    XLSX.utils.book_append_sheet(wb, ws2, 'Servicii Abonament');
-
-    var fname = 'DevizComplet_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
+    var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
     XLSX.writeFile(wb, fname);
-    _uploadToDrive(wb, fname, null, client ? client.name : null);
+    _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
 }
 
-// == Export ALL clients — Mixed V1/V2 per client.deviz_type — Styled ==
+// ── Export All Deviz Mixed (all clients) ───────────────────────────
 function exportAllDevizMixed(clients, allInterventions, filter) {
   return loadXLSX().then(async function() {
-    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
-    var opsList = (typeof getOperations === 'function') ? await getOperations() : [
-      'Aspirare piscina', 'Curatare linie apa', 'Curatare skimmere',
-      'Spalare filtru', 'Curatare prefiltru', 'Periere piscina',
-      'Analiza apei', 'Tratament chimic', 'Verificare automatizare'
-    ];
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : DEFAULT_PRICES;
+    var opsList = (typeof getOperations === 'function') ? await getOperations() : null;
     var wb = XLSX.utils.book_new();
     var sheetCount = 0;
 
-    for (var cx = 0; cx < clients.length; cx++) {
-      var client = clients[cx];
-      var ci = allInterventions.filter(function(i) { return i.client_id === client.client_id; });
-      if (!ci.length) continue;
+    clients.forEach(function(client) {
+      var cid = client.client_id;
+      var clientIntv = (allInterventions[cid] || []).slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
 
-      var sorted = ci.slice().sort(function(a, b) { return b.date.localeCompare(a.date); });
-      // Apply filter
-      if (filter && filter.mode === 'last') {
-        sorted = sorted.slice(0, filter.lastN || 4);
-      } else if (filter && filter.mode === 'date' && filter.fromDate) {
-        sorted = sorted.filter(function(i) { return i.date >= filter.fromDate; });
+      // Apply date filter if provided
+      if (filter && filter.startDate) {
+        clientIntv = clientIntv.filter(function(i) { return i.date >= filter.startDate; });
       }
-      // Re-sort ascending for display
-      sorted.sort(function(a, b) { return a.date.localeCompare(b.date); });
-      if (!sorted.length) continue;
+      if (filter && filter.endDate) {
+        clientIntv = clientIntv.filter(function(i) { return i.date <= filter.endDate; });
+      }
 
-      var devizType = parseInt(client.deviz_type) || 1;
-      var baseName = sanitizeSheetName(client.name);
+      if (clientIntv.length === 0) return;
 
-      // V1 sheet (chimicale) — always present
-      var chemResult = _buildChimicaleSheet(client, sorted, prices);
-      var chimName = devizType === 2 ? baseName.substring(0, 27) + '_Chim' : baseName;
-      if (wb.SheetNames.indexOf(chimName) >= 0) chimName = chimName.substring(0, 24) + '_' + (sheetCount + 1);
-      XLSX.utils.book_append_sheet(wb, chemResult.ws, chimName);
+      var baseName = sanitizeSheetName(client.name || 'Client');
 
-      if (devizType === 2) {
-        // Build V2 operations sheet (inline — same structure as exportDevizComplet's sheet 2)
-        var numOps = opsList.length;
-        var v2TotalCols = 1 + numOps;
-        var v2LastCol = v2TotalCols - 1;
-        var ws2 = {};
-        var merges2 = [];
-        var r = 0;
+      // Determine deviz type from client or filter
+      var devizType = (filter && filter.devizType) || client.deviz_type || 'V1';
 
-        var today = new Date();
-        var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
-        var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
-        var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
-        var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
-        var period = firstDate + ' - ' + lastDate;
-        var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
-
-        var sNavy = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { color: { rgb: 'FFFFFF' }, sz: 1 }, border: _BORDER_THIN };
-        var sAccent = { fill: { fgColor: { rgb: '4DB8E8' } }, font: { sz: 1 }, border: _BORDER_THIN };
-        var sTitle = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 12, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var sLabelRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { bold: true, sz: 8 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var sValueRow = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var sSepRow = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 1 }, border: _BORDER_THIN };
-        var sHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-        var sSubHeader = { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 8, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-        var sCompany1 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var sCompany2 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-        var sCompany3 = { fill: { fgColor: { rgb: 'CDE3F5' } }, font: { sz: 8.5 }, alignment: { horizontal: 'center', vertical: 'center', wrapText: true }, border: _BORDER_THIN };
-
-        // Row 0: navy
-        _fillEmptyCells(ws2, r, v2TotalCols, sNavy);
-        merges2.push({ s: { r: 0, c: 0 }, e: { r: 0, c: v2LastCol } });
-        r++;
-
-        // Row 1: company
-        var thirdW = Math.max(Math.floor(v2TotalCols / 3), 1);
-        var sec1End = Math.min(thirdW - 1, v2LastCol);
-        var sec2End = Math.min(thirdW * 2 - 1, v2LastCol);
-        var sec3End = v2LastCol;
-
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('S.C. AQUATIS ENGINEERING S.R.L.', sCompany1);
-        for (var ci = 1; ci <= sec1End; ci++) ws2[XLSX.utils.encode_cell({ r: r, c: ci })] = _cellS('', sCompany1);
-        if (sec1End > 0) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: sec1End } });
-        ws2[XLSX.utils.encode_cell({ r: r, c: sec1End + 1 })] = _cellS('office@aquatis.ro\nwww.aquatis.ro', sCompany2);
-        for (var ci2 = sec1End + 2; ci2 <= sec2End; ci2++) ws2[XLSX.utils.encode_cell({ r: r, c: ci2 })] = _cellS('', sCompany2);
-        if (sec2End > sec1End + 1) merges2.push({ s: { r: r, c: sec1End + 1 }, e: { r: r, c: sec2End } });
-        ws2[XLSX.utils.encode_cell({ r: r, c: sec2End + 1 })] = _cellS('J40/18144/2007\nCUI: RO22479695', sCompany3);
-        for (var ci3 = sec2End + 2; ci3 <= sec3End; ci3++) ws2[XLSX.utils.encode_cell({ r: r, c: ci3 })] = _cellS('', sCompany3);
-        if (sec3End > sec2End + 1) merges2.push({ s: { r: r, c: sec2End + 1 }, e: { r: r, c: sec3End } });
-        r++;
-
-        // Row 2: accent
-        _fillEmptyCells(ws2, r, v2TotalCols, sAccent);
-        merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        // Row 3: title
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('RAPORT SERVICII \u2014 ABONAMENT \u00cENTRE\u021aINERE', sTitle);
-        _fillEmptyCells(ws2, r, v2TotalCols, sTitle);
-        merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        // Row 4: labels
-        var labQ2 = Math.max(Math.floor(v2TotalCols / 4), 1);
-        var labGroups2 = [
-          { label: 'Client', start: 0, end: Math.min(labQ2 - 1, v2LastCol) },
-          { label: 'Luna / Perioada', start: Math.min(labQ2, v2LastCol), end: Math.min(labQ2 * 2 - 1, v2LastCol) },
-          { label: 'Nr. Document', start: Math.min(labQ2 * 2, v2LastCol), end: Math.min(labQ2 * 3 - 1, v2LastCol) },
-          { label: 'Data emiterii', start: Math.min(labQ2 * 3, v2LastCol), end: v2LastCol }
-        ];
-        var valValues2 = [client.name || '', period, docNr, todayStr];
-        labGroups2.forEach(function(g, gi) {
-          if (g.start > v2LastCol) return;
-          ws2[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(g.label, sLabelRow);
-          for (var lc = g.start + 1; lc <= g.end; lc++) ws2[XLSX.utils.encode_cell({ r: r, c: lc })] = _cellS('', sLabelRow);
-          if (g.end > g.start) merges2.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-        });
-        r++;
-
-        // Row 5: values
-        labGroups2.forEach(function(g, gi) {
-          if (g.start > v2LastCol) return;
-          ws2[XLSX.utils.encode_cell({ r: r, c: g.start })] = _cellS(valValues2[gi], sValueRow);
-          for (var vc = g.start + 1; vc <= g.end; vc++) ws2[XLSX.utils.encode_cell({ r: r, c: vc })] = _cellS('', sValueRow);
-          if (g.end > g.start) merges2.push({ s: { r: r, c: g.start }, e: { r: r, c: g.end } });
-        });
-        r++;
-
-        // Row 6: separator
-        _fillEmptyCells(ws2, r, v2TotalCols, sSepRow);
-        merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        // Row 7: header
-        var v2HeaderRow1 = r;
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Data\ninterven\u021Bie', sHeader);
-        if (numOps > 0) {
-          ws2[XLSX.utils.encode_cell({ r: r, c: 1 })] = _cellS('SERVICII INCLUSE \u00cEN ABONAMENT', { fill: { fgColor: { rgb: '1D507F' } }, font: { bold: true, sz: 10, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN });
-          for (var hc = 2; hc <= v2LastCol; hc++) ws2[XLSX.utils.encode_cell({ r: r, c: hc })] = _cellS('', sHeader);
-          if (numOps > 1) merges2.push({ s: { r: r, c: 1 }, e: { r: r, c: v2LastCol } });
-        }
-        r++;
-
-        // Row 8: sub-headers
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('', sSubHeader);
-        merges2.push({ s: { r: v2HeaderRow1, c: 0 }, e: { r: r, c: 0 } });
-        var opNameWrap = {
-          'Aspirare piscina': 'Aspirare\npiscin\u0103',
-          'Curatare linie apa': 'Cur\u0103\u021Bare\nlinie ap\u0103',
-          'Curatare skimmere': 'Cur\u0103\u021Bare\nskimmere',
-          'Spalare filtru': 'Sp\u0103lare\nfiltru',
-          'Curatare prefiltru': 'Cur\u0103\u021Bare\nprefiltru',
-          'Periere piscina': 'Periere\npiscin\u0103',
-          'Analiza apei': 'Analiza\napei',
-          'Tratament chimic': 'Tratament\nchimic',
-          'Verificare automatizare': 'Verificare\nautomatizare'
-        };
-        opsList.forEach(function(op, oi) {
-          var label = opNameWrap[op] || op.replace(/ /g, '\n');
-          ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellS(label, sSubHeader);
-        });
-        r++;
-
-        // Data rows
-        var v2DataStart = r;
-        sorted.forEach(function(inv, idx) {
-          var isEven = idx % 2 === 0;
-          var bgColor = isEven ? 'E0EEF8' : 'F0F6FB';
-          var sDataCell = { fill: { fgColor: { rgb: bgColor } }, font: { sz: 9 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-          var sCheckCell = { fill: { fgColor: { rgb: bgColor } }, font: { bold: true, sz: 12 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-          ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS(fmtDateDMY(inv.date), sDataCell);
-          var ops = inv.operations || [];
-          opsList.forEach(function(op, oi) {
-            var hasOp = ops.indexOf(op) >= 0;
-            ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellS(hasOp ? '\u2713' : '', hasOp ? sCheckCell : sDataCell);
-          });
-          r++;
-        });
-        var v2DataEnd = r - 1;
-
-        // Total row
-        var sTotalDark = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var sTotalDarkL = { fill: { fgColor: { rgb: '0D2D5A' } }, font: { bold: true, sz: 9, color: { rgb: 'FFFFFF' } }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Total interven\u021Bii efectuate', sTotalDarkL);
-        opsList.forEach(function(op, oi) {
-          var colLetter = XLSX.utils.encode_cell({ r: 0, c: 1 + oi }).replace(/[0-9]/g, '');
-          var formula = 'COUNTIF(' + colLetter + (v2DataStart + 1) + ':' + colLetter + (v2DataEnd + 1) + ',"\u2713")';
-          ws2[XLSX.utils.encode_cell({ r: r, c: 1 + oi })] = _cellF(formula, sTotalDark);
-        });
-        r++;
-
-        // Separator
-        _fillEmptyCells(ws2, r, v2TotalCols, sSepRow);
-        merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        // Total de plata
-        var totalPlata = (prices.pret_interventie || 0) * sorted.length;
-        var usedChemCols = chemResult.usedCols || [];
-        usedChemCols.forEach(function(c) {
-          var s = 0;
-          sorted.forEach(function(inv) { s += parseFloat(inv[c.key]) || 0; });
-          totalPlata += s * (prices[c.priceKey] || 0);
-        });
-
-        var sTotalPay = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-        var sTotalPayVal = { font: { bold: true, sz: 10 }, alignment: { horizontal: 'center', vertical: 'center' }, border: _BORDER_THIN };
-        var payLabelEnd = Math.max(v2LastCol - 2, 0);
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('TOTAL DE PLAT\u0102 (RON)', sTotalPay);
-        for (var pc = 1; pc <= payLabelEnd; pc++) ws2[XLSX.utils.encode_cell({ r: r, c: pc })] = _cellS('', sTotalPay);
-        if (payLabelEnd > 0) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: payLabelEnd } });
-        var payValStart = payLabelEnd + 1;
-        ws2[XLSX.utils.encode_cell({ r: r, c: payValStart })] = _cellS(totalPlata + ' lei', sTotalPayVal);
-        for (var pv = payValStart + 1; pv <= v2LastCol; pv++) ws2[XLSX.utils.encode_cell({ r: r, c: pv })] = _cellS('', sTotalPayVal);
-        if (v2LastCol > payValStart) merges2.push({ s: { r: r, c: payValStart }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        // Footer
-        var sFooterL = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'left', vertical: 'center' }, border: _BORDER_THIN };
-        var sFooterR = { fill: { fgColor: { rgb: 'E8F3FB' } }, font: { sz: 7.5 }, alignment: { horizontal: 'right', vertical: 'center' }, border: _BORDER_THIN };
-        var halfCols2 = Math.floor(v2TotalCols / 2);
-        ws2[XLSX.utils.encode_cell({ r: r, c: 0 })] = _cellS('Document generat de S.C. Aquatis Engineering S.R.L.', sFooterL);
-        for (var fc = 1; fc < halfCols2; fc++) ws2[XLSX.utils.encode_cell({ r: r, c: fc })] = _cellS('', sFooterL);
-        if (halfCols2 > 1) merges2.push({ s: { r: r, c: 0 }, e: { r: r, c: halfCols2 - 1 } });
-        ws2[XLSX.utils.encode_cell({ r: r, c: halfCols2 })] = _cellS('www.aquatis.ro  |  0721.137.100', sFooterR);
-        for (var fc2 = halfCols2 + 1; fc2 <= v2LastCol; fc2++) ws2[XLSX.utils.encode_cell({ r: r, c: fc2 })] = _cellS('', sFooterR);
-        if (v2LastCol > halfCols2) merges2.push({ s: { r: r, c: halfCols2 }, e: { r: r, c: v2LastCol } });
-        r++;
-
-        ws2['!ref'] = XLSX.utils.encode_cell({ r: 0, c: 0 }) + ':' + XLSX.utils.encode_cell({ r: r - 1, c: v2LastCol });
-        ws2['!merges'] = merges2;
-        var v2Cols = [{ wch: 16 }, { wch: 13 }];
-        for (var wc = 1; wc < numOps; wc++) v2Cols.push({ wch: 10 });
-        ws2['!cols'] = v2Cols;
-
-        var opsName = baseName.substring(0, 28) + '_Ops';
+      if (devizType === 'V2' || devizType === 'complet') {
+        // Add Servicii sheet
+        var ws2 = _buildServiciiSheet(client, clientIntv, '', opsList);
+        var opsName = baseName.substring(0, 28) + '_Sv';
         if (wb.SheetNames.indexOf(opsName) >= 0) opsName = opsName.substring(0, 24) + '_' + (sheetCount + 1);
         XLSX.utils.book_append_sheet(wb, ws2, opsName);
+        sheetCount++;
       }
 
-      sheetCount++;
-    }
+      if (devizType === 'V1' || devizType === 'complet') {
+        // Add Chimicale sheet
+        var ws1 = _buildChimicaleSheet(client, clientIntv, prices);
+        var chemName = baseName.substring(0, 28) + '_Ch';
+        if (wb.SheetNames.indexOf(chemName) >= 0) chemName = chemName.substring(0, 24) + '_' + (sheetCount + 1);
+        XLSX.utils.book_append_sheet(wb, ws1, chemName);
+        sheetCount++;
+      }
+    });
 
     if (sheetCount === 0) {
       showToast('Nicio interventie de exportat.', 'warning');
@@ -1378,7 +1229,8 @@ function _uploadToDrive(wb, fileName, mimeType, clientName) {
         action: 'saveExportToDrive',
         fileName: fileName,
         data: wbout,
-        mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        clientName: clientName || ''
       })
     }).then(function(r) { return r.json(); })
       .then(function(res) {

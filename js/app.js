@@ -605,6 +605,11 @@ function renderDashboard() {
         APP.gpsEnd   = newEnd;
         updateGpsToggleBtn(); // reflectă noile ore imediat
       }
+      // Notification email
+      const emailEl = $('settings-notif-email');
+      if (emailEl && emailEl.value.trim()) {
+        await setSetting('notification_email', emailEl.value.trim());
+      }
       showToast('Setări salvate.', 'success');
       // Close settings section after saving
       const settingsDetails = $('settings-section');
@@ -620,6 +625,10 @@ function renderDashboard() {
   getSetting('alert_threshold').then(thr => {
     const thrInput = $('settings-alert-threshold');
     if (thrInput) thrInput.value = thr || APP.alertThreshold;
+  });
+  getSetting('notification_email').then(email => {
+    const emailInput = $('settings-notif-email');
+    if (emailInput && email) emailInput.value = email;
   });
   getSetting('gps_interval').then(val => {
     const el = $('settings-gps-interval');
@@ -3641,7 +3650,6 @@ async function resetAllBilling() {
 
 /** Check if billing threshold is reached — admin-only modal */
 function checkBillingAlert(client) {
-  if (!isAdmin()) return;
   const interval = client.billing_interval_interventions;
   if (!interval || interval <= 0) return;
 
@@ -3651,8 +3659,57 @@ function checkBillingAlert(client) {
   ).sort((a, b) => a.date.localeCompare(b.date));
 
   if (billable.length >= interval) {
-    setTimeout(function() { showBillingModal(client, billable); }, 600);
+    // Send email notification via GAS (works for all roles)
+    _sendBillingEmail(client, billable.length);
+    // Show modal only for admin
+    if (isAdmin()) {
+      setTimeout(function() { showBillingModal(client, billable); }, 600);
+    }
   }
+}
+
+/** Send billing email notification via GAS — once per billing cycle */
+function _sendBillingEmail(client, count) {
+  if (!isSyncConfigured()) return;
+  var sentKey = 'billing_email_sent_' + client.client_id;
+  var cycleMarker = client.last_billing_date || 'none';
+  getSetting(sentKey).then(function(alreadySent) {
+    if (alreadySent === cycleMarker) return; // already sent for this cycle
+    return getSetting('notification_email').then(function(email) {
+      if (!email) return;
+      var subject = 'Factureaza: ' + client.name + ' (' + count + ' interventii)';
+      var body = 'Clientul ' + client.name + ' are ' + count + ' interventii nefacturate.\n\n';
+      body += 'Detalii:\n';
+      body += '- Client: ' + client.name + '\n';
+      body += '- Telefon: ' + (client.phone || '-') + '\n';
+      body += '- Adresa: ' + (client.address || '-') + '\n';
+      body += '- Interventii: ' + count + '\n';
+      body += '- Data: ' + new Date().toLocaleDateString('ro-RO') + '\n\n';
+      body += 'Generat automat de Pool Manager.';
+
+      fetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain' },
+        redirect: 'follow',
+        body: JSON.stringify({
+          action: 'sendEmail',
+          to: email,
+          subject: subject,
+          body: body
+        })
+      }).then(function(r) { return r.json(); })
+        .then(function(res) {
+          if (res.success) {
+            console.log('[EMAIL] Billing notification sent to', email);
+            setSetting(sentKey, cycleMarker);
+          } else {
+            console.warn('[EMAIL] Send failed:', res.error);
+          }
+        }).catch(function(e) {
+          console.warn('[EMAIL] Error:', e.message);
+        });
+    });
+  });
 }
 
 /** Show billing modal with deviz actions */
