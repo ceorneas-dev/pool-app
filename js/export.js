@@ -516,9 +516,20 @@ function sanitizeSheetName(name) {
 // == Helper: format date as DD.MM.YYYY ==
 function fmtDateDMY(dateStr) {
   if (!dateStr) return '';
-  var parts = String(dateStr).split('-');
-  if (parts.length === 3) return parts[2] + '.' + parts[1] + '.' + parts[0];
-  return dateStr;
+  var s = String(dateStr).trim();
+  // Already in DD.MM.YYYY format
+  if (/^\d{2}\.\d{2}\.\d{4}$/.test(s)) return s;
+  // YYYY-MM-DD format
+  var parts = s.split('-');
+  if (parts.length === 3 && parts[0].length === 4) return parts[2] + '.' + parts[1] + '.' + parts[0];
+  // Try parsing as Date object string (e.g. "Mon Mar 09 2026 00:00:00 GMT+0200...")
+  var d = new Date(s);
+  if (!isNaN(d.getTime())) {
+    var dd = ('0' + d.getDate()).slice(-2);
+    var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+    return dd + '.' + mm + '.' + d.getFullYear();
+  }
+  return s;
 }
 
 // == All possible chemical columns ==
@@ -693,7 +704,7 @@ function _buildChimicaleSheet(client, sorted, prices) {
   var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
   var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
   var period = firstDate + ' - ' + lastDate;
-  var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
+  var docNr = 'AQS - ' + todayYMD;
 
   // Chemical column labels (fixed C-J = cols 2-9)
   var chemLabels = ['Clor\nRapid', 'Clor\nLent', 'pH\u2212', 'Anti-\nalgi\u0107', 'Flocu-\nlant', 'Deduri-\nzant', 'pH\nLichid', 'Cl\nLichid'];
@@ -788,12 +799,8 @@ function _buildChimicaleSheet(client, sorted, prices) {
       var intv = sorted[di];
       // A: date
       ws[XLSX.utils.encode_cell({ r: rowIdx, c: 0 })] = _cellS(fmtDateDMY(intv.date), sDataL);
-      // B: cant (sum of all chems)
-      var totalCant = 0;
-      for (var ck = 0; ck < chemKeys.length; ck++) {
-        totalCant += (parseFloat(intv[chemKeys[ck]]) || 0);
-      }
-      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 1 })] = _cellS(totalCant > 0 ? totalCant : '', sDataM);
+      // B: cant (always 1 per intervention)
+      ws[XLSX.utils.encode_cell({ r: rowIdx, c: 1 })] = _cellS(1, sDataM);
       // C-J: chemical values
       for (var cc = 0; cc < 8; cc++) {
         var val = parseFloat(intv[chemKeys[cc]]) || 0;
@@ -950,7 +957,7 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
   var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
   var period = firstDate + ' - ' + lastDate;
-  var docNr = 'D-' + todayYMD + '-' + (client.client_id || '').slice(-4);
+  var docNr = 'AQS - ' + todayYMD;
 
   // Helper to get column letter (0=A, 1=B, ..., 25=Z, 26=AA)
   function colLetter(ci) { return XLSX.utils.encode_col(ci); }
