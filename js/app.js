@@ -2260,6 +2260,8 @@ function showEditClientModal(clientId) {
   set('cf-notes',      client.notes);
   set('cf-visit-freq', client.visit_frequency_days || 14);
   set('cf-billing-interval', client.billing_interval_interventions || '');
+  var pretEl = $('cf-pret-interventie');
+  if (pretEl) pretEl.value = client.pret_interventie || '';
   var devizSel = $('cf-deviz-type');
   if (devizSel) devizSel.value = String(client.deviz_type || 1);
   const type = $('cf-pool-type');
@@ -2286,6 +2288,7 @@ async function doSaveClientForm() {
     notes:               $('cf-notes')    ? $('cf-notes').value.trim()     : '',
     visit_frequency_days: parseInt($('cf-visit-freq') ? $('cf-visit-freq').value : '7') || 7,
     billing_interval_interventions: billingRaw > 0 ? billingRaw : 4,
+    pret_interventie: parseFloat($('cf-pret-interventie') ? $('cf-pret-interventie').value : '0') || 0,
     deviz_type: parseInt($('cf-deviz-type') ? $('cf-deviz-type').value : '1') || 1,
     last_billing_date:   isEdit && existing ? (existing.last_billing_date || null) : null,
     active:              true,

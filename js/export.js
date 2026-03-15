@@ -852,8 +852,8 @@ function _buildChimicaleSheet(client, sorted, prices) {
   // ═══ ROW 21 (idx 20): Preț unitar (RON) ═══
   ws[XLSX.utils.encode_cell({ r: 20, c: 0 })] = _cellS('Pre\u021B unitar (RON)',
     { fill: F_LIGHT2, font: _fnt('Arial', 8.5, false, '0D2D5A'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(S_THIN_L, S_THIN_L, S_MED, S_THIN_L) });
-  // B21: preț per intervenție din settings
-  var pretIntv = prices.pret_interventie || DEFAULT_PRICES.pret_interventie || 0;
+  // B21: preț per intervenție — per client, fallback la global settings
+  var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || DEFAULT_PRICES.pret_interventie || 0;
   ws[XLSX.utils.encode_cell({ r: 20, c: 1 })] = _cellS(pretIntv > 0 ? pretIntv : '',
     { fill: F_LIGHT2, font: _fnt('Arial', 8.5, false, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L) });
   for (var pc = 0; pc < 8; pc++) {
