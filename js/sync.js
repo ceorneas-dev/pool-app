@@ -62,8 +62,7 @@ function doSync() {
   _syncActive = true;
   console.log('[SYNC] Starting sync cycle...');
 
-  return pushClients()
-    .then(() => pushTechnicians())
+  return pushTechnicians()
     .then(() => pushInterventions())
     .then(() => pullData())
     .then(() => {
@@ -198,7 +197,7 @@ function pullData() {
           address:        c.address || '',
           pool_volume_mc: parseFloat(c.pool_volume_mc) || 0,
           pool_type:      c.pool_type || 'exterior',
-          active:         c.active === true || c.active === 'true',
+          active:         c.active === true || c.active === 'true' || c.active === 'TRUE' || c.active === '1' || c.active === 1,
           notes:          c.notes || '',
           created_at:     c.created_at || new Date().toISOString(),
           updated_at:     c.updated_at || new Date().toISOString(),
