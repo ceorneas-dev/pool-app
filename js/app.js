@@ -1429,6 +1429,15 @@ async function doSaveIntervention() {
       var oldIntv = APP.interventions[existingIdx];
       await deleteRecord('interventions', oldIntv.intervention_id);
       APP.interventions.splice(existingIdx, 1);
+      // Track as deleted so sync won't re-add it
+      await _trackDeletedIntervention(oldIntv.intervention_id);
+      // Also delete from GAS
+      if (isSyncConfigured()) {
+        apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'push', type: 'delete_intervention', data: { intervention_id: oldIntv.intervention_id } })
+        }).catch(function(e) { console.warn('[SYNC] Duplicate delete push failed:', e.message); });
+      }
     }
 
     await saveIntervention(intervention);
