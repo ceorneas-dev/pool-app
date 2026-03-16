@@ -19,27 +19,99 @@ function loadXLSX() {
   });
 }
 
-// ── Save file with folder picker (File System Access API) ────
-async function _writeFileWithPicker(wb, defaultName) {
-  // Try File System Access API first (Chrome 86+, Edge 86+)
-  if (typeof window.showSaveFilePicker === 'function') {
-    try {
-      var handle = await window.showSaveFilePicker({
-        suggestedName: defaultName,
-        types: [{
-          description: 'Excel file',
-          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
-        }]
-      });
-      var writable = await handle.createWritable();
-      var buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-      await writable.write(new Uint8Array(buf));
-      await writable.close();
-      return true;
-    } catch (e) {
-      // User cancelled the picker or API error — fallback
-      if (e.name === 'AbortError') return false; // user cancelled
-      console.warn('[EXPORT] File picker failed, falling back:', e.message);
+// ── Save file to chosen export folder (File System Access API) ────
+// Stores directory handle in IndexedDB so user picks folder only once.
+// Creates subfolder per client automatically.
+
+var _exportDirHandle = null; // cached FileSystemDirectoryHandle
+
+/** Get stored export directory handle from IndexedDB */
+async function _getExportDirHandle() {
+  if (_exportDirHandle) return _exportDirHandle;
+  try {
+    var stored = await getByKey('settings', 'export_dir_handle');
+    if (stored && stored.value) {
+      _exportDirHandle = stored.value;
+      return _exportDirHandle;
+    }
+  } catch (e) {}
+  return null;
+}
+
+/** Prompt user to pick export root folder (first time or reset) */
+async function pickExportFolder() {
+  if (typeof window.showDirectoryPicker !== 'function') {
+    showToast('Browserul nu suportă alegerea folderului. Folosește Chrome/Edge pe desktop.', 'warning');
+    return null;
+  }
+  try {
+    var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    _exportDirHandle = handle;
+    await put('settings', { key: 'export_dir_handle', value: handle });
+    showToast('Folder export setat: ' + handle.name, 'success');
+    return handle;
+  } catch (e) {
+    if (e.name === 'AbortError') return null; // user cancelled
+    console.warn('[EXPORT] Directory picker failed:', e.message);
+    return null;
+  }
+}
+
+/** Verify we still have permission to write to the stored directory */
+async function _verifyDirPermission(handle) {
+  if (!handle) return false;
+  try {
+    var perm = await handle.queryPermission({ mode: 'readwrite' });
+    if (perm === 'granted') return true;
+    perm = await handle.requestPermission({ mode: 'readwrite' });
+    return perm === 'granted';
+  } catch (e) {
+    return false;
+  }
+}
+
+/** Write workbook to export folder, creating client subfolder if needed */
+async function _writeFileWithPicker(wb, defaultName, clientName) {
+  // Try stored directory handle first
+  if (typeof window.showDirectoryPicker === 'function') {
+    var dirHandle = await _getExportDirHandle();
+
+    // First time: prompt to pick folder
+    if (!dirHandle) {
+      dirHandle = await pickExportFolder();
+    }
+
+    if (dirHandle) {
+      // Verify permission (may need re-grant after browser restart)
+      var hasPermission = await _verifyDirPermission(dirHandle);
+      if (!hasPermission) {
+        // Permission lost, re-prompt
+        dirHandle = await pickExportFolder();
+        hasPermission = dirHandle ? await _verifyDirPermission(dirHandle) : false;
+      }
+
+      if (dirHandle && hasPermission) {
+        try {
+          var targetDir = dirHandle;
+
+          // If clientName provided, create/get client subfolder
+          if (clientName) {
+            var folderName = sanitizeFilename(clientName);
+            targetDir = await dirHandle.getDirectoryHandle(folderName, { create: true });
+          }
+
+          // Write the file
+          var fileHandle = await targetDir.getFileHandle(defaultName, { create: true });
+          var writable = await fileHandle.createWritable();
+          var buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+          await writable.write(new Uint8Array(buf));
+          await writable.close();
+          return true;
+        } catch (e) {
+          console.warn('[EXPORT] Directory write failed, falling back:', e.message);
+          showToast('Eroare salvare în folder: ' + e.message, 'warning');
+        }
+      }
     }
   }
   // Fallback: standard download to Downloads folder
@@ -1187,7 +1259,7 @@ function exportDevizChimicale(client, interventions) {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
-    await _writeFileWithPicker(wb, fname);
+    await _writeFileWithPicker(wb, fname, client.name);
     _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
@@ -1215,7 +1287,7 @@ function exportDevizComplet(client, interventions) {
     XLSX.utils.book_append_sheet(wb, ws2, name2);
 
     var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
-    await _writeFileWithPicker(wb, fname);
+    await _writeFileWithPicker(wb, fname, client.name);
     _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
@@ -1409,7 +1481,7 @@ function exportBillingXLSX(client, interventions) {
 
     // Download
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
-    await _writeFileWithPicker(wb, fname);
+    await _writeFileWithPicker(wb, fname, client.name);
     _uploadToDrive(wb, fname, null, client ? client.name : null);
     showToast('Deviz Excel descarcat: ' + fname, 'success');
   }).catch(function(e) {

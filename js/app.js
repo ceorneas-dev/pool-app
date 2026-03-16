@@ -117,6 +117,18 @@ function toggleNavMenu() {
 }
 
 /** Open settings from header button — scroll to and open settings details */
+function _updateExportFolderLabel() {
+  var el = $('export-folder-name');
+  if (!el) return;
+  if (typeof _getExportDirHandle === 'function') {
+    _getExportDirHandle().then(function(h) {
+      el.textContent = h ? '📁 ' + h.name : 'Nesetat';
+    }).catch(function() { el.textContent = 'Nesetat'; });
+  } else {
+    el.textContent = '';
+  }
+}
+
 function openSettingsFromHeader() {
   const details = $('settings-section');
   if (details) {
@@ -448,6 +460,9 @@ function renderDashboard() {
 
   // Actualizează butonul GPS din footer
   updateGpsToggleBtn();
+
+  // Show export folder name if set
+  _updateExportFolderLabel();
 
   // User info + role badge
   const userEl = $('footer-user-name');

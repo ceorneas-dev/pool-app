@@ -282,6 +282,16 @@
         </div>
       </details>
 
+      <!-- Export Folder -->
+      <details style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📂 Folder Export</summary>
+        <div style="display:flex;gap:8px;padding:4px 14px 14px;align-items:center">
+          <button class="btn-settings-save" style="flex:1;padding:10px" onclick="pickExportFolder()">📂 Alege folderul de export</button>
+          <span id="export-folder-name" style="font-size:.8rem;color:var(--text-secondary)"></span>
+        </div>
+        <p style="padding:0 14px 10px;font-size:.75rem;color:var(--text-secondary);margin:0">La export se creează automat subfolder per client. Funcționează doar pe Chrome/Edge desktop.</p>
+      </details>
+
       <!-- Template & Import -->
       <details class="admin-only" style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📥 Template & Import</summary>
