@@ -19,6 +19,34 @@ function loadXLSX() {
   });
 }
 
+// ── Save file with folder picker (File System Access API) ────
+async function _writeFileWithPicker(wb, defaultName) {
+  // Try File System Access API first (Chrome 86+, Edge 86+)
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      var handle = await window.showSaveFilePicker({
+        suggestedName: defaultName,
+        types: [{
+          description: 'Excel file',
+          accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'] }
+        }]
+      });
+      var writable = await handle.createWritable();
+      var buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+      await writable.write(new Uint8Array(buf));
+      await writable.close();
+      return true;
+    } catch (e) {
+      // User cancelled the picker or API error — fallback
+      if (e.name === 'AbortError') return false; // user cancelled
+      console.warn('[EXPORT] File picker failed, falling back:', e.message);
+    }
+  }
+  // Fallback: standard download to Downloads folder
+  XLSX.writeFile(wb, defaultName);
+  return true;
+}
+
 // ── Export per client ─────────────────────────────────────────
 function exportClientXLSX(client, interventions) {
   return loadXLSX().then(() => {
@@ -1107,21 +1135,14 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var firstDataExcel2 = FR + 1; // Excel row (1-indexed)
   var lastDataExcel2 = FR + NR;
 
-  // A: label "Total interventii" (short)
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii',
-    { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
-  // B: COUNTA formula counting dates (the actual count)
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: 1 })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
-    { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_THIN_N) });
-  // C:LC merged empty
-  if (LC >= 2) {
-    ws[XLSX.utils.encode_cell({ r: totRow2, c: 2 })] = _cellS('',
-      { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_MED, S_THIN_N, S_THIN_N, S_MED) });
-    for (var mc = 3; mc <= LC; mc++) {
-      ws[XLSX.utils.encode_cell({ r: totRow2, c: mc })] = _cellS('', { fill: F_SUBHDR, border: _brd(S_MED, S_THIN_N, null, mc === LC ? S_MED : null) });
-    }
-    merges.push({ s: { r: totRow2, c: 2 }, e: { r: totRow2, c: LC } });
-  }
+  // Merge label across most columns, value on last column
+  var totLblEnd = Math.max(LC - 1, 0);
+  // A:(LC-1) merged: label "Total intervenții efectuate: X"
+  _mergeFill(ws, merges, totRow2, 0, totLblEnd, 'Total interven\u021Bii efectuate',
+    { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'right', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
+  // Last col: count value
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: LC })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
+    { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_MED) });
 
   // ═══ Separator row ═══
   var sepRow2 = totRow2 + 1;
@@ -1166,7 +1187,7 @@ function exportDevizChimicale(client, interventions) {
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
     var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, fname);
+    await _writeFileWithPicker(wb, fname);
     _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
@@ -1194,7 +1215,7 @@ function exportDevizComplet(client, interventions) {
     XLSX.utils.book_append_sheet(wb, ws2, name2);
 
     var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, fname);
+    await _writeFileWithPicker(wb, fname);
     _uploadToDrive(wb, fname, null, client.name);
     return fname;
   });
@@ -1271,7 +1292,7 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
     }
 
     var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, fname);
+    await _writeFileWithPicker(wb, fname);
     _uploadToDrive(wb, fname, null, null);
     return fname;
   });
@@ -1388,7 +1409,7 @@ function exportBillingXLSX(client, interventions) {
 
     // Download
     var fname = 'Deviz_' + sanitizeFilename(client.name) + '_' + today.replace(/-/g, '') + '.xlsx';
-    XLSX.writeFile(wb, fname);
+    await _writeFileWithPicker(wb, fname);
     _uploadToDrive(wb, fname, null, client ? client.name : null);
     showToast('Deviz Excel descarcat: ' + fname, 'success');
   }).catch(function(e) {
