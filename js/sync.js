@@ -62,7 +62,8 @@ function doSync() {
   _syncActive = true;
   console.log('[SYNC] Starting sync cycle...');
 
-  return pushTechnicians()
+  return pushClients()
+    .then(() => pushTechnicians())
     .then(() => pushInterventions())
     .then(() => pullData())
     .then(() => {
@@ -77,6 +78,21 @@ function doSync() {
     .finally(() => {
       _syncActive = false;
     });
+}
+
+// Push all local clients to server (syncs deviz_type, pret_interventie, etc.)
+function pushClients() {
+  return getAll('clients').then(function(clients) {
+    if (!clients || !clients.length) return;
+    return apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: clients })
+    }).then(function() {
+      console.log('[SYNC] Pushed', clients.length, 'clients');
+    }).catch(function(err) {
+      console.warn('[SYNC] Client push failed:', err.message);
+    });
+  });
 }
 
 // Push all local technicians to server on each sync cycle
@@ -168,21 +184,35 @@ function pullData() {
     const tasks = [];
 
     if (data.clients && data.clients.length) {
-      const parsed = data.clients.map(c => ({
-        client_id:      c.client_id,
-        name:           c.name,
-        phone:          (function(p){ var s = String(p || ''); if (/^\d{9}$/.test(s) && s[0] === '7') s = '0' + s; return s; })(c.phone),
-        address:        c.address || '',
-        pool_volume_mc: parseFloat(c.pool_volume_mc) || 0,
-        pool_type:      c.pool_type || 'exterior',
-        active:         c.active === true || c.active === 'true',
-        notes:          c.notes || '',
-        created_at:     c.created_at || new Date().toISOString(),
-        updated_at:     c.updated_at || new Date().toISOString(),
-        latitude:       c.latitude  ? parseFloat(c.latitude)  : null,
-        longitude:      c.longitude ? parseFloat(c.longitude) : null,
-        location_set:   c.location_set === true || c.location_set === 'true'
-      }));
+      // Read existing local clients to preserve local-only fields
+      const localClients = await getAll('clients').catch(() => []);
+      const localMap = {};
+      localClients.forEach(function(lc) { localMap[lc.client_id] = lc; });
+
+      const parsed = data.clients.map(c => {
+        var local = localMap[c.client_id] || {};
+        return {
+          client_id:      c.client_id,
+          name:           c.name,
+          phone:          (function(p){ var s = String(p || ''); if (/^\d{9}$/.test(s) && s[0] === '7') s = '0' + s; return s; })(c.phone),
+          address:        c.address || '',
+          pool_volume_mc: parseFloat(c.pool_volume_mc) || 0,
+          pool_type:      c.pool_type || 'exterior',
+          active:         c.active === true || c.active === 'true',
+          notes:          c.notes || '',
+          created_at:     c.created_at || new Date().toISOString(),
+          updated_at:     c.updated_at || new Date().toISOString(),
+          latitude:       c.latitude  ? parseFloat(c.latitude)  : null,
+          longitude:      c.longitude ? parseFloat(c.longitude) : null,
+          location_set:   c.location_set === true || c.location_set === 'true',
+          // Fields synced via GAS (prefer remote, fallback to local)
+          deviz_type:     parseInt(c.deviz_type || local.deviz_type) || 1,
+          pret_interventie: parseFloat(c.pret_interventie || local.pret_interventie) || 0,
+          billing_interval_interventions: parseInt(c.billing_interval_interventions || local.billing_interval_interventions) || 4,
+          visit_frequency_days: parseInt(c.visit_frequency_days || local.visit_frequency_days) || 7,
+          last_billing_date: c.last_billing_date || local.last_billing_date || null
+        };
+      });
       tasks.push(clearStore('clients').then(() => putMany('clients', parsed)));
       console.log('[SYNC] Pulled', parsed.length, 'clients');
     }

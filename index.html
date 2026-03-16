@@ -586,6 +586,12 @@
     <span class="map-legend-item"><span class="map-legend-dot" style="background:#d97706"></span>Sub 1 oră</span>
     <span class="map-legend-item"><span class="map-legend-dot" style="background:#94a3b8"></span>Mai vechi</span>
   </div>
+  <!-- Panou Info Client — admin-only, apare la click pe marker -->
+  <div id="map-client-panel" class="map-history-panel admin-only" style="display:none">
+    <div class="map-hist-title">ℹ️ Info tehnician</div>
+    <div id="map-client-info" style="padding:8px 12px;font-size:.85rem;color:var(--text-primary)"></div>
+    <button onclick="document.getElementById('map-client-panel').style.display='none'" class="map-hist-clear-btn" title="Închide" style="position:absolute;top:8px;right:8px">✕</button>
+  </div>
   <!-- Panou Istoric GPS — doar admin -->
   <div id="map-history-panel" class="map-history-panel admin-only">
     <div class="map-hist-title">📅 Traseu istoric</div>
@@ -598,6 +604,12 @@
       <button onclick="clearHistoryTrail()" class="map-hist-clear-btn" title="Șterge traseul">✕</button>
     </div>
     <div id="map-hist-info" class="map-hist-info" style="display:none"></div>
+  </div>
+  <!-- Buton exit în partea de jos -->
+  <div style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1100">
+    <button onclick="showScreen('dashboard')" style="background:var(--primary);color:white;border:none;border-radius:50px;padding:12px 28px;font-size:.95rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);cursor:pointer;display:flex;align-items:center;gap:8px">
+      ← Înapoi
+    </button>
   </div>
 </div>
 

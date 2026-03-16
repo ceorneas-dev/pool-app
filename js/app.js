@@ -5479,3 +5479,32 @@ async function clearChecklist() {
   showToast('Lista a fost ștearsă.', 'success');
 }
 
+// ── Swipe-back gesture on secondary screens ─────────────────
+(function() {
+  var _swipeStartX = 0, _swipeStartY = 0, _swipeTracking = false;
+  var SECONDARY = ['map', 'info', 'checklist', 'calendar'];
+
+  document.addEventListener('touchstart', function(e) {
+    if (SECONDARY.indexOf(APP.currentScreen) < 0) return;
+    var t = e.touches[0];
+    // Only start tracking if touch begins in left 40px edge
+    if (t.clientX <= 40) {
+      _swipeStartX = t.clientX;
+      _swipeStartY = t.clientY;
+      _swipeTracking = true;
+    }
+  }, { passive: true });
+
+  document.addEventListener('touchend', function(e) {
+    if (!_swipeTracking) return;
+    _swipeTracking = false;
+    var t = e.changedTouches[0];
+    var dx = t.clientX - _swipeStartX;
+    var dy = Math.abs(t.clientY - _swipeStartY);
+    // Swipe right at least 80px, mostly horizontal
+    if (dx > 80 && dy < dx * 0.6) {
+      showScreen('dashboard');
+    }
+  }, { passive: true });
+})();
+

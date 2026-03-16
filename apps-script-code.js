@@ -9,7 +9,9 @@ const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
 const CLIENTS_COLS = [
   'client_id','name','phone','address','pool_volume_mc','pool_type',
   'active','notes','created_at','updated_at',
-  'latitude','longitude','location_set'
+  'latitude','longitude','location_set',
+  'deviz_type','pret_interventie','billing_interval_interventions',
+  'visit_frequency_days','last_billing_date'
 ];
 
 const INTERVENTIONS_COLS = [
