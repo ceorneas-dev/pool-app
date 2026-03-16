@@ -180,7 +180,7 @@ function pushInterventions() {
 function pullData() {
   console.log('[SYNC] Pulling data...');
   const url = SYNC_CONFIG.API_URL + '?action=pull&type=all';
-  return apiFetch(url).then(data => {
+  return apiFetch(url).then(async data => {
     const tasks = [];
 
     if (data.clients && data.clients.length) {
