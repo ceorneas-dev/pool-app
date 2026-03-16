@@ -1333,7 +1333,7 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
       if (clientIntv.length === 0) return;
 
       var baseName = sanitizeSheetName(client.name || 'Client');
-      var devizType = parseInt(client.deviz_type) || 1;
+      var devizType = parseInt(client.deviz_type) || 2;
 
       if (devizType === 2) {
         // V2 = complet (both sheets)
