@@ -1882,7 +1882,7 @@ async function _exportClientDirect(clientId) {
     }
 
     showToast('Generare Excel...', 'info');
-    var devizType = parseInt(client.deviz_type) || 1;
+    var devizType = parseInt(client.deviz_type) || 2;
     if (devizType === 2) {
       await exportDevizComplet(client, filtered);
     } else {
@@ -2273,7 +2273,7 @@ function showEditClientModal(clientId) {
   var pretEl = $('cf-pret-interventie');
   if (pretEl) pretEl.value = client.pret_interventie || '';
   var devizSel = $('cf-deviz-type');
-  if (devizSel) devizSel.value = String(client.deviz_type || 1);
+  if (devizSel) devizSel.value = String(client.deviz_type || 2);
   const type = $('cf-pool-type');
   if (type) type.value = client.pool_type || 'exterior';
   $('modal-client-form').classList.add('open');
@@ -2299,7 +2299,7 @@ async function doSaveClientForm() {
     visit_frequency_days: parseInt($('cf-visit-freq') ? $('cf-visit-freq').value : '7') || 7,
     billing_interval_interventions: billingRaw > 0 ? billingRaw : 4,
     pret_interventie: parseFloat($('cf-pret-interventie') ? $('cf-pret-interventie').value : '0') || 0,
-    deviz_type: parseInt($('cf-deviz-type') ? $('cf-deviz-type').value : '1') || 1,
+    deviz_type: parseInt($('cf-deviz-type') ? $('cf-deviz-type').value : '2') || 2,
     last_billing_date:   isEdit && existing ? (existing.last_billing_date || null) : null,
     active:              true,
     created_at:          isEdit ? (existing ? existing.created_at : now) : now,
@@ -3464,6 +3464,32 @@ async function deleteIntervention(interventionId, clientId) {
   }
 }
 
+/** Delete ALL interventions (local + GAS). Call from console: deleteAllInterventions() */
+async function deleteAllInterventions() {
+  if (!confirm('ATENȚIE: Sigur vrei să ștergi TOATE intervențiile? Acțiunea este ireversibilă!')) return;
+  try {
+    await clearStore('interventions');
+    APP.interventions = [];
+    showToast('Toate intervențiile au fost șterse local.', 'success');
+
+    // Also clear on GAS
+    if (isSyncConfigured()) {
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'interventions', data: [] })
+      }).then(function() {
+        showToast('Intervențiile au fost șterse și pe server.', 'success');
+      }).catch(function(e) {
+        showToast('Șterse local, eroare server: ' + e.message, 'warning');
+      });
+    }
+
+    renderDashboard();
+  } catch (e) {
+    showToast('Eroare: ' + e.message, 'error');
+  }
+}
+
 function editIntervention(interventionId, clientId) {
   var intervention = APP.interventions.find(function(i) { return i.intervention_id === interventionId; });
   if (!intervention) { showToast('Interventie negasita.', 'error'); return; }
@@ -3563,7 +3589,7 @@ async function exportBillingClient(clientId) {
 
   showToast('Generare deviz ' + client.name + '...', 'info');
   try {
-    var devizType = parseInt(client.deviz_type) || 1;
+    var devizType = parseInt(client.deviz_type) || 2;
     if (devizType === 2) {
       await exportDevizComplet(client, billable);
     } else {
@@ -3608,7 +3634,7 @@ async function exportAllBilling() {
   for (var idx = 0; idx < items.length; idx++) {
     var item = items[idx];
     try {
-      var devizType = parseInt(item.client.deviz_type) || 1;
+      var devizType = parseInt(item.client.deviz_type) || 2;
       if (devizType === 2) {
         await exportDevizComplet(item.client, item.interventions);
       } else {
