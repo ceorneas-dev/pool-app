@@ -154,6 +154,7 @@ function pushInterventions() {
           treat_sare_saci:          i.treat_sare_saci,
           treat_bicarbonat:         i.treat_bicarbonat,
           observations:        i.observations,
+          operations:          Array.isArray(i.operations) ? JSON.stringify(i.operations) : (i.operations || ''),
           // GPS + time fields
           geo_lat:             i.geo_lat,
           geo_lng:             i.geo_lng,
@@ -303,6 +304,7 @@ function pullData() {
             treat_sare_saci:          parseFloat(ri.treat_sare_saci) || 0,
             treat_bicarbonat:         parseFloat(ri.treat_bicarbonat) || 0,
             observations:        ri.observations || '',
+            operations:          (function(v) { if (!v) return []; try { return JSON.parse(v); } catch(e) { return []; } })(ri.operations),
             geo_lat:             ri.geo_lat !== '' ? parseFloat(ri.geo_lat) || null : null,
             geo_lng:             ri.geo_lng !== '' ? parseFloat(ri.geo_lng) || null : null,
             geo_accuracy:        ri.geo_accuracy !== '' ? parseFloat(ri.geo_accuracy) || null : null,

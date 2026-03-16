@@ -22,7 +22,7 @@ const INTERVENTIONS_COLS = [
   'treat_cl_granule_gr','treat_cl_tablete','treat_cl_tablete_export_gr','treat_cl_lichid_bidoane',
   'treat_ph_granule','treat_ph_lichid_bidoane',
   'treat_antialgic','treat_anticalcar','treat_floculant','treat_sare_saci','treat_bicarbonat',
-  'observations',
+  'observations','operations',
   'geo_lat','geo_lng','geo_accuracy',
   'arrival_time','departure_time','duration_minutes'
 ];

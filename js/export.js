@@ -596,7 +596,19 @@ var FIRMA_J       = 'J40/18144/2007';
 var FIRMA_CUI     = 'RO22479681';
 var FIRMA_IBAN    = 'RO77RNCB0074092331280001';
 
-// -- Default prices (moved to app.js — getExportPrices() returns all prices) --
+// -- Default prices per product_id (fallback if user hasn't set them) --
+var CHEM_DEFAULT_PRICES = {
+  cl_granule: 57, cl_tablete: 56.4, ph_minus_gr: 13, antialgic: 29,
+  floculant: 25, bicarbonat: 32, ph_minus_l: 184, cl_lichid: 180,
+  anticalcar: 25, sare: 15
+};
+
+// -- Page setup for landscape A4 --
+function _setLandscapeA4(ws) {
+  ws['!pageSetup'] = { paperSize: 9, orientation: 'landscape', fitToWidth: 1, fitToHeight: 0 };
+  ws['!margins'] = { left: 0.4, right: 0.4, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 };
+  ws['!print'] = { gridLines: false };
+}
 
 // ── Styled Deviz Helpers (xlsx-js-style) ─────────────────────────
 
@@ -854,7 +866,7 @@ function _buildChimicaleSheet(client, sorted, prices, chemCols) {
   ws[XLSX.utils.encode_cell({ r: pretRow, c: 1 })] = _cellS(pretIntv > 0 ? pretIntv : '',
     { fill: F_LIGHT2, font: _fnt('Arial', 8.5, false, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L) });
   for (var pc = 0; pc < numChem; pc++) {
-    var prc = prices[chemCols[pc].productId] || 0;
+    var prc = prices[chemCols[pc].productId] || CHEM_DEFAULT_PRICES[chemCols[pc].productId] || 0;
     ws[XLSX.utils.encode_cell({ r: pretRow, c: pc + 2 })] = _cellS(prc > 0 ? prc : '',
       { fill: F_LIGHT2, font: _fnt('Arial', 8.5, false, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(S_THIN_L, S_THIN_L, S_THIN_L, S_THIN_L) });
   }
@@ -889,6 +901,7 @@ function _buildChimicaleSheet(client, sorted, prices, chemCols) {
 
   ws['!ref'] = 'A1:' + lastColL + (footRow + 1);
   ws['!merges'] = merges;
+  _setLandscapeA4(ws);
   return ws;
 }
 
@@ -1094,9 +1107,10 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var firstDataExcel2 = FR + 1; // Excel row (1-indexed)
   var lastDataExcel2 = FR + NR;
 
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii efectuate',
+  // A: label "Total interventii" (short)
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii',
     { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'left', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
-  // B: COUNTA formula counting dates
+  // B: COUNTA formula counting dates (the actual count)
   ws[XLSX.utils.encode_cell({ r: totRow2, c: 1 })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
     { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_THIN_N) });
   // C:LC merged empty
@@ -1134,6 +1148,7 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
 
   ws['!ref'] = 'A1:' + lastColLetter + (footRow2 + 1);
   ws['!merges'] = merges;
+  _setLandscapeA4(ws);
   return ws;
 }
 
