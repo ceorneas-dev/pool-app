@@ -1314,6 +1314,28 @@ body.role-technician #client-list {
   padding: 0 20px;
 }
 
+/* Sticky bottom actions for client details modal */
+#modal-client .modal-sheet {
+  display: flex;
+  flex-direction: column;
+  overflow-y: hidden;
+}
+#modal-client .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+#modal-client .modal-handle,
+#modal-client .modal-title {
+  flex-shrink: 0;
+}
+#modal-client .modal-actions {
+  background: var(--bg-primary, #fff);
+  padding: 12px 20px;
+  border-top: 1px solid var(--slate-200);
+  flex-shrink: 0;
+}
+
 .btn-modal-cancel {
   flex: 1;
   padding: 13px;

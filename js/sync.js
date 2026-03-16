@@ -206,7 +206,7 @@ function pullData() {
           longitude:      c.longitude ? parseFloat(c.longitude) : null,
           location_set:   c.location_set === true || c.location_set === 'true',
           // Fields synced via GAS (prefer remote, fallback to local)
-          deviz_type:     parseInt(c.deviz_type || local.deviz_type) || 1,
+          deviz_type:     parseInt(c.deviz_type || local.deviz_type) || 2,
           pret_interventie: parseFloat(c.pret_interventie || local.pret_interventie) || 0,
           billing_interval_interventions: parseInt(c.billing_interval_interventions || local.billing_interval_interventions) || 4,
           visit_frequency_days: parseInt(c.visit_frequency_days || local.visit_frequency_days) || 7,
@@ -270,8 +270,14 @@ function pullData() {
         const localMap = {};
         localAll.forEach(function(i) { localMap[i.intervention_id] = i; });
 
+        // Load deleted IDs to skip re-adding
+        var deletedIds = await getSetting('deleted_intervention_ids').catch(function() { return []; }) || [];
+        if (!Array.isArray(deletedIds)) deletedIds = [];
+
         let added = 0, updated = 0;
         for (const ri of data.interventions) {
+          // Skip if locally deleted
+          if (deletedIds.indexOf(ri.intervention_id) >= 0) continue;
           const parsed = {
             intervention_id:     ri.intervention_id,
             client_id:           ri.client_id,

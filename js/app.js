@@ -3448,6 +3448,9 @@ async function deleteIntervention(interventionId, clientId) {
     await remove('interventions', interventionId);
     APP.interventions = APP.interventions.filter(function(i) { return i.intervention_id !== interventionId; });
 
+    // Track deleted ID so pull won't re-add it
+    await _trackDeletedIntervention(interventionId);
+
     // If synced, notify GAS
     if (isSyncConfigured()) {
       apiFetch(SYNC_CONFIG.API_URL, {
@@ -3462,6 +3465,22 @@ async function deleteIntervention(interventionId, clientId) {
   } catch (e) {
     showToast('Eroare: ' + e.message, 'error');
   }
+}
+
+/** Track deleted intervention IDs so sync pull ignores them */
+async function _trackDeletedIntervention(interventionId) {
+  var deleted = await getSetting('deleted_intervention_ids').catch(function() { return null; }) || [];
+  if (!Array.isArray(deleted)) deleted = [];
+  if (deleted.indexOf(interventionId) < 0) deleted.push(interventionId);
+  // Keep max 500 entries to avoid bloat
+  if (deleted.length > 500) deleted = deleted.slice(-500);
+  await setSetting('deleted_intervention_ids', deleted);
+}
+
+/** Check if an intervention was locally deleted */
+async function _isDeletedIntervention(interventionId) {
+  var deleted = await getSetting('deleted_intervention_ids').catch(function() { return null; }) || [];
+  return Array.isArray(deleted) && deleted.indexOf(interventionId) >= 0;
 }
 
 /** Delete ALL interventions (local + GAS). Call from console: deleteAllInterventions() */
