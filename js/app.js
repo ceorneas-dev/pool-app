@@ -1421,6 +1421,16 @@ async function doSaveIntervention() {
   });
 
   try {
+    // If same client already has an intervention on this date, remove the old one
+    var existingIdx = APP.interventions.findIndex(i =>
+      i.client_id === intervention.client_id && i.date === intervention.date
+    );
+    if (existingIdx >= 0) {
+      var oldIntv = APP.interventions[existingIdx];
+      await deleteRecord('interventions', oldIntv.intervention_id);
+      APP.interventions.splice(existingIdx, 1);
+    }
+
     await saveIntervention(intervention);
     APP.interventions.push(intervention);
     APP.pendingSync++;

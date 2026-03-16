@@ -148,6 +148,15 @@ function count(storeName) {
   }));
 }
 
+function deleteRecord(storeName, key) {
+  return openDB().then(db => new Promise((resolve, reject) => {
+    const tx  = db.transaction(storeName, 'readwrite');
+    const req = tx.objectStore(storeName).delete(key);
+    req.onsuccess = () => resolve();
+    req.onerror   = () => reject(req.error);
+  }));
+}
+
 // ── Domain Helpers ───────────────────────────────────────────
 function getActiveClients() {
   return getByIndex('clients', 'active', true).catch(() =>
