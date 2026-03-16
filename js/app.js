@@ -672,9 +672,8 @@ async function renderClientList(searchTerm) {
     filtered = filtered.filter(f => f.urgency !== 'ok');
   }
 
-  // Sort by urgency: overdue → never → soon → ok
-  const urgencyOrder = { overdue: 0, never: 1, soon: 2, ok: 3 };
-  filtered.sort((a, b) => (urgencyOrder[a.urgency] || 3) - (urgencyOrder[b.urgency] || 3));
+  // Sort alphabetically by client name
+  filtered.sort((a, b) => (a.client.name || '').localeCompare(b.client.name || '', 'ro'));
 
   // Update "De vizitat" tab badge count
   const dueCount = APP.clients.filter(c => getUrgencyLevel(c) !== 'ok').length;
