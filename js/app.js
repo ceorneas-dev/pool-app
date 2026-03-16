@@ -748,7 +748,7 @@ async function renderClientList(searchTerm) {
       </div>
       <div class="client-actions">
         <button class="client-action-btn" onclick="openClientIntervention('${client.client_id}')">➕ Intervenție nouă</button>
-        <button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">📋 Istoric</button>
+        <button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">ℹ️ Info</button>
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
