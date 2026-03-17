@@ -138,6 +138,8 @@ function pushInterventions() {
           measured_hardness:   i.measured_hardness,
           measured_alkalinity: i.measured_alkalinity,
           measured_salinity:   i.measured_salinity,
+          measured_tc:         i.measured_tc,
+          measured_cya:        i.measured_cya,
           rec_cl_gr:           i.rec_cl_gr,
           rec_cl_tab:          i.rec_cl_tab,
           rec_ph_kg:           i.rec_ph_kg,
@@ -182,6 +184,9 @@ function pullData() {
   const url = SYNC_CONFIG.API_URL + '?action=pull&type=all';
   return apiFetch(url).then(async data => {
     const tasks = [];
+    console.log('[SYNC] Pull response: clients=' + (data.clients ? data.clients.length : 0) +
+      ', interventions=' + (data.interventions ? data.interventions.length : 0) +
+      ', technicians=' + (data.technicians ? data.technicians.length : 0));
 
     if (data.clients && data.clients.length) {
       // Read existing local clients to preserve local-only fields

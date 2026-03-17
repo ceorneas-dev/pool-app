@@ -442,8 +442,22 @@ async function loadData() {
     getAll('interventions')
   ]);
   APP.clients       = clients;
-  APP.interventions = interventions;
-  APP.pendingSync   = interventions.filter(i => !i.synced).length;
+
+  // Cleanup orphaned interventions (demo data whose clients no longer exist)
+  var clientIdSet = {};
+  clients.forEach(function(c) { clientIdSet[String(c.client_id)] = true; });
+  var orphaned = interventions.filter(function(i) { return !clientIdSet[String(i.client_id)]; });
+  if (orphaned.length > 0) {
+    console.log('[CLEANUP] Removing', orphaned.length, 'orphaned interventions:', orphaned.map(function(i) { return i.intervention_id; }));
+    for (var oi = 0; oi < orphaned.length; oi++) {
+      try { await deleteRecord('interventions', orphaned[oi].intervention_id); } catch(e) {}
+    }
+    APP.interventions = interventions.filter(function(i) { return clientIdSet[String(i.client_id)]; });
+  } else {
+    APP.interventions = interventions;
+  }
+
+  APP.pendingSync   = APP.interventions.filter(i => !i.synced).length;
 }
 
 // ── Dashboard ────────────────────────────────────────────────
@@ -1565,7 +1579,6 @@ function renderPreviousInterventions(client) {
 
 // ── Client Details Modal ──────────────────────────────────────
 async function showClientDetails(clientId) {
-  var _dbg = { step: 'init' };
   try {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
@@ -1574,40 +1587,19 @@ async function showClientDetails(clientId) {
   const body  = $('modal-client-body');
   if (!modal || !body) return;
 
-  _dbg.step = 'getAll';
   // Re-fetch fresh from IndexedDB (not APP.interventions cache)
   const allFromDb = await getAll('interventions');
-  _dbg.totalDb = allFromDb.length;
-
   // Update in-memory cache too
   APP.interventions = allFromDb;
   APP.pendingSync = allFromDb.filter(i => !i.synced).length;
 
-  _dbg.step = 'filter';
   const hasLocation = client.location_set && client.latitude;
 
   // Safe filter: match client_id as string and ensure date exists
   const ci = allFromDb.filter(i => String(i.client_id) === String(clientId) && i.date)
                .sort((a, b) => String(b.date).localeCompare(String(a.date)));
-  _dbg.matched = ci.length;
 
-  // DEBUG: also check for possible client_id mismatches
-  var _clientIds = {};
-  allFromDb.forEach(function(i) {
-    var key = String(i.client_id);
-    if (!_clientIds[key]) _clientIds[key] = { count: 0, sample: i.client_name || '?' };
-    _clientIds[key].count++;
-  });
-  _dbg.clientIdMap = _clientIds;
-  _dbg.lookingFor = clientId;
-  console.log('[INFO-DEBUG]', JSON.stringify(_dbg));
-
-  _dbg.step = 'render';
   body.innerHTML = `
-    <div style="background:#1e293b;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:.72rem;color:#fbbf24;font-family:monospace">
-      🔍 DB: ${allFromDb.length} total | client_id="${escHtml(clientId)}" → ${ci.length} găsite
-      ${ci.length === 0 ? '<br>IDs în DB: ' + Object.keys(_clientIds).map(k => escHtml(k) + '(' + _clientIds[k].count + ')').join(', ') : ''}
-    </div>
     <div class="client-detail-section">
       <h4>Informații</h4>
       <div class="client-detail-row"><span class="detail-label">Volum piscină</span><span class="detail-value">${client.pool_volume_mc} m³</span></div>
@@ -1668,11 +1660,8 @@ async function showClientDetails(clientId) {
   }
 
   } catch(e) {
-    console.error('[INFO-DEBUG] ERROR at step ' + _dbg.step + ':', e.message, e.stack);
-    var _errBody = $('modal-client-body');
-    if (_errBody) _errBody.innerHTML = '<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:12px;color:#fca5a5;font-size:.8rem;font-family:monospace">❌ Eroare la ' + _dbg.step + ': ' + escHtml(e.message) + '<br>DB total: ' + (_dbg.totalDb || '?') + ' | Matched: ' + (_dbg.matched || '?') + '</div>';
-    var _errModal = $('modal-client');
-    if (_errModal) _errModal.classList.add('open');
+    console.error('[showClientDetails] Error:', e.message);
+    showToast('Eroare la deschidere info: ' + e.message, 'error');
   }
 }
 
