@@ -1409,7 +1409,7 @@ function setColWidths(ws, widths) {
 
 // ── Export Billing Deviz ──────────────────────────────────────
 function exportBillingXLSX(client, interventions) {
-  return loadXLSX().then(function() {
+  return loadXLSX().then(async function() {
     var wb = XLSX.utils.book_new();
     var sorted = interventions.slice().sort(function(a, b) { return a.date.localeCompare(b.date); });
     var since = client.last_billing_date || '';
