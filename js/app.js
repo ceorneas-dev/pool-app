@@ -1564,7 +1564,9 @@ function renderPreviousInterventions(client) {
 }
 
 // ── Client Details Modal ──────────────────────────────────────
-function showClientDetails(clientId) {
+async function showClientDetails(clientId) {
+  var _dbg = { step: 'init' };
+  try {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
 
@@ -1572,11 +1574,40 @@ function showClientDetails(clientId) {
   const body  = $('modal-client-body');
   if (!modal || !body) return;
 
-  const hasLocation = client.location_set && client.latitude;
-  const ci = APP.interventions.filter(i => i.client_id === clientId)
-               .sort((a, b) => b.date.localeCompare(a.date));
+  _dbg.step = 'getAll';
+  // Re-fetch fresh from IndexedDB (not APP.interventions cache)
+  const allFromDb = await getAll('interventions');
+  _dbg.totalDb = allFromDb.length;
 
+  // Update in-memory cache too
+  APP.interventions = allFromDb;
+  APP.pendingSync = allFromDb.filter(i => !i.synced).length;
+
+  _dbg.step = 'filter';
+  const hasLocation = client.location_set && client.latitude;
+
+  // Safe filter: match client_id as string and ensure date exists
+  const ci = allFromDb.filter(i => String(i.client_id) === String(clientId) && i.date)
+               .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  _dbg.matched = ci.length;
+
+  // DEBUG: also check for possible client_id mismatches
+  var _clientIds = {};
+  allFromDb.forEach(function(i) {
+    var key = String(i.client_id);
+    if (!_clientIds[key]) _clientIds[key] = { count: 0, sample: i.client_name || '?' };
+    _clientIds[key].count++;
+  });
+  _dbg.clientIdMap = _clientIds;
+  _dbg.lookingFor = clientId;
+  console.log('[INFO-DEBUG]', JSON.stringify(_dbg));
+
+  _dbg.step = 'render';
   body.innerHTML = `
+    <div style="background:#1e293b;border:1px solid #f59e0b;border-radius:8px;padding:8px 12px;margin-bottom:8px;font-size:.72rem;color:#fbbf24;font-family:monospace">
+      🔍 DB: ${allFromDb.length} total | client_id="${escHtml(clientId)}" → ${ci.length} găsite
+      ${ci.length === 0 ? '<br>IDs în DB: ' + Object.keys(_clientIds).map(k => escHtml(k) + '(' + _clientIds[k].count + ')').join(', ') : ''}
+    </div>
     <div class="client-detail-section">
       <h4>Informații</h4>
       <div class="client-detail-row"><span class="detail-label">Volum piscină</span><span class="detail-value">${client.pool_volume_mc} m³</span></div>
@@ -1634,6 +1665,14 @@ function showClientDetails(clientId) {
     } else {
       billBtn.style.display = 'none';
     }
+  }
+
+  } catch(e) {
+    console.error('[INFO-DEBUG] ERROR at step ' + _dbg.step + ':', e.message, e.stack);
+    var _errBody = $('modal-client-body');
+    if (_errBody) _errBody.innerHTML = '<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:12px;color:#fca5a5;font-size:.8rem;font-family:monospace">❌ Eroare la ' + _dbg.step + ': ' + escHtml(e.message) + '<br>DB total: ' + (_dbg.totalDb || '?') + ' | Matched: ' + (_dbg.matched || '?') + '</div>';
+    var _errModal = $('modal-client');
+    if (_errModal) _errModal.classList.add('open');
   }
 }
 
@@ -3913,7 +3952,12 @@ function generateBillingExcel() {
   var client = APP._billingClient;
   var interventions = APP._billingInterventions;
   if (!client || !interventions) return;
-  exportBillingXLSX(client, interventions);
+  var devizType = parseInt(client.deviz_type) || 2;
+  if (devizType === 2) {
+    exportDevizComplet(client, interventions);
+  } else {
+    exportBillingXLSX(client, interventions);
+  }
 }
 
 /** Generate billing PDF */
