@@ -121,7 +121,7 @@ async function _writeFileWithPicker(wb, defaultName, clientName) {
 
 // ── Export per client ─────────────────────────────────────────
 function exportClientXLSX(client, interventions) {
-  return loadXLSX().then(() => {
+  return loadXLSX().then(async () => {
     const wb = XLSX.utils.book_new();
 
     // Sort interventions descending by date
@@ -235,7 +235,7 @@ function exportClientXLSX(client, interventions) {
     XLSX.utils.book_append_sheet(wb, ws3, 'Măsurători');
 
     const filename = 'PoolMgr_' + sanitizeFilename(client.name) + '_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, filename);
+    await _writeFileWithPicker(wb, filename, client.name);
     _uploadToDrive(wb, filename, null, client.name);
     return filename;
   });
@@ -243,7 +243,7 @@ function exportClientXLSX(client, interventions) {
 
 // ── Export all clients ────────────────────────────────────────
 function exportAllXLSX(clients, allInterventions) {
-  return loadXLSX().then(() => {
+  return loadXLSX().then(async () => {
     const wb = XLSX.utils.book_new();
 
     // --- Sheet 1: Sumar General ---
@@ -292,7 +292,7 @@ function exportAllXLSX(clients, allInterventions) {
     }
 
     const filename = 'PoolMgr_Toate_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, filename);
+    await _writeFileWithPicker(wb, filename, null);
     _uploadToDrive(wb, filename, null, null);
     return filename;
   });
@@ -300,7 +300,7 @@ function exportAllXLSX(clients, allInterventions) {
 
 // ── Export structured (one sheet per client, no summary) ──────
 function exportStructuredXLSX(clients, allInterventions) {
-  return loadXLSX().then(() => {
+  return loadXLSX().then(async () => {
     const wb = XLSX.utils.book_new();
 
     // Index sheet
@@ -352,7 +352,7 @@ function exportStructuredXLSX(clients, allInterventions) {
     }
 
     const filename = 'PoolMgr_Structurat_' + fmtDateExport(new Date()) + '.xlsx';
-    XLSX.writeFile(wb, filename);
+    await _writeFileWithPicker(wb, filename, null);
     _uploadToDrive(wb, filename, null, null);
     return filename;
   });
@@ -1207,14 +1207,17 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var firstDataExcel2 = FR + 1; // Excel row (1-indexed)
   var lastDataExcel2 = FR + NR;
 
-  // Merge label across most columns, value on last column
-  var totLblEnd = Math.max(LC - 1, 0);
-  // A:(LC-1) merged: label "Total intervenții efectuate: X"
-  _mergeFill(ws, merges, totRow2, 0, totLblEnd, 'Total interven\u021Bii efectuate',
+  // A: label "Total intervenții"
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii',
     { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'right', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
-  // Last col: count value
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: LC })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
-    { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_MED) });
+  // B: count value
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 1 })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
+    { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_THIN_N) });
+  // Fill remaining cols with same style
+  for (var tc = 2; tc <= LC; tc++) {
+    ws[XLSX.utils.encode_cell({ r: totRow2, c: tc })] = _cellS('',
+      { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), border: _brd(null, S_THIN_N, S_THIN_N, tc === LC ? S_MED : S_THIN_N) });
+  }
 
   // ═══ Separator row ═══
   var sepRow2 = totRow2 + 1;

@@ -3511,6 +3511,13 @@ async function _isDeletedIntervention(interventionId) {
 async function deleteAllInterventions() {
   if (!confirm('ATENȚIE: Sigur vrei să ștergi TOATE intervențiile? Acțiunea este ireversibilă!')) return;
   try {
+    // Track all existing IDs as deleted so pull won't re-add them
+    var allIds = APP.interventions.map(function(i) { return i.intervention_id; });
+    var deleted = await getSetting('deleted_intervention_ids').catch(function() { return null; }) || [];
+    if (!Array.isArray(deleted)) deleted = [];
+    allIds.forEach(function(id) { if (deleted.indexOf(id) < 0) deleted.push(id); });
+    await setSetting('deleted_intervention_ids', deleted);
+
     await clearStore('interventions');
     APP.interventions = [];
     showToast('Toate intervențiile au fost șterse local.', 'success');
@@ -3519,7 +3526,7 @@ async function deleteAllInterventions() {
     if (isSyncConfigured()) {
       apiFetch(SYNC_CONFIG.API_URL, {
         method: 'POST',
-        body: JSON.stringify({ action: 'push', type: 'interventions', data: [] })
+        body: JSON.stringify({ action: 'push', type: 'clear_interventions', data: {} })
       }).then(function() {
         showToast('Intervențiile au fost șterse și pe server.', 'success');
       }).catch(function(e) {

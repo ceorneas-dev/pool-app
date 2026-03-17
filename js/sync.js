@@ -274,8 +274,27 @@ function pullData() {
         var deletedIds = await getSetting('deleted_intervention_ids').catch(function() { return []; }) || [];
         if (!Array.isArray(deletedIds)) deletedIds = [];
 
+        // Deduplicate by client_id+date: keep only the newest per client+date
+        var dedupMap = {};
+        data.interventions.forEach(function(ri) {
+          var key = (ri.client_id || '') + '_' + (ri.date || '');
+          var existing = dedupMap[key];
+          if (!existing || (ri.created_at || '') > (existing.created_at || '')) {
+            dedupMap[key] = ri;
+          }
+        });
+        var dedupedInterventions = [];
+        var dedupedIds = {};
+        Object.keys(dedupMap).forEach(function(k) { dedupedIds[dedupMap[k].intervention_id] = true; });
+        data.interventions.forEach(function(ri) {
+          if (dedupedIds[ri.intervention_id]) {
+            dedupedInterventions.push(ri);
+            delete dedupedIds[ri.intervention_id]; // prevent duplicates in source
+          }
+        });
+
         let added = 0, updated = 0;
-        for (const ri of data.interventions) {
+        for (const ri of dedupedInterventions) {
           // Skip if locally deleted
           if (deletedIds.indexOf(ri.intervention_id) >= 0) continue;
           const parsed = {

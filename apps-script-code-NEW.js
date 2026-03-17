@@ -18,11 +18,12 @@ const INTERVENTIONS_COLS = [
   'intervention_id','client_id','client_name','technician_id','technician_name',
   'date','created_at','synced_at',
   'measured_chlorine','measured_ph','measured_temp','measured_hardness','measured_alkalinity','measured_salinity',
+  'measured_tc','measured_cya',
   'rec_cl_gr','rec_cl_tab','rec_ph_kg','rec_anti_l',
   'treat_cl_granule_gr','treat_cl_tablete','treat_cl_tablete_export_gr','treat_cl_lichid_bidoane',
   'treat_ph_granule','treat_ph_lichid_bidoane',
   'treat_antialgic','treat_anticalcar','treat_floculant','treat_sare_saci','treat_bicarbonat',
-  'observations',
+  'observations','operations',
   'geo_lat','geo_lng','geo_accuracy',
   'arrival_time','departure_time','duration_minutes'
 ];
@@ -194,7 +195,19 @@ function handlePush(body) {
   if (type === 'clients') return handlePushClients(body);
   if (type === 'technicians') return handlePushTechnicians(body);
   if (type === 'delete_intervention') return handleDeleteIntervention(body);
+  if (type === 'clear_interventions') return handleClearInterventions();
   return handlePushInterventions(body);
+}
+
+/** Clear ALL interventions from the sheet (keeps header row) */
+function handleClearInterventions() {
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+  return { success: true, cleared: lastRow - 1 };
 }
 
 /** Delete a single intervention by intervention_id */
