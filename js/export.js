@@ -1501,10 +1501,11 @@ function _uploadExcelJSToDrive(buf, fileName, clientName) {
 // R9-R10 table header, R11-R28 data (18 slots), R29 total, R30 sep,
 // R31 total plata, R32 sep, R33 footer
 //
-// Operations map to columns B(2) through I(9) in the template:
-// B=Aspirare piscina, C=Curatare linie apa, D=Curatare skimmere,
-// E=Spalare filtru, F=Curatare prefiltru, G=Periere piscina,
-// H=Analiza apei, I=Tratament chimic
+// IMPORTANT: ExcelJS spliceRows does NOT update merge references!
+// Instead we: save footer styles/content → clear everything → write data →
+// write footer at new position → manually fix all merges.
+//
+// Operations map to columns B(2) through I(9) in the template.
 // Extra operations (not in template) are added as new columns J, K, ...
 
 /** Remove diacritics and normalize string for comparison */
@@ -1544,173 +1545,254 @@ function _findOpColumn(opName, templateHeaders) {
   return -1; // no match
 }
 
+/** Helper: Parse cell reference like "A29" → { col: 1, row: 29 } */
+function _parseCellRef(ref) {
+  var match = ref.match(/^([A-Z]+)(\d+)$/);
+  if (!match) return null;
+  var letters = match[1];
+  var row = parseInt(match[2]);
+  var col = 0;
+  for (var i = 0; i < letters.length; i++) {
+    col = col * 26 + (letters.charCodeAt(i) - 64);
+  }
+  return { col: col, row: row };
+}
+
+/** Build cell reference like { col: 1, row: 29 } → "A29" */
+function _cellRef(col, row) {
+  var letters = '';
+  var c = col;
+  while (c > 0) {
+    var rem = (c - 1) % 26;
+    letters = String.fromCharCode(65 + rem) + letters;
+    c = Math.floor((c - 1) / 26);
+  }
+  return letters + row;
+}
+
+/** Save all merges and remove them from the worksheet.
+ *  Returns array of {top,left,bottom,right} for later re-creation. */
+function _saveAndClearMerges(ws) {
+  if (!ws._merges) return [];
+  var saved = [];
+  Object.keys(ws._merges).forEach(function(key) {
+    var m = ws._merges[key].model;
+    saved.push({ top: m.top, left: m.left, bottom: m.bottom, right: m.right });
+  });
+  // Remove all merges
+  saved.forEach(function(m) {
+    try { ws.unMergeCells(m.top, m.left, m.bottom, m.right); } catch(e) {}
+  });
+  return saved;
+}
+
+/** Re-apply V2 merges with row shifts and column extensions */
+function _applyV2Merges(ws, savedMerges, rowShift, firstShiftedOrigRow, origLastCol, newLastCol) {
+  savedMerges.forEach(function(m) {
+    var top = m.top, bottom = m.bottom, left = m.left, right = m.right;
+    if (top >= firstShiftedOrigRow) top += rowShift;
+    if (bottom >= firstShiftedOrigRow) bottom += rowShift;
+    if (newLastCol > origLastCol && right === origLastCol) {
+      if (left <= 1) right = newLastCol;
+      if (left === 2) right = newLastCol;
+    }
+    try { ws.mergeCells(top, left, bottom, right); } catch(e) {}
+  });
+}
+
+/** Re-apply V1 merges with row shifts */
+function _applyV1Merges(ws, savedMerges, rowShift, firstShiftedOrigRow) {
+  savedMerges.forEach(function(m) {
+    var top = m.top, bottom = m.bottom;
+    if (top >= firstShiftedOrigRow) top += rowShift;
+    if (bottom >= firstShiftedOrigRow) bottom += rowShift;
+    try { ws.mergeCells(top, m.left, bottom, m.right); } catch(e) {}
+  });
+}
+
+
+/** Clear a row completely */
+function _clearRow(ws, rowNum, numCols) {
+  var row = ws.getRow(rowNum);
+  for (var c = 1; c <= numCols; c++) {
+    var cell = row.getCell(c);
+    cell.value = null;
+    cell.style = {};
+  }
+  row.commit();
+}
+
 async function _fillV2Template(wb, client, sorted, prices) {
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V2 template: sheet not found'); }
 
-  var TEMPLATE_DATA_ROWS = 18; // R11-R28
+  var TEMPLATE_DATA_ROWS = 18;
   var FIRST_DATA_ROW = 11;
-  var HEADER_ROW = 10;       // R10 = sub-headers (Aspirare, Curățare, etc.)
-  var MERGED_HEADER_ROW = 9; // R9 = "SERVICII INCLUSE ÎN ABONAMENT" merged
+  var HEADER_ROW = 10;
+  var MERGED_HEADER_ROW = 9;
+  var ORIG_LAST_COL = 9;
   var NR = sorted.length;
+  var ORIG_TOTAL_ROW = 28;  // R28=separator before total (must shift its merge too)
+  var ORIG_FOOTER_ROWS = [28, 29, 30, 31, 32, 33]; // sep, total, sep, pay, sep, footer
 
-  // Date helpers
   var today = new Date();
   var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
   var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
-  var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
-  var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
+  var firstDate = NR ? fmtDateDMY(sorted[0].date) : '';
+  var lastDate = NR ? fmtDateDMY(sorted[NR - 1].date) : '';
   var period = firstDate + ' - ' + lastDate;
   var docNr = 'AQS - ' + todayYMD;
 
-  // ── Step 1: Read template operation headers from R10 (B-I = cols 2-9)
-  var TEMPLATE_FIRST_OP_COL = 2; // B
-  var TEMPLATE_LAST_OP_COL = 9;  // I (original template has 8 ops)
+  var TEMPLATE_FIRST_OP_COL = 2;
+  var TEMPLATE_LAST_OP_COL = 9;
   var templateHeaders = _readTemplateOpsHeaders(ws, HEADER_ROW, TEMPLATE_FIRST_OP_COL, TEMPLATE_LAST_OP_COL);
 
-  // ── Step 2: Collect ALL unique operations from all interventions
   var allOpsSet = {};
-  var allOpsOrder = []; // preserve order of first appearance
+  var allOpsOrder = [];
   sorted.forEach(function(intv) {
     var ops = _parseOps(intv.operations);
     ops.forEach(function(op) {
-      if (op && !allOpsSet[op]) {
-        allOpsSet[op] = true;
-        allOpsOrder.push(op);
-      }
+      if (op && !allOpsSet[op]) { allOpsSet[op] = true; allOpsOrder.push(op); }
     });
   });
 
-  // ── Step 3: Build the final column map: opName → colNumber
-  //   First, map known ops to template columns (diacritics-insensitive)
-  //   Then, add extra ops as new columns after the last template column
-  var opToCol = {};     // opName → column number
-  var usedCols = {};    // track which template cols are taken
-  var extraOps = [];    // ops not found in template
-
+  var opToCol = {};
+  var usedCols = {};
+  var extraOps = [];
   allOpsOrder.forEach(function(op) {
     var matchedCol = _findOpColumn(op, templateHeaders);
     if (matchedCol >= 0 && !usedCols[matchedCol]) {
       opToCol[op] = matchedCol;
       usedCols[matchedCol] = true;
-    } else if (matchedCol < 0) {
-      extraOps.push(op);
-    }
-    // If matchedCol is taken by another op, treat as extra
-    if (matchedCol >= 0 && usedCols[matchedCol] && !opToCol[op]) {
+    } else {
       extraOps.push(op);
     }
   });
+  var nextExtraCol = TEMPLATE_LAST_OP_COL + 1;
+  extraOps.forEach(function(op) { opToCol[op] = nextExtraCol++; });
+  var LAST_COL = Math.max(ORIG_LAST_COL, nextExtraCol - 1);
 
-  // Assign extra ops to new columns after the last template column
-  var nextExtraCol = TEMPLATE_LAST_OP_COL + 1; // J=10, K=11, etc.
-  extraOps.forEach(function(op) {
-    opToCol[op] = nextExtraCol;
-    nextExtraCol++;
+  // Save styles BEFORE modifications
+  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, ORIG_LAST_COL);
+  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, ORIG_LAST_COL);
+
+  var footerStyles = {};
+  var footerContent = {};
+  ORIG_FOOTER_ROWS.forEach(function(r) {
+    footerStyles[r] = _captureRowStyles(ws, r, ORIG_LAST_COL);
+    var rowData = [];
+    var row = ws.getRow(r);
+    for (var c = 1; c <= ORIG_LAST_COL; c++) {
+      rowData.push({ value: row.getCell(c).value });
+    }
+    rowData._height = row.height;
+    footerContent[r] = rowData;
   });
 
-  var TOTAL_COLS = Math.max(TEMPLATE_LAST_OP_COL, nextExtraCol - 1); // total columns including extras
+  if (LAST_COL > ORIG_LAST_COL) {
+    for (var ec = ORIG_LAST_COL + 1; ec <= LAST_COL; ec++) {
+      oddRowStyle[ec] = JSON.parse(JSON.stringify(oddRowStyle[ORIG_LAST_COL] || oddRowStyle[TEMPLATE_FIRST_OP_COL]));
+      evenRowStyle[ec] = JSON.parse(JSON.stringify(evenRowStyle[ORIG_LAST_COL] || evenRowStyle[TEMPLATE_FIRST_OP_COL]));
+    }
+  }
 
-  // ── Step 4: If extra columns exist, add sub-headers and expand merged headers
+  // Save and remove ALL merges early — prevents unmerge from clearing content later
+  var savedMerges = _saveAndClearMerges(ws);
+
   if (extraOps.length > 0) {
-    // Add sub-header labels in R10 for extra columns
-    var templateHeaderStyle = _captureRowStyles(ws, HEADER_ROW, TEMPLATE_LAST_OP_COL);
-    var lastColStyle = templateHeaderStyle[TEMPLATE_LAST_OP_COL]; // use last col's style as template
-
+    var lastHdrStyle = _captureRowStyles(ws, HEADER_ROW, TEMPLATE_LAST_OP_COL)[TEMPLATE_LAST_OP_COL];
     for (var ei = 0; ei < extraOps.length; ei++) {
-      var extraCol = TEMPLATE_LAST_OP_COL + 1 + ei;
-      var headerRow = ws.getRow(HEADER_ROW);
-      _setCellValueWithStyle(headerRow, extraCol, extraOps[ei].replace(/ /g, '\n'), lastColStyle);
-      headerRow.commit();
-
-      // Also style R9 (merged header) extra cells
+      var eCol = TEMPLATE_LAST_OP_COL + 1 + ei;
+      var hRow = ws.getRow(HEADER_ROW);
+      _setCellValueWithStyle(hRow, eCol, extraOps[ei].replace(/ /g, '\n'), lastHdrStyle);
+      hRow.commit();
+      var r9S = _captureRowStyles(ws, MERGED_HEADER_ROW, TEMPLATE_LAST_OP_COL);
       var r9 = ws.getRow(MERGED_HEADER_ROW);
-      var r9Style = _captureRowStyles(ws, MERGED_HEADER_ROW, TEMPLATE_LAST_OP_COL);
-      _setCellValueWithStyle(r9, extraCol, '', r9Style[TEMPLATE_LAST_OP_COL]);
+      _setCellValueWithStyle(r9, eCol, '', r9S[TEMPLATE_LAST_OP_COL]);
       r9.commit();
-
-      // Set column width for extra columns (same as last template col)
-      var lastTemplateColWidth = ws.getColumn(TEMPLATE_LAST_OP_COL).width;
-      ws.getColumn(extraCol).width = lastTemplateColWidth || 11;
+      for (var hr = 1; hr <= 8; hr++) {
+        var hrS = _captureRowStyles(ws, hr, TEMPLATE_LAST_OP_COL);
+        if (hrS[TEMPLATE_LAST_OP_COL]) {
+          var hrRow = ws.getRow(hr);
+          _setCellValueWithStyle(hrRow, eCol, '', hrS[TEMPLATE_LAST_OP_COL]);
+          hrRow.commit();
+        }
+      }
+      ws.getColumn(eCol).width = ws.getColumn(TEMPLATE_LAST_OP_COL).width || 11;
     }
-
-    console.log('[V2 EXPORT] Extra operations added as new columns:', extraOps.join(', '));
+    console.log('[V2 EXPORT] Extra columns:', extraOps.join(', '));
   }
 
-  // Fill header values (R7)
-  _setCellValue(ws, 7, 1, client.name || '');   // A7 = client name
-  _setCellValue(ws, 7, 3, period);               // C7 = period
-  _setCellValue(ws, 7, 6, docNr);                // F7 = nr doc
-  _setCellValue(ws, 7, 8, todayStr);             // H7 = date
+  _setCellValue(ws, 7, 1, client.name || '');
+  _setCellValue(ws, 7, 3, period);
+  _setCellValue(ws, 7, 6, docNr);
+  _setCellValue(ws, 7, 8, todayStr);
 
-  // Save styles from template data rows (odd=R11, even=R12)
-  // Capture up to TOTAL_COLS to cover any extra columns
-  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, TOTAL_COLS);      // R11 cream
-  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, TOTAL_COLS); // R12 white
-
-  // Handle row count mismatch
-  var LAST_TEMPLATE_DATA_ROW = FIRST_DATA_ROW + TEMPLATE_DATA_ROWS - 1; // R28
-  var totalRow = LAST_TEMPLATE_DATA_ROW + 1; // R29 in original template
-
-  if (NR > TEMPLATE_DATA_ROWS) {
-    // Need more rows: insert rows before the total row
-    var extraRows = NR - TEMPLATE_DATA_ROWS;
-    ws.spliceRows(LAST_TEMPLATE_DATA_ROW + 1, 0, ...Array(extraRows).fill([]));
-    totalRow = FIRST_DATA_ROW + NR; // new position of total row
-  } else if (NR < TEMPLATE_DATA_ROWS) {
-    // Fewer rows: delete extra data rows (remove from bottom of data area)
-    var rowsToDelete = TEMPLATE_DATA_ROWS - NR;
-    ws.spliceRows(FIRST_DATA_ROW + NR + 1, rowsToDelete);
-    totalRow = FIRST_DATA_ROW + NR; // new position
+  var clearEnd = Math.max(ORIG_FOOTER_ROWS[ORIG_FOOTER_ROWS.length - 1] + 5, FIRST_DATA_ROW + NR + 10);
+  for (var cr = FIRST_DATA_ROW; cr <= clearEnd; cr++) {
+    _clearRow(ws, cr, LAST_COL);
   }
 
-  // ── Step 5: Fill data rows
-  // Build checkmark font style (reusable)
   var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1A6B2A' } };
-
   for (var di = 0; di < NR; di++) {
     var rowNum = FIRST_DATA_ROW + di;
     var entry = sorted[di];
-    var isOdd = (di % 2 === 0); // 0-indexed, so first row (di=0) is "odd" style (cream)
+    var isOdd = (di % 2 === 0);
     var styles = isOdd ? oddRowStyle : evenRowStyle;
-
     var row = ws.getRow(rowNum);
-
-    // A: date
     _setCellValueWithStyle(row, 1, fmtDateDMY(entry.date), styles[1]);
-
-    // Clear all operation columns first (template + extra)
-    for (var cc = TEMPLATE_FIRST_OP_COL; cc <= TOTAL_COLS; cc++) {
-      var fallbackStyle = styles[cc] || styles[TEMPLATE_LAST_OP_COL] || styles[TEMPLATE_FIRST_OP_COL];
-      _setCellValueWithStyle(row, cc, '', fallbackStyle);
+    for (var cc = TEMPLATE_FIRST_OP_COL; cc <= LAST_COL; cc++) {
+      var fStyle = styles[cc] || styles[ORIG_LAST_COL] || styles[TEMPLATE_FIRST_OP_COL];
+      _setCellValueWithStyle(row, cc, '', fStyle);
     }
-
-    // Set checkmarks only for operations that were checked
     var ops = _parseOps(entry.operations);
     for (var oi = 0; oi < ops.length; oi++) {
-      var opName = ops[oi];
-      var col = opToCol[opName];
-      if (!col) {
-        // Fallback: try diacritics-insensitive match against template headers
-        col = _findOpColumn(opName, templateHeaders);
-      }
+      var col = opToCol[ops[oi]];
+      if (!col) col = _findOpColumn(ops[oi], templateHeaders);
       if (col && col >= TEMPLATE_FIRST_OP_COL) {
-        var cellStyle = styles[col] || styles[TEMPLATE_LAST_OP_COL] || styles[TEMPLATE_FIRST_OP_COL];
-        _setCellValueWithStyle(row, col, '\u2713', _mergeStyle(cellStyle, { font: checkFont }));
+        var cStyle = styles[col] || styles[ORIG_LAST_COL] || styles[TEMPLATE_FIRST_OP_COL];
+        _setCellValueWithStyle(row, col, '✓', _mergeStyle(cStyle, { font: checkFont }));
       }
     }
-
     row.commit();
   }
 
-  // ── Step 6: Update total row (COUNT formula)
+  var newTotalRow = FIRST_DATA_ROW + NR;
+  var rowShift = newTotalRow - ORIG_TOTAL_ROW;
   var lastDataRow = FIRST_DATA_ROW + NR - 1;
-  _setCellFormula(ws, totalRow, 7, 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
-
-  // Update TOTAL DE PLATA row (2 rows after total)
-  var payRow = totalRow + 2;
   var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
-  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
+
+  ORIG_FOOTER_ROWS.forEach(function(origRow, idx) {
+    var newRow = newTotalRow + idx;
+    var sStyles = footerStyles[origRow];
+    var sContent = footerContent[origRow];
+    var row = ws.getRow(newRow);
+    for (var c = 1; c <= ORIG_LAST_COL; c++) {
+      _setCellValueWithStyle(row, c, sContent[c - 1].value, sStyles[c]);
+    }
+    for (var ec = ORIG_LAST_COL + 1; ec <= LAST_COL; ec++) {
+      _setCellValueWithStyle(row, ec, '', sStyles[ORIG_LAST_COL]);
+    }
+    if (sContent._height) row.height = sContent._height;
+    row.commit();
+  });
+
+  // Footer layout: [sep(+0), total(+1), sep(+2), pay(+3), sep(+4), footer(+5)]
+  var actualTotalRow = newTotalRow + 1;
+  var countFormula = 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')';
+  // Template has COUNT formula in G, H, I (cols 7-9) — update all
+  for (var tc = 7; tc <= LAST_COL; tc++) {
+    _setCellFormula(ws, actualTotalRow, tc, countFormula);
+  }
+  var actualPayRow = newTotalRow + 3;
+  var payFormula = 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)';
+  // Template has IFERROR formula in F, G, H, I (cols 6-9) — update all
+  for (var pc = 6; pc <= LAST_COL; pc++) {
+    _setCellFormula(ws, actualPayRow, pc, payFormula);
+  }
+
+  // Re-apply merges at shifted positions (AFTER all content/formulas are written)
+  _applyV2Merges(ws, savedMerges, rowShift, ORIG_TOTAL_ROW, ORIG_LAST_COL, LAST_COL);
 
   return wb;
 }
@@ -1766,7 +1848,12 @@ async function _fillV1Template(wb, client, sorted, prices) {
 
   var TEMPLATE_DATA_ROWS = 10; // R10-R19
   var FIRST_DATA_ROW = 10;
+  var ORIG_LAST_COL = 11;     // columns A-K
   var NR = sorted.length;
+
+  // Footer rows in template: R20=cantitate totala, R21=pret unitar, R22=total general, R23=footer
+  var ORIG_TOTAL_ROW = 20;
+  var ORIG_FOOTER_ROWS = [20, 21, 22, 23];
 
   // Date helpers
   var today = new Date();
@@ -1784,24 +1871,33 @@ async function _fillV1Template(wb, client, sorted, prices) {
   _setCellValue(ws, 6, 10, todayStr);             // J6 = date
 
   // Save styles from template data rows (even=R10 blue, odd=R11 white)
-  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, 11);     // R10 blue
-  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, 11);  // R11 white
+  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, ORIG_LAST_COL);     // R10 blue
+  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, ORIG_LAST_COL);  // R11 white
 
-  // Handle row count mismatch
-  var LAST_TEMPLATE_DATA_ROW = FIRST_DATA_ROW + TEMPLATE_DATA_ROWS - 1; // R19
-  var totalsRow = LAST_TEMPLATE_DATA_ROW + 1; // R20 originally
-
-  if (NR > TEMPLATE_DATA_ROWS) {
-    var extraRows = NR - TEMPLATE_DATA_ROWS;
-    ws.spliceRows(LAST_TEMPLATE_DATA_ROW + 1, 0, ...Array(extraRows).fill([]));
-    totalsRow = FIRST_DATA_ROW + NR;
-  } else if (NR < TEMPLATE_DATA_ROWS) {
-    var rowsToDelete = TEMPLATE_DATA_ROWS - NR;
-    ws.spliceRows(FIRST_DATA_ROW + NR + 1, rowsToDelete);
-    totalsRow = FIRST_DATA_ROW + NR;
-  }
+  // Save footer styles and content BEFORE any modifications
+  var footerStyles = {};
+  var footerContent = {};
+  ORIG_FOOTER_ROWS.forEach(function(r) {
+    footerStyles[r] = _captureRowStyles(ws, r, ORIG_LAST_COL);
+    var rowData = [];
+    var row = ws.getRow(r);
+    for (var c = 1; c <= ORIG_LAST_COL; c++) {
+      rowData.push({ value: row.getCell(c).value });
+    }
+    rowData._height = row.height;
+    footerContent[r] = rowData;
+  });
 
   var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
+
+  // Save and remove ALL merges early — prevents unmerge from clearing content later
+  var savedV1Merges = _saveAndClearMerges(ws);
+
+  // Clear ALL data rows + old footer area (avoid spliceRows which breaks merges)
+  var clearEnd = Math.max(ORIG_FOOTER_ROWS[ORIG_FOOTER_ROWS.length - 1] + 5, FIRST_DATA_ROW + NR + 10);
+  for (var cr = FIRST_DATA_ROW; cr <= clearEnd; cr++) {
+    _clearRow(ws, cr, ORIG_LAST_COL);
+  }
 
   // Fill data rows
   for (var di = 0; di < NR; di++) {
@@ -1835,18 +1931,35 @@ async function _fillV1Template(wb, client, sorted, prices) {
     row.commit();
   }
 
-  // Update formulas in totals row (Cantitate totala — R20 originally)
+  // Relocate footer to new position
+  var newTotalRow = FIRST_DATA_ROW + NR; // first footer row position
+  var rowShift = newTotalRow - ORIG_TOTAL_ROW;
+
+  ORIG_FOOTER_ROWS.forEach(function(origRow, idx) {
+    var newRow = newTotalRow + idx;
+    var sStyles = footerStyles[origRow];
+    var sContent = footerContent[origRow];
+    var row = ws.getRow(newRow);
+    for (var c = 1; c <= ORIG_LAST_COL; c++) {
+      _setCellValueWithStyle(row, c, sContent[c - 1].value, sStyles[c]);
+    }
+    if (sContent._height) row.height = sContent._height;
+    row.commit();
+  });
+
+  // Footer layout: [cantitate totala(+0), pret unitar(+1), total general(+2), footer text(+3)]
+  var totalsRow = newTotalRow;      // Cantitate totala
+  var pretRow = newTotalRow + 1;    // Pret unitar
+  var genRow = newTotalRow + 2;     // Total general
   var lastDataRow = FIRST_DATA_ROW + NR - 1;
 
-  // Update SUM formulas for columns C-J (cols 3-10)
+  // Update SUM formulas for columns C-J (cols 3-10) in Cantitate totala row
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var colLetter = _excelCol(cc.col);
     _setCellFormula(ws, totalsRow, cc.col, 'SUM(' + colLetter + FIRST_DATA_ROW + ':' + colLetter + lastDataRow + ')');
   });
 
-  // Update pret unitar row (totalsRow + 1 = R21 originally)
-  var pretRow = totalsRow + 1;
-  // Update prices from settings (fall back to template defaults)
+  // Update prices in Pret unitar row from settings (fall back to template defaults)
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var priceKeys = V1_COL_PRICE_KEYS[cc.col] || [];
     var price = 0;
@@ -1860,19 +1973,17 @@ async function _fillV1Template(wb, client, sorted, prices) {
     if (price > 0) _setCellValue(ws, pretRow, cc.col, price);
   });
 
-  // Update TOTAL GENERAL row (totalsRow + 2 = R22 originally)
-  var genRow = pretRow + 1;
-  var totalsRowExcel = totalsRow;
-  var pretRowExcel = pretRow;
-
-  // C22-J22: each = Cantitate totala * Pret unitar for that column
+  // Update TOTAL GENERAL formulas: each col = cantitate * pret
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var colL = _excelCol(cc.col);
-    _setCellFormula(ws, genRow, cc.col, colL + totalsRowExcel + '*' + colL + pretRowExcel);
+    _setCellFormula(ws, genRow, cc.col, colL + totalsRow + '*' + colL + pretRow);
   });
 
-  // K22: SUM(C22:J22)
+  // K: SUM(C:J) of total general row
   _setCellFormula(ws, genRow, 11, 'SUM(C' + genRow + ':J' + genRow + ')');
+
+  // Re-apply merges at shifted positions (AFTER all content/formulas are written)
+  _applyV1Merges(ws, savedV1Merges, rowShift, ORIG_TOTAL_ROW);
 
   return wb;
 }
