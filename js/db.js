@@ -167,6 +167,9 @@ function getActiveClients() {
   return getByIndex('clients', 'active', true).catch(() =>
     // Fallback if 'active' index missing (old DB schema)
     getAll('clients').then(all => all.filter(c => c.active !== false))
+  ).then(clients =>
+    // Extra safety: filter out entries without valid client_id
+    clients.filter(c => c.client_id && String(c.client_id).trim() !== '')
   );
 }
 

@@ -9,6 +9,30 @@ const $q = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
 const uid = () => 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
+/**
+ * Deduplicate interventions: keep only the newest per client_id + date.
+ * "Newest" = latest created_at. Returns a new array (does not mutate input).
+ */
+function _deduplicateInterventions(interventions) {
+  // Sort newest first so the first encountered per key wins
+  var sorted = interventions.slice().sort(function(a, b) {
+    return (b.created_at || '').localeCompare(a.created_at || '');
+  });
+  var seen = {};
+  var result = [];
+  for (var i = 0; i < sorted.length; i++) {
+    // Normalize date for key — ensures "2026-03-18" matches even if stored differently
+    var rawDate = String(sorted[i].date || '');
+    var normDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : (function(d) { var p = new Date(d); return isNaN(p.getTime()) ? d : p.getFullYear() + '-' + ('0'+(p.getMonth()+1)).slice(-2) + '-' + ('0'+p.getDate()).slice(-2); })(rawDate);
+    var key = String(sorted[i].client_id) + '_' + String(sorted[i].technician_id || '') + '_' + normDate;
+    if (!seen[key]) {
+      seen[key] = true;
+      result.push(sorted[i]);
+    }
+  }
+  return result;
+}
+
 // ── Global State ─────────────────────────────────────────────
 const APP = {
   currentScreen:  'login',
@@ -20,7 +44,8 @@ const APP = {
   clGranUnit:      'gr',       // 'gr' or 'kg'
   currentPhotos:   [],
   currentPosition: null,       // GPS: {lat, lng, accuracy}
-  arrivalTime:     null,       // ISO string when form opened
+  arrivalTime:     null,       // ISO string when timer started
+  _timerInterval:  null,       // live timer interval ID
   pinBuffer:       '',         // PIN input buffer
   installPrompt:   null,       // beforeinstallprompt event
   alertShown:      false,      // toast de alertă intervenții (1x per sesiune)
@@ -31,7 +56,9 @@ const APP = {
   _stockProducts:  [],         // cache produse stoc (actualizat la deschidere formular)
   _billingClientId: null,      // client_id pentru care se afișează butonul "Marchează facturat"
   gpsStart:        7,          // ora de start tracking automat (0–23)
-  gpsEnd:          18          // ora de stop tracking automat (0–23)
+  gpsEnd:          18,         // ora de stop tracking automat (0–23)
+  _geoWatchId:     null,       // geolocation watchPosition ID for geofence timer
+  _geoTimerState:  'idle'      // 'idle' | 'watching' | 'inside' | 'stopped'
 };
 
 // ── Init ─────────────────────────────────────────────────────
@@ -41,8 +68,215 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
+const APP_VERSION = 152;
+
+// ── Arrival Timer with Geofencing ────────────────────────────
+// GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
+var GEOFENCE_RADIUS_M = 150;
+
+/** Haversine distance in meters between two lat/lng pairs */
+function _haversineMeters(lat1, lon1, lat2, lon2) {
+  var R = 6371000;
+  var dLat = (lat2 - lat1) * Math.PI / 180;
+  var dLon = (lon2 - lon1) * Math.PI / 180;
+  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/** Start geofence monitoring for the current client */
+function _startGeofenceWatch() {
+  _stopGeofenceWatch(); // cleanup any previous watch
+  var client = APP.selectedClient;
+  if (!client || !client.location_set || !client.latitude || !client.longitude) {
+    // Client has no GPS → auto-start timer (measures form open duration)
+    _autoStartTimer();
+    APP._geoTimerState = 'inside'; // treat as "at client" so save captures duration
+    var statusEl = $('geo-status');
+    if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏱ Timer automat (fără GPS)'; }
+    return;
+  }
+  if (!navigator.geolocation) {
+    _autoStartTimer();
+    APP._geoTimerState = 'inside';
+    var statusEl2 = $('geo-status');
+    if (statusEl2) { statusEl2.style.display = 'inline'; statusEl2.textContent = '⏱ Timer automat (GPS indisponibil)'; }
+    return;
+  }
+  APP._geoTimerState = 'watching';
+  _setTimerUI('searching');
+  APP._geoWatchId = navigator.geolocation.watchPosition(
+    function(pos) {
+      var dist = _haversineMeters(
+        pos.coords.latitude, pos.coords.longitude,
+        parseFloat(client.latitude), parseFloat(client.longitude)
+      );
+      var statusEl = $('geo-status');
+      if (statusEl) statusEl.textContent = Math.round(dist) + 'm de client';
+      if (dist <= GEOFENCE_RADIUS_M) {
+        // Inside geofence
+        if (APP._geoTimerState === 'watching') {
+          // Just arrived — start timer
+          _autoStartTimer();
+          APP._geoTimerState = 'inside';
+        }
+      } else {
+        // Outside geofence
+        if (APP._geoTimerState === 'inside') {
+          // Just left — stop timer
+          _autoStopTimer();
+          APP._geoTimerState = 'stopped';
+          _stopGeofenceWatch();
+        }
+      }
+    },
+    function(err) {
+      console.warn('[GEOFENCE] GPS error:', err.message);
+      // GPS failed — auto-start timer as fallback (measures form duration)
+      if (!APP.arrivalTime) {
+        _autoStartTimer();
+        APP._geoTimerState = 'inside';
+        var statusEl = $('geo-status');
+        if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏱ Timer automat (eroare GPS)'; }
+      }
+    },
+    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
+  );
+}
+
+/** Stop watching geolocation */
+function _stopGeofenceWatch() {
+  if (APP._geoWatchId != null) {
+    navigator.geolocation.clearWatch(APP._geoWatchId);
+    APP._geoWatchId = null;
+  }
+}
+
+/** Auto-start the timer (geofence triggered) */
+function _autoStartTimer() {
+  if (APP.arrivalTime) return; // already running
+  APP.arrivalTime = new Date().toISOString();
+  _setTimerUI('running');
+  _updateTimerDisplay();
+  APP._timerInterval = setInterval(_updateTimerDisplay, 30000);
+  showToast('📍 Ai ajuns la client — timer pornit automat', 'success');
+}
+
+/** Auto-stop the timer (geofence triggered) */
+function _autoStopTimer() {
+  if (!APP.arrivalTime) return;
+  if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
+  _setTimerUI('stopped');
+  _updateTimerDisplay();
+  showToast('📍 Ai plecat de la client — timer oprit automat', 'info');
+}
+
+/** Manual toggle — fallback when no GPS or override */
+function toggleArrivalTimer() {
+  var btn = $('btn-timer');
+  if (!btn) return;
+
+  if (!APP.arrivalTime) {
+    // Manual start
+    APP.arrivalTime = new Date().toISOString();
+    _setTimerUI('running');
+    _updateTimerDisplay();
+    APP._timerInterval = setInterval(_updateTimerDisplay, 30000);
+    // If geofence was watching, switch to manual mode
+    if (APP._geoTimerState === 'watching') {
+      APP._geoTimerState = 'inside'; // pretend we're inside so departure still works
+    }
+  } else {
+    // Manual stop
+    if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
+    _setTimerUI('stopped');
+    _updateTimerDisplay();
+    APP._geoTimerState = 'stopped';
+    _stopGeofenceWatch();
+  }
+}
+
+/** Update timer display with elapsed minutes */
+function _updateTimerDisplay() {
+  var el = $('timer-value');
+  if (!el || !APP.arrivalTime) return;
+  var min = Math.round((Date.now() - Date.parse(APP.arrivalTime)) / 60000);
+  el.textContent = min + ' min';
+  var display = $('timer-display');
+  if (display) display.style.display = 'inline';
+}
+
+/** Set timer UI elements based on state */
+function _setTimerUI(state) {
+  var btn = $('btn-timer');
+  var display = $('timer-display');
+  var statusEl = $('geo-status');
+  if (!btn) return;
+
+  switch (state) {
+    case 'searching':
+      btn.textContent = '▶ Start';
+      btn.classList.remove('timer-active');
+      btn.disabled = false;
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📡 Caut locația...'; }
+      if (display) display.style.display = 'none';
+      break;
+    case 'running':
+      btn.textContent = '⏹ Stop';
+      btn.classList.add('timer-active');
+      btn.disabled = false;
+      if (display) display.style.display = 'inline';
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📍 La client'; }
+      break;
+    case 'stopped':
+      btn.textContent = '✓ Oprit';
+      btn.classList.remove('timer-active');
+      btn.disabled = true;
+      if (statusEl) statusEl.style.display = 'none';
+      break;
+    case 'no-gps':
+      btn.textContent = '▶ Start';
+      btn.classList.remove('timer-active');
+      btn.disabled = false;
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⚠ GPS indisponibil — manual'; }
+      if (display) display.style.display = 'none';
+      break;
+    default:
+      btn.textContent = '▶ Start';
+      btn.classList.remove('timer-active');
+      btn.disabled = false;
+      if (display) display.style.display = 'none';
+      if (statusEl) statusEl.style.display = 'none';
+  }
+}
+
+/** Full reset — called when opening a new intervention */
+function _resetArrivalTimer() {
+  if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
+  _stopGeofenceWatch();
+  APP.arrivalTime = null;
+  APP._geoTimerState = 'idle';
+  var btn = $('btn-timer');
+  var display = $('timer-display');
+  var statusEl = $('geo-status');
+  if (btn) { btn.textContent = '▶ Start'; btn.classList.remove('timer-active'); btn.disabled = false; }
+  if (display) display.style.display = 'none';
+  if (statusEl) statusEl.style.display = 'none';
+}
+
 async function initApp() {
   await openDB();
+
+  // ── Version-based cleanup: force re-sync clients when app updates ──
+  try {
+    var lastVer = await getSetting('app_version');
+    if (parseInt(lastVer) !== APP_VERSION) {
+      console.log('[INIT] Version changed:', lastVer, '→', APP_VERSION, '— clearing clients for re-sync');
+      await clearStore('clients');
+      await setSetting('app_version', APP_VERSION);
+    }
+  } catch(e) { console.warn('[INIT] Version check error:', e.message); }
 
   // Load configurable alert threshold
   const savedThr = await getSetting('alert_threshold');
@@ -143,6 +377,11 @@ function showScreen(name) {
   if (el) el.classList.add('active');
   APP.currentScreen = name;
 
+  // Stop geofence watch when leaving intervention screen
+  if (name !== 'intervention') {
+    _stopGeofenceWatch();
+  }
+
   // Keyboard: focus search input when going to dashboard (mobile UX)
   if (name === 'dashboard') {
     setTimeout(() => {
@@ -195,7 +434,7 @@ function showToast(msg, type = 'success', duration = 3000) {
   const icons = { success: '✓', warning: '⚠', error: '✕', info: 'ℹ' };
   const toast = document.createElement('div');
   toast.className = 'toast ' + type;
-  toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ'}</span><span>${msg}</span>`;
+  toast.innerHTML = `<span class="toast-icon">${icons[type] || 'ℹ'}</span><span>${escHtml(String(msg))}</span>`;
   container.appendChild(toast);
 
   setTimeout(() => {
@@ -384,9 +623,9 @@ function showPinScreen(user) {
   renderPinDots();
   $('pin-username-label').textContent = 'Bine ai venit, ' + user.name;
 
-  // Setup keypad
+  // Setup keypad (use onclick to avoid listener accumulation)
   $$('.pin-key').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.onclick = function() {
       const val = btn.dataset.val;
       if (val === 'del') {
         APP.pinBuffer = APP.pinBuffer.slice(0, -1);
@@ -395,17 +634,17 @@ function showPinScreen(user) {
         if (APP.pinBuffer.length === 4) checkPin(user);
       }
       renderPinDots();
-    });
+    };
   });
 
   const switchBtn = $('pin-switch-user');
   if (switchBtn) {
-    switchBtn.addEventListener('click', async () => {
+    switchBtn.onclick = async function() {
       await clearSession();
       APP.user = null;
       showScreen('login');
       initLoginScreen();
-    });
+    };
   }
 }
 
@@ -443,21 +682,56 @@ async function loadData() {
   ]);
   APP.clients       = clients;
 
-  // Cleanup orphaned interventions (demo data whose clients no longer exist)
+  // Normalize operations field: ensure it's always an array (fixes old sync data stored as string)
+  for (var ni = 0; ni < interventions.length; ni++) {
+    var ops = interventions[ni].operations;
+    if (typeof ops === 'string' && ops.length > 0) {
+      try { interventions[ni].operations = JSON.parse(ops); } catch(e) { interventions[ni].operations = []; }
+    } else if (!Array.isArray(ops)) {
+      interventions[ni].operations = [];
+    }
+    // Normalize date to YYYY-MM-DD (fixes sort order when dates come as Date objects from GAS)
+    var dt = interventions[ni].date;
+    if (dt && !/^\d{4}-\d{2}-\d{2}$/.test(String(dt))) {
+      var dp = new Date(dt);
+      if (!isNaN(dp.getTime())) {
+        interventions[ni].date = dp.getFullYear() + '-' + ('0' + (dp.getMonth() + 1)).slice(-2) + '-' + ('0' + dp.getDate()).slice(-2);
+      }
+    }
+  }
+
+  // Filter orphaned interventions (whose client doesn't exist locally)
+  // Only remove from local display — do NOT track for server deletion!
+  // The server is the source of truth; orphans may belong to clients
+  // that are active on another device or just not synced yet.
   var clientIdSet = {};
   clients.forEach(function(c) { clientIdSet[String(c.client_id)] = true; });
   var orphaned = interventions.filter(function(i) { return !clientIdSet[String(i.client_id)]; });
   if (orphaned.length > 0) {
-    console.log('[CLEANUP] Removing', orphaned.length, 'orphaned interventions:', orphaned.map(function(i) { return i.intervention_id; }));
-    for (var oi = 0; oi < orphaned.length; oi++) {
-      try { await deleteRecord('interventions', orphaned[oi].intervention_id); } catch(e) {}
-    }
+    console.log('[CLEANUP] Filtering out', orphaned.length, 'orphaned interventions from display (NOT deleting from server)');
     APP.interventions = interventions.filter(function(i) { return clientIdSet[String(i.client_id)]; });
   } else {
     APP.interventions = interventions;
   }
 
+  // Deduplicate: keep only the newest intervention per client+date
+  // No dedup here — server is the single source of truth.
+  // All interventions from server are kept as-is.
   APP.pendingSync   = APP.interventions.filter(i => !i.synced).length;
+
+  // Auto-sync if no clients locally but sync is configured
+  if (APP.clients.length === 0 && isSyncConfigured()) {
+    console.log('[LOAD] No local clients, triggering auto-sync...');
+    try { await forceSync(); } catch(e) {}
+    var freshClients = await getActiveClients();
+    if (freshClients.length > 0) {
+      APP.clients = freshClients;
+      var freshInt = await getAll('interventions');
+      APP.interventions = freshInt;
+      APP.pendingSync = freshInt.filter(i => !i.synced).length;
+      console.log('[LOAD] Auto-sync loaded', freshClients.length, 'clients');
+    }
+  }
 }
 
 // ── Dashboard ────────────────────────────────────────────────
@@ -522,19 +796,19 @@ function renderDashboard() {
   if (searchInput) {
     searchInput.value = '';
     searchInput.oninput = e => renderClientList(e.target.value);
-    searchInput.addEventListener('keydown', e => {
+    searchInput.onkeydown = function(e) {
       if (e.key === 'Enter') { e.preventDefault(); searchInput.blur(); }
-    });
+    };
   }
 
-  // Dismiss keyboard on swipe/scroll (mobile UX)
+  // Dismiss keyboard on swipe/scroll (mobile UX — use ontouchmove to avoid accumulation)
   const dashboard = $('screen-dashboard');
   if (dashboard) {
-    dashboard.addEventListener('touchmove', () => {
+    dashboard.ontouchmove = function() {
       if (document.activeElement && document.activeElement.tagName === 'INPUT') {
         document.activeElement.blur();
       }
-    }, { passive: true });
+    };
   }
 
   // Logout
@@ -1002,8 +1276,9 @@ async function renderIntervention(client) {
     APP._interventionDate = todayStr;
   }
 
-  // Track arrival time
-  APP.arrivalTime    = new Date().toISOString();
+  // Reset arrival timer and start geofence monitoring
+  _resetArrivalTimer();
+  _startGeofenceWatch();
   // Render operations checklist in step 2
   var opsContainer = $('ops-checklist');
   if (opsContainer) {
@@ -1072,7 +1347,12 @@ async function renderIntervention(client) {
 
   // Wizard: reset to step 1 + render dynamic treatment steppers
   goWizardStep(1);
-  renderTreatmentSteppers().catch(e => console.warn('[STEPPER] Error:', e));
+  renderTreatmentSteppers().then(function() {
+    // If editing an existing intervention, prefill all fields
+    if (APP._editingIntervention) {
+      _prefillInterventionForm(APP._editingIntervention);
+    }
+  }).catch(e => console.warn('[STEPPER] Error:', e));
 }
 
 function updateGpsIndicator(state) {
@@ -1162,7 +1442,7 @@ function _prefillInterventionForm(intv) {
 
 function resetInterventionForm() {
   // Measured values
-  ['m-chlorine','m-ph','m-temp','m-hardness','m-alkalinity','m-salinity'].forEach(id => {
+  ['m-chlorine','m-ph','m-temp','m-hardness','m-alkalinity','m-salinity','m-tc','m-cya'].forEach(id => {
     const el = $(id);
     if (el) { el.value = ''; el.classList.remove('error'); }
   });
@@ -1450,23 +1730,31 @@ async function doSaveIntervention() {
   });
 
   try {
-    // If same client already has an intervention on this date, remove the old one
-    var existingIdx = APP.interventions.findIndex(i =>
-      i.client_id === intervention.client_id && i.date === intervention.date
-    );
-    if (existingIdx >= 0) {
-      var oldIntv = APP.interventions[existingIdx];
-      await deleteRecord('interventions', oldIntv.intervention_id);
-      APP.interventions.splice(existingIdx, 1);
-      // Track as deleted so sync won't re-add it
+    // If same client already has interventions on this date, remove ALL old ones
+    var existingOld = APP.interventions.filter(function(i) {
+      return String(i.client_id) === String(intervention.client_id)
+        && i.date === intervention.date
+        && String(i.technician_id) === String(intervention.technician_id);
+    });
+    for (var oi = 0; oi < existingOld.length; oi++) {
+      var oldIntv = existingOld[oi];
+      try { await deleteRecord('interventions', oldIntv.intervention_id); } catch(e) {}
       await _trackDeletedIntervention(oldIntv.intervention_id);
-      // Also delete from GAS
       if (isSyncConfigured()) {
-        apiFetch(SYNC_CONFIG.API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'push', type: 'delete_intervention', data: { intervention_id: oldIntv.intervention_id } })
-        }).catch(function(e) { console.warn('[SYNC] Duplicate delete push failed:', e.message); });
+        try {
+          await apiFetch(SYNC_CONFIG.API_URL, {
+            method: 'POST',
+            body: JSON.stringify({ action: 'push', type: 'delete_intervention', data: { intervention_id: oldIntv.intervention_id } })
+          });
+          console.log('[SAVE] Server delete confirmed for', oldIntv.intervention_id);
+        } catch(e) { console.warn('[SYNC] Duplicate delete push failed:', e.message); }
       }
+    }
+    if (existingOld.length > 0) {
+      var oldIds = {};
+      existingOld.forEach(function(o) { oldIds[o.intervention_id] = true; });
+      APP.interventions = APP.interventions.filter(function(i) { return !oldIds[i.intervention_id]; });
+      console.log('[SAVE] Removed', existingOld.length, 'old intervention(s) for', intervention.date);
     }
 
     await saveIntervention(intervention);
@@ -1549,9 +1837,20 @@ function renderPreviousInterventions(client) {
   const container = $('prev-interventions');
   if (!container) return;
 
-  const ci = APP.interventions
-    .filter(i => i.client_id === client.client_id)
-    .sort((a, b) => b.date.localeCompare(a.date))
+  const ci = APP.interventions.filter(i => i.client_id === client.client_id && i.date)
+    .map(function(i) {
+      var raw = String(i.date || '');
+      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        var dp = new Date(raw);
+        if (!isNaN(dp.getTime())) i.date = dp.getFullYear() + '-' + ('0'+(dp.getMonth()+1)).slice(-2) + '-' + ('0'+dp.getDate()).slice(-2);
+      }
+      return i;
+    })
+    .sort((a, b) => {
+      var cmp = String(b.date || '').localeCompare(String(a.date || ''));
+      if (cmp !== 0) return cmp;
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    })
     .slice(0, 5);
 
   if (!ci.length) {
@@ -1560,7 +1859,7 @@ function renderPreviousInterventions(client) {
   }
 
   container.innerHTML = ci.map(i => {
-    const dur = i.duration_minutes != null ? `<span class="prev-int-duration">⏱ ${i.duration_minutes} min</span>` : '';
+    const dur = i.duration_minutes != null ? `<span class="prev-int-duration">⏱ ${Math.round(i.duration_minutes)} min</span>` : '';
     return `<div class="prev-intervention">
       <div class="prev-int-header">
         <span class="prev-int-date">${fmtDate(i.date)}</span>
@@ -1595,9 +1894,22 @@ async function showClientDetails(clientId) {
 
   const hasLocation = client.location_set && client.latitude;
 
-  // Safe filter: match client_id as string and ensure date exists
+  // Filter, normalize dates, and sort descending (newest first)
   const ci = allFromDb.filter(i => String(i.client_id) === String(clientId) && i.date)
-               .sort((a, b) => String(b.date).localeCompare(String(a.date)));
+    .map(function(i) {
+      // Normalize date to YYYY-MM-DD (fixes GAS Date objects stored as "Tue Mar 18 2026...")
+      var raw = String(i.date || '');
+      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        var dp = new Date(raw);
+        if (!isNaN(dp.getTime())) i.date = dp.getFullYear() + '-' + ('0'+(dp.getMonth()+1)).slice(-2) + '-' + ('0'+dp.getDate()).slice(-2);
+      }
+      return i;
+    })
+    .sort((a, b) => {
+      var cmp = String(b.date || '').localeCompare(String(a.date || ''));
+      if (cmp !== 0) return cmp;
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    });
 
   body.innerHTML = `
     <div class="client-detail-section">
@@ -2890,7 +3202,7 @@ function generateInterventionReport(intervention, client) {
     : '\n🧪 *Tratament:* fără produse adăugate';
 
   const durationBlock = intervention.duration_minutes != null
-    ? `\n⏱ *Durată intervenție:* ${intervention.duration_minutes} min` : '';
+    ? `\n⏱ *Durată intervenție:* ${Math.round(intervention.duration_minutes)} min` : '';
 
   const obsBlock = intervention.observations
     ? `\n\n📝 *Observații:*\n${intervention.observations}` : '';
@@ -3446,13 +3758,14 @@ function _renderHistoryList(clientId, allInterventions) {
     if (i.treat_cl_lichid_bidoane > 0) chems.push('Cl.L: ' + i.treat_cl_lichid_bidoane);
     if (i.treat_sare_saci > 0) chems.push('Sare: ' + i.treat_sare_saci);
 
-    var ops = (i.operations || []).join(', ');
+    var opsArr = Array.isArray(i.operations) ? i.operations : (typeof i.operations === 'string' && i.operations.length > 0 ? (function() { try { return JSON.parse(i.operations); } catch(e) { return []; } })() : []);
+    var ops = opsArr.join(', ');
 
     html += '<div class="prev-intervention" style="position:relative">';
     html += '<div class="prev-int-header">';
     html += '<span class="prev-int-date">' + fmtDate(i.date) + '</span>';
     if (i.duration_minutes != null) {
-      html += '<span class="prev-int-duration">⏱ ' + i.duration_minutes + ' min</span>';
+      html += '<span class="prev-int-duration">⏱ ' + Math.round(i.duration_minutes) + ' min</span>';
     }
     // Edit: all users; Delete: admin only
     html += '<span style="display:flex;gap:4px;margin-left:auto">';
@@ -3476,6 +3789,14 @@ function _renderHistoryList(clientId, allInterventions) {
     if (i.observations) {
       html += '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px;font-style:italic">"' + escHtml(i.observations) + '"</div>';
     }
+    // Show photos if available
+    if (i.photos && i.photos.length > 0) {
+      html += '<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">';
+      i.photos.forEach(function(photoUrl, pi) {
+        html += '<img src="' + photoUrl + '" alt="Foto ' + (pi+1) + '" style="width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--slate-300)" onclick="window.open(this.src)">';
+      });
+      html += '</div>';
+    }
     if (!i.synced) {
       html += '<span style="font-size:.65rem;color:var(--amber-600);display:block;margin-top:2px">⚠ Nesincronizat</span>';
     }
@@ -3486,8 +3807,20 @@ function _renderHistoryList(clientId, allInterventions) {
 }
 
 function filterHistoryByDate(clientId) {
-  var ci = APP.interventions.filter(function(i) { return i.client_id === clientId; })
-    .sort(function(a, b) { return b.date.localeCompare(a.date); });
+  var ci = APP.interventions.filter(function(i) { return i.client_id === clientId && i.date; })
+    .map(function(i) {
+      var raw = String(i.date || '');
+      if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+        var dp = new Date(raw);
+        if (!isNaN(dp.getTime())) i.date = dp.getFullYear() + '-' + ('0'+(dp.getMonth()+1)).slice(-2) + '-' + ('0'+dp.getDate()).slice(-2);
+      }
+      return i;
+    })
+    .sort(function(a, b) {
+      var cmp = String(b.date || '').localeCompare(String(a.date || ''));
+      if (cmp !== 0) return cmp;
+      return String(b.created_at || '').localeCompare(String(a.created_at || ''));
+    });
   _renderHistoryList(clientId, ci);
 }
 
@@ -3767,13 +4100,26 @@ async function resetAllBilling() {
 
 /** Check if billing threshold is reached — admin-only modal */
 function checkBillingAlert(client) {
-  const interval = client.billing_interval_interventions;
-  if (!interval || interval <= 0) return;
+  const interval = parseInt(client.billing_interval_interventions) || 0;
+  if (!interval || interval <= 0) {
+    console.log('[BILLING] Skip: interval not set for', client.name, '(value:', client.billing_interval_interventions, ')');
+    return;
+  }
 
   const since = client.last_billing_date || '1970-01-01';
-  const billable = APP.interventions.filter(i =>
-    i.client_id === client.client_id && i.date > since
-  ).sort((a, b) => a.date.localeCompare(b.date));
+  // Normalize dates before comparing to handle GAS Date objects
+  const billable = APP.interventions.filter(function(i) {
+    if (i.client_id !== client.client_id) return false;
+    var raw = String(i.date || '');
+    // Normalize to YYYY-MM-DD
+    if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+      var dp = new Date(raw);
+      if (!isNaN(dp.getTime())) raw = dp.getFullYear() + '-' + ('0'+(dp.getMonth()+1)).slice(-2) + '-' + ('0'+dp.getDate()).slice(-2);
+    }
+    return raw > since;
+  }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+
+  console.log('[BILLING]', client.name, ':', billable.length, '/', interval, 'interventii (din', since, ')');
 
   if (billable.length >= interval) {
     // Send email notification via GAS (works for all roles)
@@ -3787,13 +4133,25 @@ function checkBillingAlert(client) {
 
 /** Send billing email notification via GAS — once per billing cycle */
 function _sendBillingEmail(client, count) {
-  if (!isSyncConfigured()) return;
+  if (!isSyncConfigured()) {
+    console.warn('[EMAIL] API nu e configurat — nu se poate trimite email');
+    return;
+  }
   var sentKey = 'billing_email_sent_' + client.client_id;
-  var cycleMarker = client.last_billing_date || 'none';
+  // Use last_billing_date + count as cycle marker so email re-sends when count changes
+  var cycleMarker = (client.last_billing_date || 'initial') + '_' + count;
   getSetting(sentKey).then(function(alreadySent) {
-    if (alreadySent === cycleMarker) return; // already sent for this cycle
+    if (alreadySent === cycleMarker) {
+      console.log('[EMAIL] Deja trimis email pentru', client.name, '(ciclu:', cycleMarker, ')');
+      return;
+    }
     return getSetting('notification_email').then(function(email) {
-      if (!email) return;
+      if (!email) {
+        console.warn('[EMAIL] Nu este configurat email-ul de notificare! Mergi la Settings → Email notificare facturare');
+        showToast('⚠ Email notificare nesetat! Mergi la Settings.', 'warning');
+        return;
+      }
+      console.log('[EMAIL] Trimit notificare la', email, 'pentru', client.name, '(', count, 'intervenții)' );
       var subject = 'Factureaza: ' + client.name + ' (' + count + ' interventii)';
       var body = 'Clientul ' + client.name + ' are ' + count + ' interventii nefacturate.\n\n';
       body += 'Detalii:\n';
@@ -3804,27 +4162,27 @@ function _sendBillingEmail(client, count) {
       body += '- Data: ' + new Date().toLocaleDateString('ro-RO') + '\n\n';
       body += 'Generat automat de Pool Manager.';
 
-      fetch(SYNC_CONFIG.API_URL, {
+      apiFetch(SYNC_CONFIG.API_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        redirect: 'follow',
         body: JSON.stringify({
           action: 'sendEmail',
           to: email,
           subject: subject,
           body: body
         })
-      }).then(function(r) { return r.json(); })
-        .then(function(res) {
-          if (res.success) {
-            console.log('[EMAIL] Billing notification sent to', email);
-            setSetting(sentKey, cycleMarker);
-          } else {
-            console.warn('[EMAIL] Send failed:', res.error);
-          }
-        }).catch(function(e) {
-          console.warn('[EMAIL] Error:', e.message);
-        });
+      }).then(function(res) {
+        if (res.success) {
+          console.log('[EMAIL] Billing notification sent to', email);
+          showToast('📧 Email trimis la ' + email, 'success');
+          setSetting(sentKey, cycleMarker);
+        } else {
+          console.warn('[EMAIL] Send failed:', res.error);
+          showToast('⚠ Email nereușit: ' + (res.error || 'eroare necunoscută'), 'error');
+        }
+      }).catch(function(e) {
+        console.warn('[EMAIL] Error:', e.message);
+        showToast('⚠ Eroare email: ' + e.message, 'error');
+      });
     });
   });
 }
@@ -3978,7 +4336,7 @@ function _buildBillingPrintHtml(client, interventions) {
     rows += '<td>' + escHtml(inv.date) + '</td>';
     rows += '<td>' + escHtml(inv.technician_name || '') + '</td>';
     rows += '<td style="font-size:11px">' + escHtml(_fmtTreatFull(inv)) + '</td>';
-    rows += '<td style="text-align:center">' + (inv.duration_minutes || '-') + '</td>';
+    rows += '<td style="text-align:center">' + (inv.duration_minutes != null ? Math.round(inv.duration_minutes) : '-') + '</td>';
     rows += '<td style="font-size:10px">' + escHtml(inv.observations || '') + '</td>';
     rows += '</tr>';
   });
@@ -4334,7 +4692,7 @@ async function toggleGpsOverride() {
   if (active) {
     // GPS trimite acum → utilizatorul vrea să îl oprească
     await setSetting('gps_manual_override', 'off');
-    showToast('GPS dezactivat manual.', 'warn', 3500);
+    showToast('GPS dezactivat manual.', 'warning', 3500);
   } else if (inHours) {
     // În program, dar era oprit manual → reactivare la normal
     await setSetting('gps_manual_override', null);
@@ -4388,7 +4746,7 @@ async function _sendLocationData(lat, lng, accuracy) {
   if (!await shouldSendGps()) return;
   try {
     await fetch(SYNC_CONFIG.API_URL, {
-      method: 'POST', mode: 'no-cors',
+      method: 'POST', redirect: 'follow',
       body: JSON.stringify({
         action: 'saveLocation',
         technician_id: APP.user.technician_id,
@@ -4560,10 +4918,10 @@ async function loadAndShowHistory() {
   const techId  = $('map-hist-tech')?.value;
   const dateVal = $('map-hist-date')?.value;
 
-  if (!techId)  { showToast('Alege un tehnician.', 'warn', 3000); return; }
-  if (!dateVal) { showToast('Alege o dată.', 'warn', 3000); return; }
-  if (!isSyncConfigured()) { showToast('Configurați API URL în Setări.', 'warn'); return; }
-  if (!_leafletMap) { showToast('Harta nu este inițializată.', 'warn'); return; }
+  if (!techId)  { showToast('Alege un tehnician.', 'warning', 3000); return; }
+  if (!dateVal) { showToast('Alege o dată.', 'warning', 3000); return; }
+  if (!isSyncConfigured()) { showToast('Configurați API URL în Setări.', 'warning'); return; }
+  if (!_leafletMap) { showToast('Harta nu este inițializată.', 'warning'); return; }
 
   showToast('Se încarcă traseul...', 'info', 2000);
 
@@ -4575,7 +4933,7 @@ async function loadAndShowHistory() {
     const data = await resp.json();
 
     if (!data.positions || data.positions.length === 0) {
-      showToast('Nicio poziție găsită pentru această dată.', 'warn', 4000);
+      showToast('Nicio poziție găsită pentru această dată.', 'warning', 4000);
       return;
     }
     renderHistoryTrail(data.positions, data.tech_name || 'Tehnician');

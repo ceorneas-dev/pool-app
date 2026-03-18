@@ -18,6 +18,7 @@ const INTERVENTIONS_COLS = [
   'intervention_id','client_id','client_name','technician_id','technician_name',
   'date','created_at','synced_at',
   'measured_chlorine','measured_ph','measured_temp','measured_hardness','measured_alkalinity','measured_salinity',
+  'measured_tc','measured_cya',
   'rec_cl_gr','rec_cl_tab','rec_ph_kg','rec_anti_l',
   'treat_cl_granule_gr','treat_cl_tablete','treat_cl_tablete_export_gr','treat_cl_lichid_bidoane',
   'treat_ph_granule','treat_ph_lichid_bidoane',
@@ -193,7 +194,41 @@ function handlePush(body) {
   const type = body.type || 'interventions';
   if (type === 'clients') return handlePushClients(body);
   if (type === 'technicians') return handlePushTechnicians(body);
+  if (type === 'delete_intervention') return handleDeleteIntervention(body);
+  if (type === 'delete_interventions_bulk') return handleDeleteInterventionsBulk(body);
+  if (type === 'clear_interventions') return handleClearInterventions();
   return handlePushInterventions(body);
+}
+
+/** Clear ALL interventions from the sheet (keeps header row) */
+function handleClearInterventions() {
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow > 1) {
+    sheet.deleteRows(2, lastRow - 1);
+  }
+  return { success: true, cleared: lastRow - 1 };
+}
+
+/** Delete a single intervention by intervention_id */
+function handleDeleteIntervention(body) {
+  var iid = (body.data && body.data.intervention_id) || '';
+  if (!iid) return { success: false, error: 'Missing intervention_id' };
+
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
+  var rows  = sheet.getDataRange().getValues();
+  var idCol = INTERVENTIONS_COLS.indexOf('intervention_id');
+  if (idCol < 0) return { success: false, error: 'Column intervention_id not found' };
+
+  for (var r = rows.length - 1; r >= 1; r--) {
+    if (String(rows[r][idCol]) === String(iid)) {
+      sheet.deleteRow(r + 1);
+      return { success: true, deleted: iid };
+    }
+  }
+  return { success: true, deleted: null, message: 'Not found on server' };
 }
 
 function handlePushInterventions(body) {
@@ -202,29 +237,100 @@ function handlePushInterventions(body) {
     return { success: false, error: 'Lipsesc datele' };
   }
 
-  const ss       = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet    = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
-  const existing = sheetToObjects('interventions', INTERVENTIONS_COLS).map(i => i.intervention_id);
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
+  const rows  = sheet.getDataRange().getValues();
+  const idCol = INTERVENTIONS_COLS.indexOf('intervention_id');
+  const now   = new Date().toISOString();
 
-  let pushed = 0, duplicates = 0;
-  const now = new Date().toISOString();
+  // Build index: intervention_id → row number (1-based)
+  const existingRows = {};
+  for (let i = 1; i < rows.length; i++) {
+    const id = String(rows[i][idCol] || '').trim();
+    if (id) existingRows[id] = i + 1;
+  }
+
+  // Also build index: client_id+tech_id+date → {row, created_at} for server-side dedup
+  const dateCol = INTERVENTIONS_COLS.indexOf('date');
+  const clientCol = INTERVENTIONS_COLS.indexOf('client_id');
+  const techCol = INTERVENTIONS_COLS.indexOf('technician_id');
+  const createdCol = INTERVENTIONS_COLS.indexOf('created_at');
+  const dedupIndex = {};
+  for (let i = 1; i < rows.length; i++) {
+    const cid = String(rows[i][clientCol] || '').trim();
+    const tid = String(rows[i][techCol] || '').trim();
+    const dt  = _cellToString(rows[i][dateCol]).substring(0, 10);
+    const key = cid + '_' + tid + '_' + dt;
+    if (cid && dt) {
+      dedupIndex[key] = { rowNum: i + 1, created_at: String(rows[i][createdCol] || ''), intervention_id: String(rows[i][idCol] || '').trim() };
+    }
+  }
+
+  let pushed = 0, updated = 0;
+  const rowsToDelete = []; // row numbers to delete (old duplicates)
 
   data.forEach(item => {
-    if (existing.includes(item.intervention_id)) {
-      duplicates++;
-      return;
-    }
     const row = INTERVENTIONS_COLS.map(col => {
       if (col === 'synced_at') return now;
       const val = item[col];
       return val !== undefined && val !== null ? String(val) : '';
     });
-    sheet.appendRow(row);
-    pushed++;
+    const rowNum = existingRows[item.intervention_id];
+    if (rowNum) {
+      // UPSERT: update existing row
+      sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      updated++;
+    } else {
+      // Server-side dedup: check if another intervention exists for same client+date
+      const dk = String(item.client_id) + '_' + String(item.technician_id || '') + '_' + String(item.date || '').substring(0, 10);
+      const existing = dedupIndex[dk];
+      if (existing && existing.intervention_id !== item.intervention_id) {
+        const newCreated = item.created_at || '';
+        if (newCreated >= existing.created_at) {
+          rowsToDelete.push(existing.rowNum);
+        } else {
+          return; // Old is newer → skip this older duplicate
+        }
+      }
+      sheet.appendRow(row);
+      pushed++;
+      dedupIndex[dk] = { rowNum: -1, created_at: item.created_at || '', intervention_id: item.intervention_id };
+    }
   });
 
-  logSync(ss, tech_id, pushed, 0, 'success', '');
-  return { success: true, pushed, duplicates };
+  // Delete old duplicate rows (bottom-to-top to preserve indices)
+  if (rowsToDelete.length > 0) {
+    rowsToDelete.sort((a, b) => b - a);
+    rowsToDelete.forEach(r => { try { sheet.deleteRow(r); } catch(e) {} });
+  }
+
+  logSync(ss, tech_id, pushed + updated, 0, 'success', '');
+  return { success: true, pushed, updated, deduped: rowsToDelete.length };
+}
+
+/** Delete multiple interventions by IDs (bulk sync of deleted_intervention_ids) */
+function handleDeleteInterventionsBulk(body) {
+  const ids = body.data && body.data.ids;
+  if (!ids || !Array.isArray(ids) || !ids.length) return { success: true, deleted: 0 };
+
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('interventions');
+  if (!sheet) return { success: true, deleted: 0 };
+
+  const data    = sheet.getDataRange().getValues();
+  const idCol   = INTERVENTIONS_COLS.indexOf('intervention_id');
+  const idsSet  = {};
+  ids.forEach(function(id) { idsSet[String(id)] = true; });
+
+  // Delete from bottom to top to preserve row indices
+  let deleted = 0;
+  for (let i = data.length - 1; i >= 1; i--) {
+    if (idsSet[String(data[i][idCol]).trim()]) {
+      sheet.deleteRow(i + 1);
+      deleted++;
+    }
+  }
+  return { success: true, deleted };
 }
 
 function handlePushClients(body) {
@@ -707,6 +813,23 @@ function handleOwnTracksLocation(body) {
 }
 
 // ── Sheet helpers ─────────────────────────────────────────────
+/** Convert a value to string, handling Date objects → YYYY-MM-DD */
+function _cellToString(val) {
+  if (val === undefined || val === null || val === '') return '';
+  // Google Sheets converts date strings to Date objects — normalize them back
+  if (val instanceof Date) {
+    if (isNaN(val.getTime())) return '';
+    var y = val.getFullYear();
+    var m = ('0' + (val.getMonth() + 1)).slice(-2);
+    var d = ('0' + val.getDate()).slice(-2);
+    var h = val.getHours(), min = val.getMinutes(), sec = val.getSeconds();
+    // If has time component, return full ISO; otherwise just date
+    if (h === 0 && min === 0 && sec === 0) return y + '-' + m + '-' + d;
+    return y + '-' + m + '-' + d + 'T' + ('0'+h).slice(-2) + ':' + ('0'+min).slice(-2) + ':' + ('0'+sec).slice(-2);
+  }
+  return String(val);
+}
+
 function sheetToObjects(sheetName, cols) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName(sheetName);
@@ -718,7 +841,7 @@ function sheetToObjects(sheetName, cols) {
   const headers = data[0].map(String);
   return data.slice(1).map(row => {
     const obj = {};
-    headers.forEach((h, i) => { obj[h] = row[i] !== undefined ? String(row[i]) : ''; });
+    headers.forEach((h, i) => { obj[h] = _cellToString(row[i]); });
     return obj;
   });
 }
@@ -737,6 +860,19 @@ function getOrCreateSheet(ss, name, cols) {
     sheet.appendRow(cols);
     sheet.getRange(1, 1, 1, cols.length).setFontWeight('bold');
     sheet.setFrozenRows(1);
+  } else {
+    var lastCol = sheet.getLastColumn() || 0;
+    var currentHeaders = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0].map(String) : [];
+    var missing = [];
+    cols.forEach(function(col) {
+      if (currentHeaders.indexOf(col) < 0) missing.push(col);
+    });
+    if (missing.length > 0) {
+      var startCol = lastCol + 1;
+      for (var m = 0; m < missing.length; m++) {
+        sheet.getRange(1, startCol + m).setValue(missing[m]).setFontWeight('bold');
+      }
+    }
   }
   return sheet;
 }
@@ -762,6 +898,46 @@ function jsonResponse(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+// ── Cleanup: remove duplicate interventions (keep newest per client+date) ──
+// Run this ONCE from Apps Script editor to clean existing duplicates
+function cleanDuplicateInterventions() {
+  var ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  var sheet = ss.getSheetByName('interventions');
+  if (!sheet) { Logger.log('No interventions sheet'); return; }
+
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) { Logger.log('No interventions to clean'); return; }
+
+  var clientIdCol  = INTERVENTIONS_COLS.indexOf('client_id');
+  var dateCol      = INTERVENTIONS_COLS.indexOf('date');
+  var createdAtCol = INTERVENTIONS_COLS.indexOf('created_at');
+
+  // Group by client_id + date, keep the newest (by created_at)
+  var best = {};
+  for (var i = 1; i < data.length; i++) {
+    var key = String(data[i][clientIdCol]) + '_' + String(data[i][dateCol]);
+    var ca  = String(data[i][createdAtCol] || '');
+    if (!best[key] || ca > best[key].created_at) {
+      best[key] = { rowIndex: i, created_at: ca };
+    }
+  }
+
+  var keepRows = {};
+  Object.keys(best).forEach(function(k) { keepRows[best[k].rowIndex] = true; });
+
+  var rowsToDelete = [];
+  for (var i = 1; i < data.length; i++) {
+    if (!keepRows[i]) rowsToDelete.push(i + 1);
+  }
+
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  for (var d = 0; d < rowsToDelete.length; d++) {
+    sheet.deleteRow(rowsToDelete[d]);
+  }
+
+  Logger.log('Cleaned ' + rowsToDelete.length + ' duplicate interventions. Kept ' + Object.keys(best).length + ' unique entries.');
 }
 
 // ── Setup (run once!) ─────────────────────────────────────────

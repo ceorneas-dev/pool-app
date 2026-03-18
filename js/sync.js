@@ -8,6 +8,30 @@ const SYNC_CONFIG = {
   SYNC_INTERVAL_MS: 900000   // 15 minute
 };
 
+/** Parse numeric value preserving 0 (unlike parseFloat(x)||null which loses zero) */
+function _parseNum(v) {
+  if (v === '' || v === null || v === undefined) return null;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
+/** Normalize date to YYYY-MM-DD format (handles Date objects, timestamps, various string formats) */
+function _normalizeDate(val) {
+  if (!val) return '';
+  var s = String(val).trim();
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // Try to parse as Date
+  var d = new Date(val);
+  if (!isNaN(d.getTime())) {
+    var y = d.getFullYear();
+    var m = ('0' + (d.getMonth() + 1)).slice(-2);
+    var day = ('0' + d.getDate()).slice(-2);
+    return y + '-' + m + '-' + day;
+  }
+  return s; // fallback: return as-is
+}
+
 let _syncTimer  = null;
 let _syncActive = false;
 
@@ -63,6 +87,8 @@ function doSync() {
   console.log('[SYNC] Starting sync cycle...');
 
   return pushTechnicians()
+    .then(() => pushClients())
+    .then(() => pushDeletedInterventions())
     .then(() => pushInterventions())
     .then(() => pullData())
     .then(() => {
@@ -109,6 +135,24 @@ function pushTechnicians() {
   });
 }
 
+// ── Push deleted intervention IDs to server (bulk) ──────────
+function pushDeletedInterventions() {
+  return getSetting('deleted_intervention_ids').then(function(ids) {
+    if (!ids || !Array.isArray(ids) || !ids.length) return;
+    console.log('[SYNC] Pushing', ids.length, 'deleted intervention IDs to server');
+    return apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'delete_interventions_bulk', data: { ids: ids } })
+    }).then(function(res) {
+      console.log('[SYNC] Server deleted', res.deleted, 'interventions — clearing local deleted_intervention_ids');
+      // Clear the list after successful server deletion to prevent re-pushing
+      return setSetting('deleted_intervention_ids', []);
+    }).catch(function(err) {
+      console.warn('[SYNC] Bulk delete push failed:', err.message);
+    });
+  }).catch(function() { /* no deleted IDs */ });
+}
+
 // ── Push interventions to server ─────────────────────────────
 function pushInterventions() {
   return getUnsyncedInterventions().then(list => {
@@ -118,7 +162,6 @@ function pushInterventions() {
     }
     console.log('[SYNC] Pushing', list.length, 'interventions');
 
-    const session = null; // loaded below
     return getSession().then(user => {
       const payload = {
         action: 'push',
@@ -171,8 +214,11 @@ function pushInterventions() {
         method: 'POST',
         body:   JSON.stringify(payload)
       }).then(data => {
-        console.log('[SYNC] Push result:', data.pushed, 'pushed,', data.duplicates, 'duplicates');
+        console.log('[SYNC] Push result:', data.pushed, 'pushed,', data.updated, 'updated,', data.deduped || 0, 'deduped');
         return Promise.all(list.map(i => markSynced(i.intervention_id)));
+      }).catch(function(err) {
+        console.warn('[SYNC] Intervention push failed:', err.message);
+        // Don't throw — allow pullData to still run
       });
     });
   });
@@ -218,8 +264,24 @@ function pullData() {
           last_billing_date: c.last_billing_date || local.last_billing_date || null
         };
       });
-      tasks.push(clearStore('clients').then(() => putMany('clients', parsed)));
-      console.log('[SYNC] Pulled', parsed.length, 'clients');
+      // Robust client replacement: delete each old client individually, then add new ones
+      const clientReplace = (async function() {
+        // Step 1: delete ALL existing local clients one by one
+        for (var ci = 0; ci < localClients.length; ci++) {
+          try { await deleteRecord('clients', localClients[ci].client_id); } catch(e) {}
+        }
+        // Step 2: also try clearStore as backup
+        try { await clearStore('clients'); } catch(e) {}
+        // Step 3: add fresh clients from server
+        var added = 0;
+        for (var pi = 0; pi < parsed.length; pi++) {
+          try { await put('clients', parsed[pi]); added++; } catch(e) {
+            console.warn('[SYNC] Client put failed:', parsed[pi].client_id, e.message);
+          }
+        }
+        console.log('[SYNC] Pulled', added, '/', parsed.length, 'clients (replaced ' + localClients.length + ' old)');
+      })();
+      tasks.push(clientReplace);
     }
 
     if (data.technicians && data.technicians.length) {
@@ -269,7 +331,8 @@ function pullData() {
     }
 
     // Pull interventions from server and merge with local
-    if (data.interventions && data.interventions.length) {
+    // Strategy: server is source of truth; local unsynced are preserved
+    if (data.interventions) {
       const mergeInterventions = (async function() {
         const localAll = await getAll('interventions');
         const localMap = {};
@@ -278,50 +341,51 @@ function pullData() {
         // Load deleted IDs to skip re-adding
         var deletedIds = await getSetting('deleted_intervention_ids').catch(function() { return []; }) || [];
         if (!Array.isArray(deletedIds)) deletedIds = [];
+        var deletedSet = {};
+        deletedIds.forEach(function(id) { deletedSet[id] = true; });
 
-        // Deduplicate by client_id+date: keep only the newest per client+date
-        var dedupMap = {};
-        data.interventions.forEach(function(ri) {
-          var key = (ri.client_id || '') + '_' + (ri.date || '');
-          var existing = dedupMap[key];
-          if (!existing || (ri.created_at || '') > (existing.created_at || '')) {
-            dedupMap[key] = ri;
-          }
-        });
-        var dedupedInterventions = [];
-        var dedupedIds = {};
-        Object.keys(dedupMap).forEach(function(k) { dedupedIds[dedupMap[k].intervention_id] = true; });
-        data.interventions.forEach(function(ri) {
-          if (dedupedIds[ri.intervention_id]) {
-            dedupedInterventions.push(ri);
-            delete dedupedIds[ri.intervention_id]; // prevent duplicates in source
-          }
-        });
+        // Build server ID set (NO dedup — server is source of truth)
+        var serverIdSet = {};
+        data.interventions.forEach(function(ri) { serverIdSet[ri.intervention_id] = true; });
 
+        // Step 1: Remove local synced interventions that server no longer has
+        // (they were explicitly deleted on another device via pushDeletedInterventions)
+        var removedFromLocal = 0;
+        for (var li = 0; li < localAll.length; li++) {
+          var localIntv = localAll[li];
+          if (localIntv.synced !== false && !serverIdSet[localIntv.intervention_id]) {
+            try { await deleteRecord('interventions', localIntv.intervention_id); removedFromLocal++; } catch(e) {}
+          }
+        }
+
+        // Step 2: Parse and upsert ALL server interventions (no dedup — trust server)
         let added = 0, updated = 0;
-        for (const ri of dedupedInterventions) {
-          // Skip if locally deleted
-          if (deletedIds.indexOf(ri.intervention_id) >= 0) continue;
-          const parsed = {
+
+        for (var si = 0; si < data.interventions.length; si++) {
+          var ri = data.interventions[si];
+          // Skip if locally deleted on THIS device
+          if (deletedSet[ri.intervention_id]) continue;
+
+          var parsed = {
             intervention_id:     ri.intervention_id,
             client_id:           ri.client_id,
             client_name:         ri.client_name || '',
             technician_id:       ri.technician_id,
             technician_name:     ri.technician_name || '',
-            date:                ri.date,
+            date:                _normalizeDate(ri.date),
             created_at:          ri.created_at || '',
-            measured_chlorine:   ri.measured_chlorine !== '' ? parseFloat(ri.measured_chlorine) || null : null,
-            measured_ph:         ri.measured_ph !== '' ? parseFloat(ri.measured_ph) || null : null,
-            measured_temp:       ri.measured_temp !== '' ? parseFloat(ri.measured_temp) || null : null,
-            measured_hardness:   ri.measured_hardness !== '' ? parseFloat(ri.measured_hardness) || null : null,
-            measured_alkalinity: ri.measured_alkalinity !== '' ? parseFloat(ri.measured_alkalinity) || null : null,
-            measured_salinity:   ri.measured_salinity !== '' ? parseFloat(ri.measured_salinity) || null : null,
-            measured_tc:         ri.measured_tc !== '' ? parseFloat(ri.measured_tc) || null : null,
-            measured_cya:        ri.measured_cya !== '' ? parseFloat(ri.measured_cya) || null : null,
-            rec_cl_gr:           ri.rec_cl_gr !== '' ? parseFloat(ri.rec_cl_gr) || null : null,
-            rec_cl_tab:          ri.rec_cl_tab !== '' ? parseFloat(ri.rec_cl_tab) || null : null,
-            rec_ph_kg:           ri.rec_ph_kg !== '' ? parseFloat(ri.rec_ph_kg) || null : null,
-            rec_anti_l:          ri.rec_anti_l !== '' ? parseFloat(ri.rec_anti_l) || null : null,
+            measured_chlorine:   _parseNum(ri.measured_chlorine),
+            measured_ph:         _parseNum(ri.measured_ph),
+            measured_temp:       _parseNum(ri.measured_temp),
+            measured_hardness:   _parseNum(ri.measured_hardness),
+            measured_alkalinity: _parseNum(ri.measured_alkalinity),
+            measured_salinity:   _parseNum(ri.measured_salinity),
+            measured_tc:         _parseNum(ri.measured_tc),
+            measured_cya:        _parseNum(ri.measured_cya),
+            rec_cl_gr:           _parseNum(ri.rec_cl_gr),
+            rec_cl_tab:          _parseNum(ri.rec_cl_tab),
+            rec_ph_kg:           _parseNum(ri.rec_ph_kg),
+            rec_anti_l:          _parseNum(ri.rec_anti_l),
             treat_cl_granule_gr:      parseFloat(ri.treat_cl_granule_gr) || 0,
             treat_cl_tablete:         parseFloat(ri.treat_cl_tablete) || 0,
             treat_cl_tablete_export_gr: parseFloat(ri.treat_cl_tablete_export_gr) || 0,
@@ -335,31 +399,31 @@ function pullData() {
             treat_bicarbonat:         parseFloat(ri.treat_bicarbonat) || 0,
             observations:        ri.observations || '',
             operations:          (function(v) { if (!v) return []; try { return JSON.parse(v); } catch(e) { return []; } })(ri.operations),
-            geo_lat:             ri.geo_lat !== '' ? parseFloat(ri.geo_lat) || null : null,
-            geo_lng:             ri.geo_lng !== '' ? parseFloat(ri.geo_lng) || null : null,
-            geo_accuracy:        ri.geo_accuracy !== '' ? parseFloat(ri.geo_accuracy) || null : null,
+            geo_lat:             _parseNum(ri.geo_lat),
+            geo_lng:             _parseNum(ri.geo_lng),
+            geo_accuracy:        _parseNum(ri.geo_accuracy),
             arrival_time:        ri.arrival_time || null,
             departure_time:      ri.departure_time || null,
-            duration_minutes:    ri.duration_minutes !== '' ? parseFloat(ri.duration_minutes) || null : null,
+            duration_minutes:    ri.duration_minutes !== '' && ri.duration_minutes != null ? Math.round(parseFloat(ri.duration_minutes)) || null : null,
             synced:              true
           };
 
-          const local = localMap[parsed.intervention_id];
+          var local = localMap[parsed.intervention_id];
           if (!local) {
             // New from server
             try { await put('interventions', parsed); added++; } catch(e) {
               console.warn('[SYNC] Intervention put failed:', parsed.intervention_id, e.message);
             }
           } else if (local.synced === false) {
-            // Local has unsynced changes — keep local version
+            // Local has unsynced changes — keep local version (will be pushed next cycle)
           } else {
-            // Both synced — update with server version
+            // Both synced — update with server version (server is truth)
             try { await put('interventions', parsed); updated++; } catch(e) {
               console.warn('[SYNC] Intervention update failed:', parsed.intervention_id, e.message);
             }
           }
         }
-        console.log('[SYNC] Pulled interventions: ' + added + ' added, ' + updated + ' updated (server total: ' + data.interventions.length + ')');
+        console.log('[SYNC] Pulled interventions: ' + added + ' added, ' + updated + ' updated, ' + removedFromLocal + ' removed (server total: ' + data.interventions.length + ')');
       })();
       tasks.push(mergeInterventions);
     }

@@ -1,0 +1,18 @@
+{
+  "name": "pool-manager",
+  "version": "1.0.0",
+  "description": "Pool Manager PWA — Managementul intervențiilor piscine",
+  "scripts": {
+    "sync":    "npx cap sync",
+    "android": "npx cap open android",
+    "build":   "npx cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/core":    "^6.0.0",
+    "@capacitor/android": "^6.0.0",
+    "@capacitor-community/background-geolocation": "^1.2.3"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^6.0.0"
+  }
+}

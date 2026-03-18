@@ -21,7 +21,7 @@
   --slate-100: #f1f5f9;
   --slate-200: #e2e8f0;
   --slate-300: #cbd5e1;
-  --slate-400: #cbd5e1;
+  --slate-400: #94a3b8;
   --slate-500: #64748b;
   --slate-600: #475569;
   --slate-700: #334155;
@@ -31,6 +31,7 @@
   /* Emeralds */
   --emerald-50:  #ecfdf5;
   --emerald-100: #d1fae5;
+  --emerald-200: #a7f3d0;
   --emerald-500: #10b981;
   --emerald-600: #059669;
   --emerald-700: #047857;
@@ -38,9 +39,12 @@
   /* Reds */
   --red-50:  #fef2f2;
   --red-100: #fee2e2;
+  --red-300: #fca5a5;
+  --red-400: #f87171;
   --red-500: #ef4444;
   --red-600: #dc2626;
   --red-700: #b91c1c;
+  --danger:  #ef4444;
 
   /* Ambers */
   --amber-50:  #fffbeb;
@@ -720,6 +724,44 @@ body.role-technician #client-list {
   align-items: center;
   justify-content: space-between;
   margin-top: 6px;
+}
+
+.btn-timer {
+  font-size: 0.72rem;
+  padding: 3px 10px;
+  border: 1px solid var(--emerald-500, #10b981);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--emerald-500, #10b981);
+  cursor: pointer;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.btn-timer.timer-active {
+  background: var(--emerald-500, #10b981);
+  color: #fff;
+  animation: pulse-timer 2s infinite;
+}
+@keyframes pulse-timer {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+.timer-display {
+  font-size: 0.72rem;
+  color: var(--emerald-500, #10b981);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.geo-status {
+  font-size: 0.65rem;
+  color: var(--blue-600, #2563eb);
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 2px 6px;
+  background: var(--blue-50, #eff6ff);
+  border-radius: 8px;
+  display: inline-block;
 }
 
 .intervention-date {

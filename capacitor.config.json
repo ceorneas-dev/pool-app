@@ -1,0 +1,20 @@
+{
+  "appId":   "com.poolmgmt.app",
+  "appName": "Pool Manager",
+  "webDir":  ".",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": true
+  },
+  "plugins": {
+    "BackgroundGeolocation": {
+      "backgroundMessage": "Pool Manager urmărește locația ta în background",
+      "backgroundTitle":   "Pool Manager GPS Activ",
+      "requestPermissions": true,
+      "stale": false,
+      "distanceFilter": 50
+    }
+  }
+}

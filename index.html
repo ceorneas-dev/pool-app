@@ -362,6 +362,9 @@
       <span id="intervention-date" class="intervention-date" onclick="document.getElementById('intervention-date-picker').showPicker()" title="Click pentru a schimba data" style="cursor:pointer"></span>
       <input type="date" id="intervention-date-picker" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none" onchange="updateInterventionDate(this.value)">
       <span id="gps-indicator" class="gps-indicator locating">📍 Se localizează...</span>
+      <button id="btn-timer" class="btn-timer" onclick="toggleArrivalTimer()">▶ Start</button>
+      <span id="timer-display" class="timer-display" style="display:none">⏱ <span id="timer-value">0 min</span></span>
+      <span id="geo-status" class="geo-status" style="display:none"></span>
       <div class="wizard-progress" id="wizard-progress">
         <span class="wiz-dot active" data-step="1"></span>
         <span class="wiz-dot" data-step="2"></span>
@@ -1226,6 +1229,7 @@
       </div>
     </div>
   </div>
+</div>
 
 <!-- ── Billing / Deviz Modal (admin-only) ── -->
 <div id="modal-billing" class="modal-overlay admin-only" onclick="if(event.target===this)closeBillingModal()">
@@ -1236,8 +1240,6 @@
     </div>
     <div id="billing-modal-body"></div>
   </div>
-</div>
-
 </div>
 
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>

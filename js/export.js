@@ -1015,7 +1015,8 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   ];
   var allOps = (opsList && opsList.length) ? opsList.slice() : defaultOps.slice();
   sorted.forEach(function(intv) {
-    (intv.operations || []).forEach(function(op) {
+    var intOps = Array.isArray(intv.operations) ? intv.operations : (typeof intv.operations === 'string' && intv.operations.length > 0 ? (function() { try { return JSON.parse(intv.operations); } catch(e) { return []; } })() : []);
+    intOps.forEach(function(op) {
       if (op && allOps.indexOf(op) < 0) allOps.push(op);
     });
   });
@@ -1023,7 +1024,7 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var numOps = allOps.length;
   var NR = sorted.length; // only rows with actual interventions
   var FR = 9;            // first data row 0-indexed
-  var LR = 25;           // last data row 0-indexed
+  // LR removed — last data row calculated dynamically from FR + NR
   var NCOLS = 1 + numOps; // A + ops columns
   var LC = NCOLS - 1;     // last col index (0-based)
   var ws = {};
@@ -1188,7 +1189,7 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
       { fill: fillRow, font: _fnt('Arial', 9, false, '0D2D5A'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(topB, botB, S_MED, S_THIN_L) });
 
     // B onwards: check services by exact match
-    var ops = entry.operations || [];
+    var ops = Array.isArray(entry.operations) ? entry.operations : (typeof entry.operations === 'string' && entry.operations.length > 0 ? (function() { try { return JSON.parse(entry.operations); } catch(e) { return []; } })() : []);
     for (var sc = 0; sc < numOps; sc++) {
       var matched = entry.date ? (ops.indexOf(allOps[sc]) >= 0) : false;
       var brR2 = (sc + 1 === LC) ? S_MED : S_THIN_L;
@@ -1207,16 +1208,14 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   var firstDataExcel2 = FR + 1; // Excel row (1-indexed)
   var lastDataExcel2 = FR + NR;
 
-  // A: label "Total intervenții"
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total interven\u021Bii',
+  // Column A: label "Total"
+  ws[XLSX.utils.encode_cell({ r: totRow2, c: 0 })] = _cellS('Total',
     { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), alignment: { horizontal: 'right', vertical: 'center' }, border: _brd(null, S_THIN_N, S_MED, S_THIN_N) });
-  // B: count value
-  ws[XLSX.utils.encode_cell({ r: totRow2, c: 1 })] = _cellF('COUNTA(A' + firstDataExcel2 + ':A' + lastDataExcel2 + ')',
-    { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, S_THIN_N) });
-  // Fill remaining cols with same style
-  for (var tc = 2; tc <= LC; tc++) {
-    ws[XLSX.utils.encode_cell({ r: totRow2, c: tc })] = _cellS('',
-      { fill: F_SUBHDR, font: _fnt('Arial', 9, true, 'FFFFFF'), border: _brd(null, S_THIN_N, S_THIN_N, tc === LC ? S_MED : S_THIN_N) });
+  // Each operation column (B through LC): COUNTA formula counting checkmarks
+  for (var tc = 1; tc <= LC; tc++) {
+    var colLetter = XLSX.utils.encode_col(tc);
+    ws[XLSX.utils.encode_cell({ r: totRow2, c: tc })] = _cellF('COUNTA(' + colLetter + firstDataExcel2 + ':' + colLetter + lastDataExcel2 + ')',
+      { fill: F_SUBHDR, font: _fnt('Arial', 10, true, 'FFFFFF'), alignment: { horizontal: 'center', vertical: 'center' }, border: _brd(null, S_THIN_N, S_THIN_N, (tc === LC) ? S_MED : S_THIN_N) });
   }
 
   // ═══ Separator row ═══
@@ -1376,6 +1375,8 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
 function _uploadToDrive(wb, fileName, mimeType, clientName) {
   if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
   try {
+    // Sanitize clientName for consistent Drive folder naming (avoid duplicate folders)
+    var safeName = clientName ? clientName.trim().replace(/\s+/g, ' ') : '';
     var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
     fetch(SYNC_CONFIG.API_URL, {
       method: 'POST',
@@ -1386,7 +1387,7 @@ function _uploadToDrive(wb, fileName, mimeType, clientName) {
         fileName: fileName,
         data: wbout,
         mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        clientName: clientName || ''
+        clientName: safeName
       })
     }).then(function(r) { return r.json(); })
       .then(function(res) {

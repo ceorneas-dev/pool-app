@@ -1,9 +1,9 @@
-﻿// sw.js — Service Worker v134 for Pool Manager PWA
+﻿// sw.js — Service Worker v152 for Pool Manager PWA
 // Strategy: cache-first for app shell, network-first for API
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v134';
+const CACHE_NAME   = 'pool-mgmt-v152';
 const APP_SHELL    = [
   './',
   './index.html',
@@ -42,7 +42,7 @@ self.addEventListener('install', event => {
         )
       );
     }).then(() => {
-      console.log('[SW] v134 installed');
+      console.log('[SW] v152 installed');
       return self.skipWaiting();
     })
   );
@@ -59,7 +59,7 @@ self.addEventListener('activate', event => {
         })
       )
     ).then(() => {
-      console.log('[SW] v134 activated');
+      console.log('[SW] v152 activated');
       return self.clients.claim();
     })
   );
