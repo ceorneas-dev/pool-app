@@ -1247,8 +1247,8 @@ function _buildServiciiSheet(client, sorted, totalPlata, opsList) {
   return ws;
 }
 
-// ── Export Deviz Chimicale (V1 only) ───────────────────────────────
-function exportDevizChimicale(client, interventions) {
+// ── Export Deviz Chimicale (V1 only) — LEGACY SheetJS ───────────────────────────────
+function exportDevizChimicale_legacy(client, interventions) {
   return loadXLSX().then(async function() {
     var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
@@ -1267,8 +1267,8 @@ function exportDevizChimicale(client, interventions) {
   });
 }
 
-// ── Export Deviz Complet (V1 + V2 in same workbook) ────────────────
-function exportDevizComplet(client, interventions) {
+// ── Export Deviz Complet (V1 + V2 in same workbook) — LEGACY SheetJS ────────────────
+function exportDevizComplet_legacy(client, interventions) {
   return loadXLSX().then(async function() {
     var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
@@ -1295,8 +1295,8 @@ function exportDevizComplet(client, interventions) {
   });
 }
 
-// ── Export All Deviz Mixed (all clients) ───────────────────────────
-function exportAllDevizMixed(clients, allInterventions, filter) {
+// ── Export All Deviz Mixed (all clients) — LEGACY SheetJS ───────────────────────────
+function exportAllDevizMixed_legacy(clients, allInterventions, filter) {
   return loadXLSX().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
     var opsList = (typeof getOperations === 'function') ? await getOperations() : null;
@@ -1368,6 +1368,808 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
     var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
     await _writeFileWithPicker(wb, fname);
     _uploadToDrive(wb, fname, null, null);
+    return fname;
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// ██ TEMPLATE-BASED EXPORT (ExcelJS) — V1 Chimicale + V2 Servicii ██
+// ══════════════════════════════════════════════════════════════════════
+
+var EXCELJS_CDN = 'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js';
+var _exceljsLoaded = false;
+
+/** Lazy-load ExcelJS from CDN */
+function loadExcelJS() {
+  if (_exceljsLoaded && typeof ExcelJS !== 'undefined') return Promise.resolve();
+  return new Promise(function(resolve, reject) {
+    var script  = document.createElement('script');
+    script.src  = EXCELJS_CDN;
+    script.onload = function() { _exceljsLoaded = true; resolve(); };
+    script.onerror = function() { reject(new Error('Nu s-a putut incarca ExcelJS. Verificati conexiunea.')); };
+    document.head.appendChild(script);
+  });
+}
+
+/** Convert base64 string to ArrayBuffer */
+function _b64toBuffer(b64) {
+  var bin = atob(b64);
+  var len = bin.length;
+  var bytes = new Uint8Array(len);
+  for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes.buffer;
+}
+
+/** Parse operations from intervention (handles array, JSON string, or empty) */
+function _parseOps(operations) {
+  if (Array.isArray(operations)) return operations;
+  if (typeof operations === 'string' && operations.length > 0) {
+    try { return JSON.parse(operations); } catch (e) { return []; }
+  }
+  return [];
+}
+
+/** Write ExcelJS workbook to export folder or download */
+async function _writeExcelJSFile(wb, defaultName, clientName) {
+  var buf = await wb.xlsx.writeBuffer();
+
+  // Try stored directory handle first (File System Access API)
+  if (typeof window.showDirectoryPicker === 'function') {
+    var dirHandle = await _getExportDirHandle();
+    if (!dirHandle) dirHandle = await pickExportFolder();
+
+    if (dirHandle) {
+      var hasPermission = await _verifyDirPermission(dirHandle);
+      if (!hasPermission) {
+        dirHandle = await pickExportFolder();
+        hasPermission = dirHandle ? await _verifyDirPermission(dirHandle) : false;
+      }
+
+      if (dirHandle && hasPermission) {
+        try {
+          var targetDir = dirHandle;
+          if (clientName) {
+            var folderName = sanitizeFilename(clientName);
+            targetDir = await dirHandle.getDirectoryHandle(folderName, { create: true });
+          }
+          var fileHandle = await targetDir.getFileHandle(defaultName, { create: true });
+          var writable = await fileHandle.createWritable();
+          await writable.write(new Uint8Array(buf));
+          await writable.close();
+          return true;
+        } catch (e) {
+          console.warn('[EXPORT] Directory write failed, falling back:', e.message);
+          showToast('Eroare salvare in folder: ' + e.message, 'warning');
+        }
+      }
+    }
+  }
+
+  // Fallback: standard download
+  var blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = defaultName;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+  return true;
+}
+
+/** Upload ExcelJS workbook buffer to Google Drive via GAS */
+function _uploadExcelJSToDrive(buf, fileName, clientName) {
+  if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
+  try {
+    var safeName = clientName ? clientName.trim().replace(/\s+/g, ' ') : '';
+    // Convert buffer to base64
+    var bytes = new Uint8Array(buf);
+    var binary = '';
+    for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    var b64 = btoa(binary);
+
+    fetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      redirect: 'follow',
+      body: JSON.stringify({
+        action: 'saveExportToDrive',
+        fileName: fileName,
+        data: b64,
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        clientName: safeName
+      })
+    }).then(function(r) { return r.json(); })
+      .then(function(res) {
+        if (res.success) {
+          showToast('Salvat in Drive: Export Interventii/' + (clientName ? clientName + '/' : '') + fileName, 'success', 4000);
+        } else {
+          console.warn('[DRIVE] Save failed:', res.error);
+        }
+      }).catch(function(e) {
+        console.warn('[DRIVE] Upload failed:', e.message);
+      });
+  } catch (e) {
+    console.warn('[DRIVE] Upload error:', e.message);
+  }
+}
+
+
+// ── V2 Template: Fill Servicii Abonament sheet ─────────────────────
+// Template structure: R1-R5 header, R6 labels, R7 values, R8 sep,
+// R9-R10 table header, R11-R28 data (18 slots), R29 total, R30 sep,
+// R31 total plata, R32 sep, R33 footer
+//
+// Operations map to columns B(2) through I(9) in the template:
+// B=Aspirare piscina, C=Curatare linie apa, D=Curatare skimmere,
+// E=Spalare filtru, F=Curatare prefiltru, G=Periere piscina,
+// H=Analiza apei, I=Tratament chimic
+// Extra operations (not in template) are added as new columns J, K, ...
+
+/** Remove diacritics and normalize string for comparison */
+function _normOp(str) {
+  if (!str) return '';
+  return String(str)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // strip diacritics
+    .replace(/[\r\n]+/g, ' ')                           // newlines → space
+    .replace(/\s+/g, ' ')                               // collapse whitespace
+    .trim()
+    .toLowerCase();
+}
+
+/** Read template R10 sub-headers (columns B onwards) and return normalized map */
+function _readTemplateOpsHeaders(ws, headerRow, startCol, endCol) {
+  var headers = [];
+  for (var c = startCol; c <= endCol; c++) {
+    var cell = ws.getRow(headerRow).getCell(c);
+    var raw = cell.value ? String(cell.value) : '';
+    headers.push({ col: c, raw: raw, norm: _normOp(raw) });
+  }
+  return headers;
+}
+
+/** Match an app operation name against template headers (diacritics-insensitive) */
+function _findOpColumn(opName, templateHeaders) {
+  var norm = _normOp(opName);
+  for (var h = 0; h < templateHeaders.length; h++) {
+    if (templateHeaders[h].norm === norm) return templateHeaders[h].col;
+    // Partial match: one contains the other
+    if (norm.length > 3 && templateHeaders[h].norm.length > 3) {
+      if (templateHeaders[h].norm.indexOf(norm) >= 0 || norm.indexOf(templateHeaders[h].norm) >= 0) {
+        return templateHeaders[h].col;
+      }
+    }
+  }
+  return -1; // no match
+}
+
+async function _fillV2Template(wb, client, sorted, prices) {
+  var ws = wb.getWorksheet(1);
+  if (!ws) { throw new Error('V2 template: sheet not found'); }
+
+  var TEMPLATE_DATA_ROWS = 18; // R11-R28
+  var FIRST_DATA_ROW = 11;
+  var HEADER_ROW = 10;       // R10 = sub-headers (Aspirare, Curățare, etc.)
+  var MERGED_HEADER_ROW = 9; // R9 = "SERVICII INCLUSE ÎN ABONAMENT" merged
+  var NR = sorted.length;
+
+  // Date helpers
+  var today = new Date();
+  var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
+  var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
+  var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
+  var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
+  var period = firstDate + ' - ' + lastDate;
+  var docNr = 'AQS - ' + todayYMD;
+
+  // ── Step 1: Read template operation headers from R10 (B-I = cols 2-9)
+  var TEMPLATE_FIRST_OP_COL = 2; // B
+  var TEMPLATE_LAST_OP_COL = 9;  // I (original template has 8 ops)
+  var templateHeaders = _readTemplateOpsHeaders(ws, HEADER_ROW, TEMPLATE_FIRST_OP_COL, TEMPLATE_LAST_OP_COL);
+
+  // ── Step 2: Collect ALL unique operations from all interventions
+  var allOpsSet = {};
+  var allOpsOrder = []; // preserve order of first appearance
+  sorted.forEach(function(intv) {
+    var ops = _parseOps(intv.operations);
+    ops.forEach(function(op) {
+      if (op && !allOpsSet[op]) {
+        allOpsSet[op] = true;
+        allOpsOrder.push(op);
+      }
+    });
+  });
+
+  // ── Step 3: Build the final column map: opName → colNumber
+  //   First, map known ops to template columns (diacritics-insensitive)
+  //   Then, add extra ops as new columns after the last template column
+  var opToCol = {};     // opName → column number
+  var usedCols = {};    // track which template cols are taken
+  var extraOps = [];    // ops not found in template
+
+  allOpsOrder.forEach(function(op) {
+    var matchedCol = _findOpColumn(op, templateHeaders);
+    if (matchedCol >= 0 && !usedCols[matchedCol]) {
+      opToCol[op] = matchedCol;
+      usedCols[matchedCol] = true;
+    } else if (matchedCol < 0) {
+      extraOps.push(op);
+    }
+    // If matchedCol is taken by another op, treat as extra
+    if (matchedCol >= 0 && usedCols[matchedCol] && !opToCol[op]) {
+      extraOps.push(op);
+    }
+  });
+
+  // Assign extra ops to new columns after the last template column
+  var nextExtraCol = TEMPLATE_LAST_OP_COL + 1; // J=10, K=11, etc.
+  extraOps.forEach(function(op) {
+    opToCol[op] = nextExtraCol;
+    nextExtraCol++;
+  });
+
+  var TOTAL_COLS = Math.max(TEMPLATE_LAST_OP_COL, nextExtraCol - 1); // total columns including extras
+
+  // ── Step 4: If extra columns exist, add sub-headers and expand merged headers
+  if (extraOps.length > 0) {
+    // Add sub-header labels in R10 for extra columns
+    var templateHeaderStyle = _captureRowStyles(ws, HEADER_ROW, TEMPLATE_LAST_OP_COL);
+    var lastColStyle = templateHeaderStyle[TEMPLATE_LAST_OP_COL]; // use last col's style as template
+
+    for (var ei = 0; ei < extraOps.length; ei++) {
+      var extraCol = TEMPLATE_LAST_OP_COL + 1 + ei;
+      var headerRow = ws.getRow(HEADER_ROW);
+      _setCellValueWithStyle(headerRow, extraCol, extraOps[ei].replace(/ /g, '\n'), lastColStyle);
+      headerRow.commit();
+
+      // Also style R9 (merged header) extra cells
+      var r9 = ws.getRow(MERGED_HEADER_ROW);
+      var r9Style = _captureRowStyles(ws, MERGED_HEADER_ROW, TEMPLATE_LAST_OP_COL);
+      _setCellValueWithStyle(r9, extraCol, '', r9Style[TEMPLATE_LAST_OP_COL]);
+      r9.commit();
+
+      // Set column width for extra columns (same as last template col)
+      var lastTemplateColWidth = ws.getColumn(TEMPLATE_LAST_OP_COL).width;
+      ws.getColumn(extraCol).width = lastTemplateColWidth || 11;
+    }
+
+    console.log('[V2 EXPORT] Extra operations added as new columns:', extraOps.join(', '));
+  }
+
+  // Fill header values (R7)
+  _setCellValue(ws, 7, 1, client.name || '');   // A7 = client name
+  _setCellValue(ws, 7, 3, period);               // C7 = period
+  _setCellValue(ws, 7, 6, docNr);                // F7 = nr doc
+  _setCellValue(ws, 7, 8, todayStr);             // H7 = date
+
+  // Save styles from template data rows (odd=R11, even=R12)
+  // Capture up to TOTAL_COLS to cover any extra columns
+  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, TOTAL_COLS);      // R11 cream
+  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, TOTAL_COLS); // R12 white
+
+  // Handle row count mismatch
+  var LAST_TEMPLATE_DATA_ROW = FIRST_DATA_ROW + TEMPLATE_DATA_ROWS - 1; // R28
+  var totalRow = LAST_TEMPLATE_DATA_ROW + 1; // R29 in original template
+
+  if (NR > TEMPLATE_DATA_ROWS) {
+    // Need more rows: insert rows before the total row
+    var extraRows = NR - TEMPLATE_DATA_ROWS;
+    ws.spliceRows(LAST_TEMPLATE_DATA_ROW + 1, 0, ...Array(extraRows).fill([]));
+    totalRow = FIRST_DATA_ROW + NR; // new position of total row
+  } else if (NR < TEMPLATE_DATA_ROWS) {
+    // Fewer rows: delete extra data rows (remove from bottom of data area)
+    var rowsToDelete = TEMPLATE_DATA_ROWS - NR;
+    ws.spliceRows(FIRST_DATA_ROW + NR + 1, rowsToDelete);
+    totalRow = FIRST_DATA_ROW + NR; // new position
+  }
+
+  // ── Step 5: Fill data rows
+  // Build checkmark font style (reusable)
+  var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1A6B2A' } };
+
+  for (var di = 0; di < NR; di++) {
+    var rowNum = FIRST_DATA_ROW + di;
+    var entry = sorted[di];
+    var isOdd = (di % 2 === 0); // 0-indexed, so first row (di=0) is "odd" style (cream)
+    var styles = isOdd ? oddRowStyle : evenRowStyle;
+
+    var row = ws.getRow(rowNum);
+
+    // A: date
+    _setCellValueWithStyle(row, 1, fmtDateDMY(entry.date), styles[1]);
+
+    // Clear all operation columns first (template + extra)
+    for (var cc = TEMPLATE_FIRST_OP_COL; cc <= TOTAL_COLS; cc++) {
+      var fallbackStyle = styles[cc] || styles[TEMPLATE_LAST_OP_COL] || styles[TEMPLATE_FIRST_OP_COL];
+      _setCellValueWithStyle(row, cc, '', fallbackStyle);
+    }
+
+    // Set checkmarks only for operations that were checked
+    var ops = _parseOps(entry.operations);
+    for (var oi = 0; oi < ops.length; oi++) {
+      var opName = ops[oi];
+      var col = opToCol[opName];
+      if (!col) {
+        // Fallback: try diacritics-insensitive match against template headers
+        col = _findOpColumn(opName, templateHeaders);
+      }
+      if (col && col >= TEMPLATE_FIRST_OP_COL) {
+        var cellStyle = styles[col] || styles[TEMPLATE_LAST_OP_COL] || styles[TEMPLATE_FIRST_OP_COL];
+        _setCellValueWithStyle(row, col, '\u2713', _mergeStyle(cellStyle, { font: checkFont }));
+      }
+    }
+
+    row.commit();
+  }
+
+  // ── Step 6: Update total row (COUNT formula)
+  var lastDataRow = FIRST_DATA_ROW + NR - 1;
+  _setCellFormula(ws, totalRow, 7, 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
+
+  // Update TOTAL DE PLATA row (2 rows after total)
+  var payRow = totalRow + 2;
+  var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
+  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
+
+  return wb;
+}
+
+
+// ── V1 Template: Fill Raport Interventii (Chimicale) sheet ─────────
+// Template structure: R1 navy bar, R2 company info, R3 accent bar,
+// R4 title, R5 labels, R6 values, R7 sep, R8-R9 table header,
+// R10-R19 data (10 slots), R20 cantitate totala, R21 pret unitar,
+// R22 total general, R23 footer
+//
+// Chemical columns C-J (3-10): Clor Rapid, Clor Lent, pH−, Antialgic,
+// Floculant, Dedurizant, pH Lichid, Cl Lichid
+
+var V1_CHEM_COLUMNS = [
+  { col: 3,  label: 'Clor Rapid',  keys: ['treat_cl_granule_gr'] },
+  { col: 4,  label: 'Clor Lent',   keys: ['treat_cl_tablete', 'treat_cl_tablete_export_gr'] },
+  { col: 5,  label: 'pH\u2212',    keys: ['treat_ph_granule', 'treat_ph_minus_gr'] },
+  { col: 6,  label: 'Antialgic',   keys: ['treat_antialgic'] },
+  { col: 7,  label: 'Floculant',   keys: ['treat_floculant'] },
+  { col: 8,  label: 'Dedurizant',  keys: ['treat_bicarbonat'] },
+  { col: 9,  label: 'pH Lichid',   keys: ['treat_ph_lichid_bidoane', 'treat_ph_minus_l'] },
+  { col: 10, label: 'Cl Lichid',   keys: ['treat_cl_lichid_bidoane', 'treat_cl_lichid'] }
+];
+
+// Default prices for V1 template R21 (fallback values matching template)
+var V1_DEFAULT_PRICES = {
+  3: 57,     // Clor Rapid
+  4: 56.4,   // Clor Lent
+  5: 13,     // pH−
+  6: 29,     // Antialgic
+  7: 25,     // Floculant
+  8: 32,     // Dedurizant
+  9: 184,    // pH Lichid
+  10: 180    // Cl Lichid
+};
+
+// Map from V1 column to product_id for price lookup
+var V1_COL_PRICE_KEYS = {
+  3: ['cl_granule'],
+  4: ['cl_tablete'],
+  5: ['ph_minus_gr'],
+  6: ['antialgic'],
+  7: ['floculant'],
+  8: ['bicarbonat'],
+  9: ['ph_minus_l'],
+  10: ['cl_lichid']
+};
+
+async function _fillV1Template(wb, client, sorted, prices) {
+  var ws = wb.getWorksheet(1);
+  if (!ws) { throw new Error('V1 template: sheet not found'); }
+
+  var TEMPLATE_DATA_ROWS = 10; // R10-R19
+  var FIRST_DATA_ROW = 10;
+  var NR = sorted.length;
+
+  // Date helpers
+  var today = new Date();
+  var todayStr = ('0' + today.getDate()).slice(-2) + '.' + ('0' + (today.getMonth() + 1)).slice(-2) + '.' + today.getFullYear();
+  var todayYMD = today.toISOString().split('T')[0].replace(/-/g, '');
+  var firstDate = sorted.length ? fmtDateDMY(sorted[0].date) : '';
+  var lastDate = sorted.length ? fmtDateDMY(sorted[sorted.length - 1].date) : '';
+  var period = firstDate + ' - ' + lastDate;
+  var docNr = 'AQS - ' + todayYMD;
+
+  // Fill header values (R6)
+  _setCellValue(ws, 6, 1, client.name || '');    // A6 = client name
+  _setCellValue(ws, 6, 4, period);                // D6 = period
+  _setCellValue(ws, 6, 7, docNr);                 // G6 = nr doc
+  _setCellValue(ws, 6, 10, todayStr);             // J6 = date
+
+  // Save styles from template data rows (even=R10 blue, odd=R11 white)
+  var evenRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW, 11);     // R10 blue
+  var oddRowStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, 11);  // R11 white
+
+  // Handle row count mismatch
+  var LAST_TEMPLATE_DATA_ROW = FIRST_DATA_ROW + TEMPLATE_DATA_ROWS - 1; // R19
+  var totalsRow = LAST_TEMPLATE_DATA_ROW + 1; // R20 originally
+
+  if (NR > TEMPLATE_DATA_ROWS) {
+    var extraRows = NR - TEMPLATE_DATA_ROWS;
+    ws.spliceRows(LAST_TEMPLATE_DATA_ROW + 1, 0, ...Array(extraRows).fill([]));
+    totalsRow = FIRST_DATA_ROW + NR;
+  } else if (NR < TEMPLATE_DATA_ROWS) {
+    var rowsToDelete = TEMPLATE_DATA_ROWS - NR;
+    ws.spliceRows(FIRST_DATA_ROW + NR + 1, rowsToDelete);
+    totalsRow = FIRST_DATA_ROW + NR;
+  }
+
+  var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
+
+  // Fill data rows
+  for (var di = 0; di < NR; di++) {
+    var rowNum = FIRST_DATA_ROW + di;
+    var entry = sorted[di];
+    var isEven = (di % 2 === 0); // first row (di=0) = even style (blue)
+    var styles = isEven ? evenRowStyle : oddRowStyle;
+
+    var row = ws.getRow(rowNum);
+
+    // A: date
+    _setCellValueWithStyle(row, 1, fmtDateDMY(entry.date), styles[1]);
+
+    // B: total chemical units for this intervention
+    var totalUnits = 0;
+    V1_CHEM_COLUMNS.forEach(function(cc) {
+      var val = _getChemValue(entry, cc.keys);
+      if (val > 0) totalUnits += val;
+    });
+    _setCellValueWithStyle(row, 2, totalUnits > 0 ? totalUnits : '', styles[2]);
+
+    // C-J: chemical values
+    V1_CHEM_COLUMNS.forEach(function(cc) {
+      var val = _getChemValue(entry, cc.keys);
+      _setCellValueWithStyle(row, cc.col, val > 0 ? val : '', styles[cc.col]);
+    });
+
+    // K: total plata per intervention
+    _setCellValueWithStyle(row, 11, pretIntv, styles[11]);
+
+    row.commit();
+  }
+
+  // Update formulas in totals row (Cantitate totala — R20 originally)
+  var lastDataRow = FIRST_DATA_ROW + NR - 1;
+
+  // Update SUM formulas for columns C-J (cols 3-10)
+  V1_CHEM_COLUMNS.forEach(function(cc) {
+    var colLetter = _excelCol(cc.col);
+    _setCellFormula(ws, totalsRow, cc.col, 'SUM(' + colLetter + FIRST_DATA_ROW + ':' + colLetter + lastDataRow + ')');
+  });
+
+  // Update pret unitar row (totalsRow + 1 = R21 originally)
+  var pretRow = totalsRow + 1;
+  // Update prices from settings (fall back to template defaults)
+  V1_CHEM_COLUMNS.forEach(function(cc) {
+    var priceKeys = V1_COL_PRICE_KEYS[cc.col] || [];
+    var price = 0;
+    for (var pk = 0; pk < priceKeys.length; pk++) {
+      if (prices[priceKeys[pk]] && prices[priceKeys[pk]] > 0) {
+        price = prices[priceKeys[pk]];
+        break;
+      }
+    }
+    if (!price) price = V1_DEFAULT_PRICES[cc.col] || 0;
+    if (price > 0) _setCellValue(ws, pretRow, cc.col, price);
+  });
+
+  // Update TOTAL GENERAL row (totalsRow + 2 = R22 originally)
+  var genRow = pretRow + 1;
+  var totalsRowExcel = totalsRow;
+  var pretRowExcel = pretRow;
+
+  // C22-J22: each = Cantitate totala * Pret unitar for that column
+  V1_CHEM_COLUMNS.forEach(function(cc) {
+    var colL = _excelCol(cc.col);
+    _setCellFormula(ws, genRow, cc.col, colL + totalsRowExcel + '*' + colL + pretRowExcel);
+  });
+
+  // K22: SUM(C22:J22)
+  _setCellFormula(ws, genRow, 11, 'SUM(C' + genRow + ':J' + genRow + ')');
+
+  return wb;
+}
+
+/** Get chemical value from intervention, checking multiple possible keys */
+function _getChemValue(entry, keys) {
+  for (var i = 0; i < keys.length; i++) {
+    var val = parseFloat(entry[keys[i]]);
+    if (val > 0) return val;
+  }
+  return 0;
+}
+
+/** Convert 1-based column number to Excel letter (1=A, 2=B, ..., 26=Z, 27=AA) */
+function _excelCol(num) {
+  var s = '';
+  while (num > 0) {
+    var mod = (num - 1) % 26;
+    s = String.fromCharCode(65 + mod) + s;
+    num = Math.floor((num - 1) / 26);
+  }
+  return s;
+}
+
+/** Set cell value preserving existing style */
+function _setCellValue(ws, rowNum, colNum, value) {
+  var row = ws.getRow(rowNum);
+  var cell = row.getCell(colNum);
+  cell.value = value;
+  row.commit();
+}
+
+/** Set cell formula preserving existing style */
+function _setCellFormula(ws, rowNum, colNum, formula) {
+  var row = ws.getRow(rowNum);
+  var cell = row.getCell(colNum);
+  cell.value = { formula: formula };
+  row.commit();
+}
+
+/** Capture styles from a template row (returns object keyed by 1-based col) */
+function _captureRowStyles(ws, rowNum, numCols) {
+  var styles = {};
+  var row = ws.getRow(rowNum);
+  for (var c = 1; c <= numCols; c++) {
+    var cell = row.getCell(c);
+    styles[c] = {
+      font: cell.font ? JSON.parse(JSON.stringify(cell.font)) : undefined,
+      fill: cell.fill ? JSON.parse(JSON.stringify(cell.fill)) : undefined,
+      border: cell.border ? JSON.parse(JSON.stringify(cell.border)) : undefined,
+      alignment: cell.alignment ? JSON.parse(JSON.stringify(cell.alignment)) : undefined,
+      numFmt: cell.numFmt || undefined
+    };
+  }
+  return styles;
+}
+
+/** Set cell value and apply style */
+function _setCellValueWithStyle(row, colNum, value, style) {
+  var cell = row.getCell(colNum);
+  cell.value = value;
+  if (style) {
+    if (style.font) cell.font = style.font;
+    if (style.fill) cell.fill = style.fill;
+    if (style.border) cell.border = style.border;
+    if (style.alignment) cell.alignment = style.alignment;
+    if (style.numFmt) cell.numFmt = style.numFmt;
+  }
+}
+
+/** Merge a base style with overrides (shallow merge per property) */
+function _mergeStyle(base, overrides) {
+  if (!base) return overrides;
+  if (!overrides) return base;
+  var result = {};
+  result.font = overrides.font || base.font;
+  result.fill = overrides.fill || base.fill;
+  result.border = overrides.border || base.border;
+  result.alignment = overrides.alignment || base.alignment;
+  result.numFmt = overrides.numFmt || base.numFmt;
+  return result;
+}
+
+/** Copy worksheet from source to target workbook (row-by-row with styles, merges, dimensions) */
+function _copyWorksheet(sourceWs, targetWb, sheetName) {
+  var targetWs = targetWb.addWorksheet(sheetName);
+
+  // Copy column widths
+  sourceWs.columns.forEach(function(col, idx) {
+    if (col.width) {
+      targetWs.getColumn(idx + 1).width = col.width;
+    }
+    if (col.hidden) {
+      targetWs.getColumn(idx + 1).hidden = col.hidden;
+    }
+  });
+
+  // Copy rows with values and styles
+  sourceWs.eachRow({ includeEmpty: true }, function(row, rowNum) {
+    var targetRow = targetWs.getRow(rowNum);
+    targetRow.height = row.height;
+    targetRow.hidden = row.hidden;
+
+    row.eachCell({ includeEmpty: true }, function(cell, colNum) {
+      var targetCell = targetRow.getCell(colNum);
+      // Copy value
+      if (cell.formula) {
+        targetCell.value = { formula: cell.formula };
+      } else {
+        targetCell.value = cell.value;
+      }
+      // Copy styles
+      if (cell.font) targetCell.font = JSON.parse(JSON.stringify(cell.font));
+      if (cell.fill) targetCell.fill = JSON.parse(JSON.stringify(cell.fill));
+      if (cell.border) targetCell.border = JSON.parse(JSON.stringify(cell.border));
+      if (cell.alignment) targetCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
+      if (cell.numFmt) targetCell.numFmt = cell.numFmt;
+    });
+
+    targetRow.commit();
+  });
+
+  // Copy merges
+  if (sourceWs._merges) {
+    Object.keys(sourceWs._merges).forEach(function(key) {
+      try { targetWs.mergeCells(key); } catch (e) { /* ignore merge conflicts */ }
+    });
+  }
+
+  // Copy page setup if present
+  if (sourceWs.pageSetup) {
+    targetWs.pageSetup = JSON.parse(JSON.stringify(sourceWs.pageSetup));
+  }
+
+  return targetWs;
+}
+
+
+// ── NEW: Export Deviz Chimicale (V1 template-based) ────────────────
+function exportDevizChimicale(client, interventions) {
+  return loadExcelJS().then(async function() {
+    var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+
+    // Load V1 template
+    if (typeof TEMPLATE_V1_B64 === 'undefined') {
+      console.warn('[EXPORT] V1 template not available, falling back to legacy');
+      return exportDevizChimicale_legacy(client, interventions);
+    }
+
+    var wb = new ExcelJS.Workbook();
+    await wb.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+
+    // Fill template
+    await _fillV1Template(wb, client, sorted, prices);
+
+    // Rename sheet
+    var ws = wb.getWorksheet(1);
+    if (ws) ws.name = sanitizeSheetName(client.name || 'Chimicale');
+
+    var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
+    var buf = await wb.xlsx.writeBuffer();
+    await _writeExcelJSFile(wb, fname, client.name);
+    _uploadExcelJSToDrive(buf, fname, client.name);
+    return fname;
+  });
+}
+
+// ── NEW: Export Deviz Complet (V1 + V2 template-based) ─────────────
+function exportDevizComplet(client, interventions) {
+  return loadExcelJS().then(async function() {
+    var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+
+    if (typeof TEMPLATE_V1_B64 === 'undefined' || typeof TEMPLATE_V2_B64 === 'undefined') {
+      console.warn('[EXPORT] Templates not available, falling back to legacy');
+      return exportDevizComplet_legacy(client, interventions);
+    }
+
+    // Process V1 (Chimicale) in a temp workbook
+    var wbV1 = new ExcelJS.Workbook();
+    await wbV1.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+    await _fillV1Template(wbV1, client, sorted, prices);
+
+    // Process V2 (Servicii) in a temp workbook
+    var wbV2 = new ExcelJS.Workbook();
+    await wbV2.xlsx.load(_b64toBuffer(TEMPLATE_V2_B64));
+    await _fillV2Template(wbV2, client, sorted, prices);
+
+    // Build combined workbook
+    var wbFinal = new ExcelJS.Workbook();
+    var nameChim = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Chim');
+    var nameServ = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Serv');
+
+    _copyWorksheet(wbV1.getWorksheet(1), wbFinal, nameChim);
+    _copyWorksheet(wbV2.getWorksheet(1), wbFinal, nameServ);
+
+    var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
+    var buf = await wbFinal.xlsx.writeBuffer();
+    await _writeExcelJSFile(wbFinal, fname, client.name);
+    _uploadExcelJSToDrive(buf, fname, client.name);
+    return fname;
+  });
+}
+
+// ── NEW: Export All Deviz Mixed (all clients, template-based) ──────
+function exportAllDevizMixed(clients, allInterventions, filter) {
+  return loadExcelJS().then(async function() {
+    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+
+    if (typeof TEMPLATE_V1_B64 === 'undefined' || typeof TEMPLATE_V2_B64 === 'undefined') {
+      console.warn('[EXPORT] Templates not available, falling back to legacy');
+      return exportAllDevizMixed_legacy(clients, allInterventions, filter);
+    }
+
+    var wbFinal = new ExcelJS.Workbook();
+    var sheetCount = 0;
+
+    // Normalize interventions to object keyed by client_id
+    var intvByClient = {};
+    if (Array.isArray(allInterventions)) {
+      allInterventions.forEach(function(i) {
+        var cid = i.client_id;
+        if (!intvByClient[cid]) intvByClient[cid] = [];
+        intvByClient[cid].push(i);
+      });
+    } else {
+      intvByClient = allInterventions || {};
+    }
+
+    for (var ci = 0; ci < clients.length; ci++) {
+      var client = clients[ci];
+      var cid = client.client_id;
+      var clientIntv = (intvByClient[cid] || []).slice().sort(function(a, b) {
+        return String(a.date).localeCompare(String(b.date));
+      });
+
+      // Apply filter
+      if (filter) {
+        if (filter.mode === 'date' && filter.fromDate) {
+          clientIntv = clientIntv.filter(function(i) { return i.date >= filter.fromDate; });
+        } else if (filter.mode === 'last' && filter.lastN) {
+          clientIntv = clientIntv.slice(-filter.lastN);
+        }
+      }
+
+      if (clientIntv.length === 0) continue;
+
+      var baseName = sanitizeSheetName(client.name || 'Client');
+      var devizType = parseInt(client.deviz_type) || 2;
+
+      if (devizType === 2) {
+        // V2 = complet (both sheets)
+        // V1 (Chimicale)
+        var wbV1 = new ExcelJS.Workbook();
+        await wbV1.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+        await _fillV1Template(wbV1, client, clientIntv, prices);
+        var chemName = baseName.substring(0, 28) + '_Ch';
+        if (wbFinal.worksheets.some(function(s) { return s.name === chemName; })) {
+          chemName = chemName.substring(0, 24) + '_' + (sheetCount + 1);
+        }
+        _copyWorksheet(wbV1.getWorksheet(1), wbFinal, chemName);
+        sheetCount++;
+
+        // V2 (Servicii)
+        var wbV2 = new ExcelJS.Workbook();
+        await wbV2.xlsx.load(_b64toBuffer(TEMPLATE_V2_B64));
+        await _fillV2Template(wbV2, client, clientIntv, prices);
+        var opsName = baseName.substring(0, 28) + '_Sv';
+        if (wbFinal.worksheets.some(function(s) { return s.name === opsName; })) {
+          opsName = opsName.substring(0, 24) + '_' + (sheetCount + 1);
+        }
+        _copyWorksheet(wbV2.getWorksheet(1), wbFinal, opsName);
+        sheetCount++;
+      } else {
+        // V1 = chimicale only
+        var wbV1only = new ExcelJS.Workbook();
+        await wbV1only.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+        await _fillV1Template(wbV1only, client, clientIntv, prices);
+        var chemNameV = baseName.substring(0, 28) + '_Ch';
+        if (wbFinal.worksheets.some(function(s) { return s.name === chemNameV; })) {
+          chemNameV = chemNameV.substring(0, 24) + '_' + (sheetCount + 1);
+        }
+        _copyWorksheet(wbV1only.getWorksheet(1), wbFinal, chemNameV);
+        sheetCount++;
+      }
+    }
+
+    if (sheetCount === 0) {
+      showToast('Nicio interventie de exportat.', 'warning');
+      return;
+    }
+
+    var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
+    var buf = await wbFinal.xlsx.writeBuffer();
+    await _writeExcelJSFile(wbFinal, fname);
+    _uploadExcelJSToDrive(buf, fname, null);
     return fname;
   });
 }

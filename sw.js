@@ -1,9 +1,9 @@
-﻿// sw.js — Service Worker v152 for Pool Manager PWA
+﻿// sw.js — Service Worker v154 for Pool Manager PWA
 // Strategy: cache-first for app shell, network-first for API
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v152';
+const CACHE_NAME   = 'pool-mgmt-v154';
 const APP_SHELL    = [
   './',
   './index.html',
@@ -12,6 +12,7 @@ const APP_SHELL    = [
   './js/rules.js',
   './js/db.js',
   './js/sync.js',
+  './js/template-data.js',
   './js/export.js',
   './js/app.js',
   './icons/icon.svg',
@@ -21,7 +22,8 @@ const APP_SHELL    = [
 
 // CDN resources (opaque — cached with care)
 const CDN_RESOURCES = [
-  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js'
+  'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js',
+  'https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js'
 ];
 
 // ── Install ───────────────────────────────────────────────────
@@ -42,7 +44,7 @@ self.addEventListener('install', event => {
         )
       );
     }).then(() => {
-      console.log('[SW] v152 installed');
+      console.log('[SW] v153 installed');
       return self.skipWaiting();
     })
   );
