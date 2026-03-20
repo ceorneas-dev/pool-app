@@ -1803,7 +1803,7 @@ async function _fillV2Template(wb, client, sorted, prices) {
   }
 
   // ── 8. Write data rows with alternating styles ──
-  var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1A6B2A' } };
+  var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF0D2D5A' } };
   for (var di = 0; di < NR; di++) {
     var rowNum = FIRST_DATA_ROW + di;
     var entry = sorted[di];
