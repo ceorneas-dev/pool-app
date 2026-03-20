@@ -1737,15 +1737,21 @@ async function _fillV2Template(wb, client, sorted, prices) {
     });
   }
 
+  // ── 3b. Pre-capture R1-R10 styles BEFORE merge clearing (slave cells lose style on unmerge) ──
+  var preHeaderStyles = {};
+  for (var phr = 1; phr <= 10; phr++) {
+    preHeaderStyles[phr] = _captureRowStyles(ws, phr, TEMPLATE_LAST_OP_COL);
+  }
+
   // ── 4. Save and clear ALL merges ──
   var savedMerges = _saveAndClearMerges(ws);
 
   // ── 5. Write extra column headers (if any) ──
   if (extraOps.length > 0) {
-    // Use an interior column (C2) for border reference instead of C9 (old outer edge)
-    var interiorHdrStyle = _captureRowStyles(ws, HEADER_ROW, TEMPLATE_FIRST_OP_COL)[TEMPLATE_FIRST_OP_COL];
-    var lastHdrStyle = _captureRowStyles(ws, HEADER_ROW, TEMPLATE_LAST_OP_COL)[TEMPLATE_LAST_OP_COL];
-    // Merge: keep lastHdrStyle but fix the right border to match interior
+    // Use pre-captured styles (before merge clearing) to avoid null from slave cells
+    var lastHdrStyle = preHeaderStyles[HEADER_ROW][TEMPLATE_LAST_OP_COL];
+    var interiorHdrStyle = preHeaderStyles[HEADER_ROW][TEMPLATE_FIRST_OP_COL];
+    // Fix the right border to match interior (was outer frame medium)
     if (interiorHdrStyle && interiorHdrStyle.border && interiorHdrStyle.border.right) {
       var intRightBdr = JSON.parse(JSON.stringify(interiorHdrStyle.border.right));
       if (lastHdrStyle && lastHdrStyle.border) {
@@ -1753,14 +1759,11 @@ async function _fillV2Template(wb, client, sorted, prices) {
         lastHdrStyle.border.right = intRightBdr;
       }
     }
-    var r9Styles = _captureRowStyles(ws, MERGED_HEADER_ROW, TEMPLATE_LAST_OP_COL);
-    // Fix R9 style right border too
-    if (r9Styles[TEMPLATE_LAST_OP_COL] && r9Styles[TEMPLATE_LAST_OP_COL].border) {
-      var r9IntStyle = _captureRowStyles(ws, MERGED_HEADER_ROW, TEMPLATE_FIRST_OP_COL)[TEMPLATE_FIRST_OP_COL];
-      if (r9IntStyle && r9IntStyle.border && r9IntStyle.border.right) {
-        r9Styles[TEMPLATE_LAST_OP_COL].border = JSON.parse(JSON.stringify(r9Styles[TEMPLATE_LAST_OP_COL].border));
-        r9Styles[TEMPLATE_LAST_OP_COL].border.right = JSON.parse(JSON.stringify(r9IntStyle.border.right));
-      }
+    var r9Style = preHeaderStyles[MERGED_HEADER_ROW][TEMPLATE_LAST_OP_COL];
+    var r9IntStyle = preHeaderStyles[MERGED_HEADER_ROW][TEMPLATE_FIRST_OP_COL];
+    if (r9Style && r9Style.border && r9IntStyle && r9IntStyle.border && r9IntStyle.border.right) {
+      r9Style.border = JSON.parse(JSON.stringify(r9Style.border));
+      r9Style.border.right = JSON.parse(JSON.stringify(r9IntStyle.border.right));
     }
     for (var ei = 0; ei < extraOps.length; ei++) {
       var eCol = TEMPLATE_LAST_OP_COL + 1 + ei;
@@ -1770,14 +1773,14 @@ async function _fillV2Template(wb, client, sorted, prices) {
       hRow.commit();
       // R9 merged header area
       var r9 = ws.getRow(MERGED_HEADER_ROW);
-      _setCellValueWithStyle(r9, eCol, '', r9Styles[TEMPLATE_LAST_OP_COL]);
+      _setCellValueWithStyle(r9, eCol, '', r9Style);
       r9.commit();
-      // R1-R8 extend styling
+      // R1-R8 extend styling using pre-captured styles
       for (var hr = 1; hr <= 8; hr++) {
-        var hrS = _captureRowStyles(ws, hr, TEMPLATE_LAST_OP_COL);
-        if (hrS[TEMPLATE_LAST_OP_COL]) {
+        var hrStyle = preHeaderStyles[hr][TEMPLATE_LAST_OP_COL];
+        if (hrStyle) {
           var hrRow = ws.getRow(hr);
-          _setCellValueWithStyle(hrRow, eCol, '', hrS[TEMPLATE_LAST_OP_COL]);
+          _setCellValueWithStyle(hrRow, eCol, '', hrStyle);
           hrRow.commit();
         }
       }
@@ -1877,31 +1880,25 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var lastContentRow = newFooterStart + ORIG_FOOTER_ROWS.length - 1;
 
   if (LAST_COL > ORIG_LAST_COL) {
-    // Column I (old outer edge): right medium → thin with interior color for ALL rows
+    // Column I + intermediate extra columns: right:medium → thin with interior color
     for (var fr = 1; fr <= lastContentRow; fr++) {
       var fRow = ws.getRow(fr);
-      var cellI = fRow.getCell(TEMPLATE_LAST_OP_COL);
-      if (cellI.border) {
-        var bi = JSON.parse(JSON.stringify(cellI.border));
-        if (bi.right && bi.right.style === 'medium') {
-          // Use interior cell's right border color (from col B) instead of old outer frame color
-          var intCell = fRow.getCell(TEMPLATE_FIRST_OP_COL);
-          var intColor = (intCell.border && intCell.border.right && intCell.border.right.color)
-            ? JSON.parse(JSON.stringify(intCell.border.right.color)) : bi.right.color;
-          bi.right = intColor ? { style: 'thin', color: intColor } : { style: 'thin' };
-          cellI.border = bi;
+      // Get interior border color reference from col B
+      var intCell = fRow.getCell(TEMPLATE_FIRST_OP_COL);
+      var intColor = (intCell.border && intCell.border.right && intCell.border.right.color)
+        ? JSON.parse(JSON.stringify(intCell.border.right.color)) : null;
+      // Fix all columns from I through second-to-last extra column
+      for (var fixC = TEMPLATE_LAST_OP_COL; fixC < LAST_COL; fixC++) {
+        var fixCell = fRow.getCell(fixC);
+        if (fixCell.border) {
+          var fb = JSON.parse(JSON.stringify(fixCell.border));
+          if (fb.right && fb.right.style === 'medium') {
+            fb.right = intColor ? { style: 'thin', color: JSON.parse(JSON.stringify(intColor)) } : { style: 'thin' };
+            fixCell.border = fb;
+          }
         }
       }
       fRow.commit();
-    }
-
-    // R5-R7: clear interior cell borders on extra columns (header area, not table)
-    for (var noR = 5; noR <= 7; noR++) {
-      var noRow = ws.getRow(noR);
-      for (var noC = TEMPLATE_LAST_OP_COL + 1; noC < LAST_COL; noC++) {
-        noRow.getCell(noC).border = undefined;
-      }
-      noRow.commit();
     }
   }
 
