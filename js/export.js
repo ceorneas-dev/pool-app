@@ -1696,7 +1696,13 @@ async function _fillV2Template(wb, client, sorted, prices) {
     var rowData = [];
     var row = ws.getRow(r);
     for (var c = 1; c <= ORIG_LAST_COL; c++) {
-      rowData.push({ value: row.getCell(c).value });
+      var cellVal = row.getCell(c).value;
+      // Resolve sharedFormula references — they serialize as [object Object]
+      if (cellVal && typeof cellVal === 'object') {
+        if (cellVal.sharedFormula) cellVal = null; // formula step will set these
+        else if (cellVal.formula) cellVal = { formula: cellVal.formula }; // keep only formula string
+      }
+      rowData.push({ value: cellVal });
     }
     footerContent[r] = rowData;
     footerHeights[r] = row.height;
@@ -2030,7 +2036,13 @@ async function _fillV1Template(wb, client, sorted, prices) {
     var rowData = [];
     var row = ws.getRow(r);
     for (var c = 1; c <= ORIG_LAST_COL; c++) {
-      rowData.push({ value: row.getCell(c).value });
+      var cellVal = row.getCell(c).value;
+      // Resolve sharedFormula references — they serialize as [object Object]
+      if (cellVal && typeof cellVal === 'object') {
+        if (cellVal.sharedFormula) cellVal = null; // formula step will set these
+        else if (cellVal.formula) cellVal = { formula: cellVal.formula }; // keep only formula string
+      }
+      rowData.push({ value: cellVal });
     }
     footerContent[r] = rowData;
     footerHeights[r] = row.height;
