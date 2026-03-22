@@ -1606,11 +1606,26 @@ async function _fillV2Template(wb, client, sorted, prices) {
   // ── 1. Read template headers & build op->column mapping ──
   var templateHeaders = _readTemplateOpsHeaders(ws, HEADER_ROW, FIRST_OP_COL, LAST_OP_COL);
   var allOpsSet = {}, allOpsOrder = [];
+  var anyHasOps = false;
   sorted.forEach(function(intv) {
-    _parseOps(intv.operations).forEach(function(op) {
+    var ops = _parseOps(intv.operations);
+    if (ops.length > 0) anyHasOps = true;
+    ops.forEach(function(op) {
       if (op && !allOpsSet[op]) { allOpsSet[op] = true; allOpsOrder.push(op); }
     });
   });
+
+  // FALLBACK: If NO intervention has operations data, default to all template ops checked
+  // This handles cases where operations weren't saved or were lost during sync
+  if (!anyHasOps && sorted.length > 0) {
+    console.warn('[V2 EXPORT] ⚠ No operations found in any intervention — defaulting ALL template ops to ✓');
+    var defaultOps = templateHeaders.map(function(h) { return h.raw.replace(/\n/g, ' ').trim(); });
+    sorted.forEach(function(intv) {
+      if (!intv.operations || (Array.isArray(intv.operations) && intv.operations.length === 0)) {
+        intv._defaultOps = defaultOps;
+      }
+    });
+  }
 
   var opToCol = {}, usedCols = {}, extraOps = [];
   allOpsOrder.forEach(function(op) {
@@ -1754,7 +1769,9 @@ async function _fillV2Template(wb, client, sorted, prices) {
 
     // Fill checkmarks for this entry's operations
     var ops = _parseOps(entry.operations);
-    console.log('[V2 EXPORT] R' + rowNum + ' date=' + entry.date + ' operations=' + JSON.stringify(entry.operations) + ' parsed=' + JSON.stringify(ops));
+    // Use fallback default ops if no operations were saved
+    if (ops.length === 0 && entry._defaultOps) ops = entry._defaultOps;
+    console.log('[V2 EXPORT] R' + rowNum + ' date=' + entry.date + ' ops=' + JSON.stringify(ops).substring(0,100));
     for (var oi = 0; oi < ops.length; oi++) {
       var col = opToCol[ops[oi]];
       if (!col || col < FIRST_OP_COL) col = _findOpColumn(ops[oi], templateHeaders);
@@ -1762,12 +1779,8 @@ async function _fillV2Template(wb, client, sorted, prices) {
         var chkCell = row.getCell(col);
         chkCell.value = '\u2713';
         chkCell.font = JSON.parse(JSON.stringify(checkFont));
-        console.log('[V2 EXPORT]   ✓ "' + ops[oi] + '" → col ' + col);
-      } else {
-        console.warn('[V2 EXPORT]   ✗ "' + ops[oi] + '" → NO COLUMN MATCH');
       }
     }
-    if (ops.length === 0) console.warn('[V2 EXPORT]   ⚠ No operations for this intervention!');
 
     row.height = 19.5;
     row.commit();
@@ -2165,6 +2178,7 @@ function _copyWorksheet(sourceWs, targetWb, sheetName) {
   sourceWs.eachRow({ includeEmpty: true }, function(row, rn) {
     var tRow = targetWs.getRow(rn);
     tRow.height = row.height;
+    if (row.hidden) tRow.hidden = true;
     row.eachCell({ includeEmpty: true }, function(cell, cn) {
       var tCell = tRow.getCell(cn);
       // Value: skip slaves to prevent duplicated text
