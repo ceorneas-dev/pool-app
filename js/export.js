@@ -1683,10 +1683,33 @@ async function _fillV2Template(wb, client, sorted, prices) {
     try { ws.unMergeCells(33, 6, 33, ORIG_LAST_COL); } catch(e) {}
     try { ws.mergeCells(33, 6, 33, LAST_COL); } catch(e) {}
 
-    // Set right:medium border on last column for outer frame on extra column cells
+    // Fix column I (old outer edge): right:medium → right:thin (now interior column)
+    // And set right:medium on LAST_COL (new outer edge)
     var medBrd = { style: 'medium' };
+    var thinBrd = { style: 'thin' };
     for (var ofr = 1; ofr <= 33; ofr++) {
       var oRow = ws.getRow(ofr);
+      // Column I: change right:medium to right:thin
+      var cellI = oRow.getCell(ORIG_LAST_COL);
+      if (cellI.border) {
+        var bi = JSON.parse(JSON.stringify(cellI.border));
+        if (bi.right && bi.right.style === 'medium') {
+          bi.right = thinBrd;
+          cellI.border = bi;
+        }
+      }
+      // Intermediate extra columns: also fix right:medium → thin
+      for (var imc = ORIG_LAST_COL + 1; imc < LAST_COL; imc++) {
+        var imCell = oRow.getCell(imc);
+        if (imCell.border) {
+          var imb = JSON.parse(JSON.stringify(imCell.border));
+          if (imb.right && imb.right.style === 'medium') {
+            imb.right = thinBrd;
+            imCell.border = imb;
+          }
+        }
+      }
+      // LAST_COL: set right:medium (outer frame)
       var cL = oRow.getCell(LAST_COL);
       var bL = cL.border ? JSON.parse(JSON.stringify(cL.border)) : {};
       bL.right = medBrd;
@@ -1741,12 +1764,13 @@ async function _fillV2Template(wb, client, sorted, prices) {
     row.commit();
   }
 
-  // ── 5. Clear unused data rows (value only — keep fill, border, alignment) ──
+  // ── 5. Hide unused data rows (no empty rows visible) ──
   for (var cr = FIRST_DATA_ROW + NR; cr <= FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; cr++) {
     var cRow = ws.getRow(cr);
     for (var cc2 = 1; cc2 <= LAST_COL; cc2++) {
       cRow.getCell(cc2).value = '';
     }
+    cRow.hidden = true;
     cRow.commit();
   }
 
@@ -1757,10 +1781,10 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var lastContentRow = 33;
 
   _setCellValue(ws, totalRow, 1, 'Total interventii efectuate');
-  _setCellFormula(ws, totalRow, 7, 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
+  _setCellFormula(ws, totalRow, 7, 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
 
   _setCellValue(ws, payRow, 1, 'TOTAL DE PLATA');
-  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
+  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
 
   // Footer text
   _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
@@ -1896,12 +1920,13 @@ async function _fillV1Template(wb, client, sorted, prices) {
     row.commit();
   }
 
-  // ── 4. Clear unused data rows (value only — keep fill, border, alignment) ──
+  // ── 4. Hide unused data rows (no empty rows visible) ──
   for (var cr = FIRST_DATA_ROW + NR; cr <= FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; cr++) {
     var cRow = ws.getRow(cr);
     for (var cc2 = 1; cc2 <= LAST_COL; cc2++) {
       cRow.getCell(cc2).value = '';
     }
+    cRow.hidden = true;
     cRow.commit();
   }
 
