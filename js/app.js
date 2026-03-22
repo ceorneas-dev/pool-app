@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 167;
+const APP_VERSION = 168;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -2696,9 +2696,11 @@ async function showTechManager() {
         <span class="tech-role-badge ${t.role === 'admin' ? 'badge-admin' : 'badge-tech'}">${t.role}</span>
         <div style="font-size:.78rem;color:var(--slate-500)">@${escHtml(t.username)}</div>
       </div>
-      <div style="display:flex;gap:6px;align-items:center">
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <span style="font-size:.8rem;color:${t.active !== false ? 'var(--success)' : 'var(--danger)'}">${t.active !== false ? '● Activ' : '● Inactiv'}</span>
         <button class="client-action-btn" onclick="toggleTechActive('${t.technician_id}')">${t.active !== false ? 'Dezactivează' : 'Activează'}</button>
+        <button class="client-action-btn" onclick="showTechForm('${t.technician_id}')">✏️ Editează</button>
+        <button class="client-action-btn" style="color:var(--danger)" onclick="deleteTech('${t.technician_id}','${escHtml(t.name)}')">🗑️ Șterge</button>
       </div>
     </div>
   `).join('') : '<p style="padding:12px;color:var(--slate-400)">Niciun tehnician.</p>';
@@ -2792,6 +2794,27 @@ async function toggleTechActive(techId) {
     showTechManager();
   } catch (e) {
     showToast('Eroare: ' + e.message, 'error');
+  }
+}
+
+async function deleteTech(techId, techName) {
+  if (!confirm('Sigur vrei să ștergi tehnicianul "' + techName + '"?\n\nAceastă acțiune este ireversibilă.')) return;
+  try {
+    await del('technicians', techId);
+    // Push deletion to GAS if configured
+    if (isSyncConfigured()) {
+      try {
+        await apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body: JSON.stringify({ action: 'push', type: 'technicians', data: [{ technician_id: techId, _deleted: true }] })
+        });
+      } catch (e) { console.warn('[SYNC] Tech delete push failed:', e.message); }
+    }
+    try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
+    showToast('Tehnicianul "' + techName + '" a fost șters.', 'success');
+    showTechManager();
+  } catch (e) {
+    showToast('Eroare la ștergere: ' + e.message, 'error');
   }
 }
 
