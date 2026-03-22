@@ -1822,6 +1822,7 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var payCell = ws.getRow(payRow).getCell(7);
   payCell.alignment = { horizontal: 'center', vertical: 'middle' };
   payCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  payCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6FA0' } };
   // Copy border from R29 G29 to match exactly
   var countBorder = ws.getRow(totalRow).getCell(7).border;
   if (countBorder) payCell.border = JSON.parse(JSON.stringify(countBorder));
