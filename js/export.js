@@ -2008,7 +2008,26 @@ async function _fillV1Template(wb, client, sorted, prices) {
   _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
   _setCellValue(ws, footerTextRow, 8, 'www.aquatis.ro  |  0721.137.178');
 
-  // ── 7. Number format: integer on all numeric/formula cells ──
+  // ── 7. Style fixes for B column in footer rows ──
+  // R20 (Cantitate totala): B centered, white, bold
+  var cellB20 = ws.getRow(totalsRow).getCell(2);
+  cellB20.alignment = { horizontal: 'center', vertical: 'middle' };
+  cellB20.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  ws.getRow(totalsRow).commit();
+
+  // R21 (Pret unitar): B centered
+  var cellB21 = ws.getRow(pretRow).getCell(2);
+  cellB21.alignment = { horizontal: 'center', vertical: 'middle' };
+  cellB21.font = { italic: true, size: 8, color: { argb: 'FF0D2D5A' }, name: 'Arial' };
+  ws.getRow(pretRow).commit();
+
+  // R22 (Total general): B centered, white, bold
+  var cellB22 = ws.getRow(genRow).getCell(2);
+  cellB22.alignment = { horizontal: 'center', vertical: 'middle' };
+  cellB22.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  ws.getRow(genRow).commit();
+
+  // ── 8. Number format: integer on all numeric/formula cells ──
   for (var nfr = FIRST_DATA_ROW; nfr <= footerTextRow; nfr++) {
     var nfRow = ws.getRow(nfr);
     for (var nfc = 2; nfc <= LAST_COL; nfc++) {
@@ -2210,6 +2229,20 @@ function _copyWorksheet(sourceWs, targetWb, sheetName) {
       }
     });
   }
+
+  // 5. Re-apply ALL borders via style.border (cell.border doesn't persist for
+  //    merged master cells — ExcelJS clears it during merge serialization).
+  sourceWs.eachRow({ includeEmpty: true }, function(row, rn) {
+    var tRow = targetWs.getRow(rn);
+    row.eachCell({ includeEmpty: true }, function(cell, cn) {
+      if (cell.border && Object.keys(cell.border).length > 0) {
+        var tCell = tRow.getCell(cn);
+        var st = tCell.style ? JSON.parse(JSON.stringify(tCell.style)) : {};
+        st.border = JSON.parse(JSON.stringify(cell.border));
+        tCell.style = st;
+      }
+    });
+  });
 
   // 5. Page setup
   if (sourceWs.pageSetup) {
