@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 159;
+const APP_VERSION = 160;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -172,31 +172,6 @@ function _autoStopTimer() {
   showToast('📍 Ai plecat de la client — timer oprit automat', 'info');
 }
 
-/** Manual toggle — fallback when no GPS or override */
-function toggleArrivalTimer() {
-  var btn = $('btn-timer');
-  if (!btn) return;
-
-  if (!APP.arrivalTime) {
-    // Manual start
-    APP.arrivalTime = new Date().toISOString();
-    _setTimerUI('running');
-    _updateTimerDisplay();
-    APP._timerInterval = setInterval(_updateTimerDisplay, 30000);
-    // If geofence was watching, switch to manual mode
-    if (APP._geoTimerState === 'watching') {
-      APP._geoTimerState = 'inside'; // pretend we're inside so departure still works
-    }
-  } else {
-    // Manual stop
-    if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
-    _setTimerUI('stopped');
-    _updateTimerDisplay();
-    APP._geoTimerState = 'stopped';
-    _stopGeofenceWatch();
-  }
-}
-
 /** Update timer display with elapsed minutes */
 function _updateTimerDisplay() {
   var el = $('timer-value');
@@ -207,45 +182,28 @@ function _updateTimerDisplay() {
   if (display) display.style.display = 'inline';
 }
 
-/** Set timer UI elements based on state */
+/** Set timer UI elements based on GPS state */
 function _setTimerUI(state) {
-  var btn = $('btn-timer');
   var display = $('timer-display');
   var statusEl = $('geo-status');
-  if (!btn) return;
 
   switch (state) {
     case 'searching':
-      btn.textContent = '▶ Start';
-      btn.classList.remove('timer-active');
-      btn.disabled = false;
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📡 Caut locația...'; }
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📡 Caut locatia...'; }
       if (display) display.style.display = 'none';
       break;
     case 'running':
-      btn.textContent = '⏹ Stop';
-      btn.classList.add('timer-active');
-      btn.disabled = false;
       if (display) display.style.display = 'inline';
       if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📍 La client'; }
       break;
     case 'stopped':
-      btn.textContent = '✓ Oprit';
-      btn.classList.remove('timer-active');
-      btn.disabled = true;
-      if (statusEl) statusEl.style.display = 'none';
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '✓ Oprit'; }
       break;
     case 'no-gps':
-      btn.textContent = '▶ Start';
-      btn.classList.remove('timer-active');
-      btn.disabled = false;
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⚠ GPS indisponibil — manual'; }
+      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⚠ GPS indisponibil'; }
       if (display) display.style.display = 'none';
       break;
     default:
-      btn.textContent = '▶ Start';
-      btn.classList.remove('timer-active');
-      btn.disabled = false;
       if (display) display.style.display = 'none';
       if (statusEl) statusEl.style.display = 'none';
   }
@@ -257,10 +215,8 @@ function _resetArrivalTimer() {
   _stopGeofenceWatch();
   APP.arrivalTime = null;
   APP._geoTimerState = 'idle';
-  var btn = $('btn-timer');
   var display = $('timer-display');
   var statusEl = $('geo-status');
-  if (btn) { btn.textContent = '▶ Start'; btn.classList.remove('timer-active'); btn.disabled = false; }
   if (display) display.style.display = 'none';
   if (statusEl) statusEl.style.display = 'none';
 }
@@ -5955,15 +5911,14 @@ async function clearChecklist() {
   showToast('Lista a fost ștearsă.', 'success');
 }
 
-// ── Swipe-back gesture on secondary screens ─────────────────
+// ── Swipe-back gesture on all non-dashboard screens ─────────────────
 (function() {
   var _swipeStartX = 0, _swipeStartY = 0, _swipeTracking = false;
-  var SECONDARY = ['map', 'info', 'checklist', 'calendar'];
+  var SWIPEABLE = ['map', 'info', 'checklist', 'calendar', 'intervention', 'success', 'billing-list'];
 
   document.addEventListener('touchstart', function(e) {
-    if (SECONDARY.indexOf(APP.currentScreen) < 0) return;
+    if (SWIPEABLE.indexOf(APP.currentScreen) < 0) return;
     var t = e.touches[0];
-    // Only start tracking if touch begins in left 40px edge
     if (t.clientX <= 40) {
       _swipeStartX = t.clientX;
       _swipeStartY = t.clientY;
@@ -5977,8 +5932,9 @@ async function clearChecklist() {
     var t = e.changedTouches[0];
     var dx = t.clientX - _swipeStartX;
     var dy = Math.abs(t.clientY - _swipeStartY);
-    // Swipe right at least 80px, mostly horizontal
     if (dx > 80 && dy < dx * 0.6) {
+      // Cleanup for intervention screen
+      if (APP.currentScreen === 'intervention') APP._editingIntervention = null;
       showScreen('dashboard');
     }
   }, { passive: true });
