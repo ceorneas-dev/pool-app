@@ -1804,9 +1804,19 @@ async function _fillV2Template(wb, client, sorted, prices) {
 
   _setCellValue(ws, totalRow, 1, 'Total interventii efectuate');
   _setCellFormula(ws, totalRow, 7, 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
+  // Style: centered, white, bold (matches template R29 C7)
+  var countCell = ws.getRow(totalRow).getCell(7);
+  countCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  countCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  ws.getRow(totalRow).commit();
 
   _setCellValue(ws, payRow, 1, 'TOTAL DE PLATA');
   _setCellFormula(ws, payRow, 6, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
+  // Style: centered, white, bold (matches template R31 C6)
+  var payCell = ws.getRow(payRow).getCell(6);
+  payCell.alignment = { horizontal: 'center', vertical: 'middle' };
+  payCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  ws.getRow(payRow).commit();
 
   // Footer text
   _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
