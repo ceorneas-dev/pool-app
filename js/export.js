@@ -1811,11 +1811,20 @@ async function _fillV2Template(wb, client, sorted, prices) {
   ws.getRow(totalRow).commit();
 
   _setCellValue(ws, payRow, 1, 'TOTAL DE PLATA');
-  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
-  // Style: centered, white, bold (matches template R31 C6)
-  var payCell = ws.getRow(payRow).getCell(6);
+  // Align pay value with count value: both in col 7 (G), merge G:I
+  // Remove old merges on R31 and re-create to match R29 pattern
+  try { ws.unMergeCells(payRow, 1, payRow, 5); } catch(e) {}
+  try { ws.unMergeCells(payRow, 6, payRow, 9); } catch(e) {}
+  ws.mergeCells(payRow, 1, payRow, 6);  // A31:F31 text (like R29 A29:F29)
+  ws.mergeCells(payRow, 7, payRow, 9);  // G31:I31 value (like R29 G29:I29)
+  _setCellFormula(ws, payRow, 7, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
+  // Style: centered, white, bold (matches R29 count cell)
+  var payCell = ws.getRow(payRow).getCell(7);
   payCell.alignment = { horizontal: 'center', vertical: 'middle' };
   payCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
+  // Copy border from R29 G29 to match exactly
+  var countBorder = ws.getRow(totalRow).getCell(7).border;
+  if (countBorder) payCell.border = JSON.parse(JSON.stringify(countBorder));
   ws.getRow(payRow).commit();
 
   // Footer text
