@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 170;
+const APP_VERSION = 171;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -224,12 +224,11 @@ function _resetArrivalTimer() {
 async function initApp() {
   await openDB();
 
-  // ── Version-based cleanup: force re-sync clients when app updates ──
+  // ── Version tracking (no longer clears clients on update) ──
   try {
     var lastVer = await getSetting('app_version');
     if (parseInt(lastVer) !== APP_VERSION) {
-      console.log('[INIT] Version changed:', lastVer, '→', APP_VERSION, '— clearing clients for re-sync');
-      await clearStore('clients');
+      console.log('[INIT] Version changed:', lastVer, '→', APP_VERSION);
       await setSetting('app_version', APP_VERSION);
     }
   } catch(e) { console.warn('[INIT] Version check error:', e.message); }
