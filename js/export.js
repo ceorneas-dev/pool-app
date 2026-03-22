@@ -2242,10 +2242,23 @@ function _stripDiacritics(s) {
 
 /** Strip diacritics from all text cells in a worksheet */
 function _stripAllDiacritics(ws, lastRow, lastCol) {
+  // Build set of merge slave cells (skip these to avoid duplicating text)
+  var slaveCells = {};
+  if (ws._merges) {
+    Object.keys(ws._merges).forEach(function(key) {
+      var m = ws._merges[key].model;
+      for (var mr = m.top; mr <= m.bottom; mr++) {
+        for (var mc = m.left; mc <= m.right; mc++) {
+          if (mr !== m.top || mc !== m.left) slaveCells[mr + '_' + mc] = true;
+        }
+      }
+    });
+  }
   for (var r = 1; r <= lastRow; r++) {
     var row = ws.getRow(r);
     var changed = false;
     for (var c = 1; c <= lastCol; c++) {
+      if (slaveCells[r + '_' + c]) continue; // skip slave cells in merges
       var cell = row.getCell(c);
       if (cell.value && typeof cell.value === 'string') {
         var stripped = _stripDiacritics(cell.value);
