@@ -1573,46 +1573,6 @@ function _cellRef(col, row) {
 /** Save all merges and remove them from the worksheet.
  *  Returns array of {top,left,bottom,right} for later re-creation. */
 /** Shift footer merges only (rows >= firstOrigRow). Header merges stay untouched. */
-function _shiftFooterMerges(ws, rowShift, firstOrigRow) {
-  if (!ws._merges || rowShift === 0) return;
-  // Collect footer merges to move
-  var toMove = [];
-  Object.keys(ws._merges).forEach(function(key) {
-    var m = ws._merges[key].model;
-    if (m.top >= firstOrigRow) toMove.push({ key: key, top: m.top, left: m.left, bottom: m.bottom, right: m.right });
-  });
-  // Remove old footer merges
-  toMove.forEach(function(m) {
-    try { ws.unMergeCells(m.top, m.left, m.bottom, m.right); } catch(e) {}
-  });
-  // Re-apply at new positions
-  toMove.forEach(function(m) {
-    try { ws.mergeCells(m.top + rowShift, m.left, m.bottom + rowShift, m.right); } catch(e) {}
-  });
-}
-
-/** Extend full-width merges to cover extra columns (V2 only) */
-function _extendMergesToColumn(ws, origLastCol, newLastCol) {
-  if (!ws._merges || newLastCol <= origLastCol) return;
-  var toExtend = [];
-  Object.keys(ws._merges).forEach(function(key) {
-    var m = ws._merges[key].model;
-    if (m.right === origLastCol) {
-      // Full-width or footer merges ending at old last column
-      if (m.left <= 2 || m.left === 6 || m.left === 7) {
-        toExtend.push({ key: key, top: m.top, left: m.left, bottom: m.bottom, right: m.right });
-      }
-    }
-  });
-  toExtend.forEach(function(m) {
-    try { ws.unMergeCells(m.top, m.left, m.bottom, m.right); } catch(e) {}
-  });
-  toExtend.forEach(function(m) {
-    try { ws.mergeCells(m.top, m.left, m.bottom, newLastCol); } catch(e) {}
-  });
-}
-
-
 /** Clear a row completely */
 function _clearRow(ws, rowNum, numCols) {
   var row = ws.getRow(rowNum);
@@ -1625,15 +1585,13 @@ function _clearRow(ws, rowNum, numCols) {
 }
 
 async function _fillV2Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V2] v159 fill-in-place');
+  console.log('[EXPORT V2] v160 fill-in-place, targeted merge extension');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V2 template: sheet not found'); }
 
   var FIRST_DATA_ROW = 11, TEMPLATE_SLOTS = 17, ORIG_LAST_COL = 9;
   var FIRST_OP_COL = 2, LAST_OP_COL = 9, HEADER_ROW = 10;
-  var FOOTER_START = 28; // R28-R33
-  var FOOTER_ROWS = [28, 29, 30, 31, 32, 33];
-  var NR = sorted.length;
+  var NR = Math.min(sorted.length, TEMPLATE_SLOTS); // cap at 17
 
   // ── Date helpers ──
   var today = new Date();
@@ -1645,7 +1603,7 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var docNr  = 'AQS - ' + todayYMD;
   var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
 
-  // ── 1. Read template headers & build op→column mapping ──
+  // ── 1. Read template headers & build op->column mapping ──
   var templateHeaders = _readTemplateOpsHeaders(ws, HEADER_ROW, FIRST_OP_COL, LAST_OP_COL);
   var allOpsSet = {}, allOpsOrder = [];
   sorted.forEach(function(intv) {
@@ -1664,143 +1622,140 @@ async function _fillV2Template(wb, client, sorted, prices) {
   extraOps.forEach(function(op) { opToCol[op] = nextExtra++; });
   var LAST_COL = Math.max(ORIG_LAST_COL, nextExtra - 1);
 
-  // ── 2. Capture data row styles (R11=cream, R12=white) ──
-  var creamStyle = _captureRowStyles(ws, FIRST_DATA_ROW, ORIG_LAST_COL);
-  var whiteStyle = _captureRowStyles(ws, FIRST_DATA_ROW + 1, ORIG_LAST_COL);
-  // Capture footer styles/heights for relocation
-  var footerStyles = {}, footerHeights = {};
-  FOOTER_ROWS.forEach(function(r) {
-    footerStyles[r] = _captureRowStyles(ws, r, ORIG_LAST_COL);
-    footerHeights[r] = ws.getRow(r).height;
-  });
-
-  // ── 3. Handle extra columns (if any) ──
+  // ── 2. Handle extra columns (targeted merge extension) ──
   if (extraOps.length > 0) {
-    // Pre-capture R1-R10 styles BEFORE any merge changes
-    var preStyles = {};
-    for (var phr = 1; phr <= 10; phr++) preStyles[phr] = _captureRowStyles(ws, phr, LAST_OP_COL);
+    // Capture R10 header style from last template column for cloning
+    var hdrTemplateStyle = _captureRowStyles(ws, HEADER_ROW, LAST_OP_COL);
+    var lastOpStyle = hdrTemplateStyle[LAST_OP_COL];
 
-    // Extend full-width merges to cover new columns
-    _extendMergesToColumn(ws, ORIG_LAST_COL, LAST_COL);
+    // Capture R11 data style from last template column for cloning to extra cols
+    var dataTemplateStyle = _captureRowStyles(ws, FIRST_DATA_ROW, ORIG_LAST_COL);
+    var lastDataStyle = dataTemplateStyle[ORIG_LAST_COL];
 
-    // Clone data row styles for extra columns
-    for (var ec = ORIG_LAST_COL + 1; ec <= LAST_COL; ec++) {
-      creamStyle[ec] = JSON.parse(JSON.stringify(creamStyle[ORIG_LAST_COL] || creamStyle[FIRST_OP_COL]));
-      whiteStyle[ec] = JSON.parse(JSON.stringify(whiteStyle[ORIG_LAST_COL] || whiteStyle[FIRST_OP_COL]));
-    }
-
-    // Fix interior borders: col I and intermediates → thin
-    var intBdrColor = null;
-    if (creamStyle[FIRST_OP_COL] && creamStyle[FIRST_OP_COL].border &&
-        creamStyle[FIRST_OP_COL].border.right && creamStyle[FIRST_OP_COL].border.right.color) {
-      intBdrColor = creamStyle[FIRST_OP_COL].border.right.color;
-    }
-    var thinInt = intBdrColor ? { style: 'thin', color: intBdrColor } : { style: 'thin' };
-    [creamStyle, whiteStyle].forEach(function(s) {
-      for (var fc = ORIG_LAST_COL; fc < LAST_COL; fc++) {
-        if (s[fc] && s[fc].border) {
-          var b = JSON.parse(JSON.stringify(s[fc].border));
-          if (b.right && b.right.style === 'medium') b.right = JSON.parse(JSON.stringify(thinInt));
-          s[fc].border = b;
-        }
-      }
-    });
-
-    // Write extra column headers and extend R1-R10 styles
+    // Write extra column headers in R10
+    var hRow = ws.getRow(HEADER_ROW);
     for (var ei = 0; ei < extraOps.length; ei++) {
       var eCol = LAST_OP_COL + 1 + ei;
-      var hdrStyle = preStyles[HEADER_ROW][LAST_OP_COL];
-      if (hdrStyle && hdrStyle.border) {
-        hdrStyle = JSON.parse(JSON.stringify(hdrStyle));
-        if (hdrStyle.border.right && hdrStyle.border.right.style === 'medium') hdrStyle.border.right = JSON.parse(JSON.stringify(thinInt));
-      }
-      var hRow = ws.getRow(HEADER_ROW);
-      _setCellValueWithStyle(hRow, eCol, extraOps[ei].replace(/ /g, '\n'), hdrStyle);
-      hRow.commit();
-      // R1-R9 extend
-      for (var hr = 1; hr <= 9; hr++) {
-        var hrS = preStyles[hr] ? preStyles[hr][LAST_OP_COL] : null;
-        if (hrS) { var hrRow = ws.getRow(hr); _setCellValueWithStyle(hrRow, eCol, '', hrS); hrRow.commit(); }
-      }
+      _setCellValueWithStyle(hRow, eCol, extraOps[ei].replace(/ /g, '\n'), lastOpStyle ? JSON.parse(JSON.stringify(lastOpStyle)) : {});
       ws.getColumn(eCol).width = ws.getColumn(LAST_OP_COL).width || 13;
     }
+    hRow.commit();
+
+    // Extend styles for R1-R9 extra columns (copy from last original column)
+    for (var hr = 1; hr <= 9; hr++) {
+      var hrStyles = _captureRowStyles(ws, hr, ORIG_LAST_COL);
+      var hrLastStyle = hrStyles[ORIG_LAST_COL];
+      if (hrLastStyle) {
+        var hrRow = ws.getRow(hr);
+        for (var hec = ORIG_LAST_COL + 1; hec <= LAST_COL; hec++) {
+          _setCellValueWithStyle(hrRow, hec, '', JSON.parse(JSON.stringify(hrLastStyle)));
+        }
+        hrRow.commit();
+      }
+    }
+
+    // Targeted merge extensions: unmerge then re-merge specific known merges
+    // Full-width merges to extend: R1(A1:I1), R2(A2:I2), R3(A3:I3), R4(A4:I4), R5(A5:I5)
+    // R8(A8:I8), R9 header merge (B9:I9)
+    // Footer: R28(A28:I28), R30(A30:I30), R32(A32:I32)
+    // Footer partial: G29:I29, F31:I31, F33:I33
+    var fullWidthRows = [1, 2, 3, 4, 5, 8];
+    fullWidthRows.forEach(function(r) {
+      try { ws.unMergeCells(r, 1, r, ORIG_LAST_COL); } catch(e) {}
+      try { ws.mergeCells(r, 1, r, LAST_COL); } catch(e) {}
+    });
+    // R9: B9:I9 -> B9:LAST_COL
+    try { ws.unMergeCells(9, 2, 9, ORIG_LAST_COL); } catch(e) {}
+    try { ws.mergeCells(9, 2, 9, LAST_COL); } catch(e) {}
+
+    // Footer separator merges
+    [28, 30, 32].forEach(function(r) {
+      try { ws.unMergeCells(r, 1, r, ORIG_LAST_COL); } catch(e) {}
+      try { ws.mergeCells(r, 1, r, LAST_COL); } catch(e) {}
+    });
+    // R29: G29:I29 -> G29:LAST_COL
+    try { ws.unMergeCells(29, 7, 29, ORIG_LAST_COL); } catch(e) {}
+    try { ws.mergeCells(29, 7, 29, LAST_COL); } catch(e) {}
+    // R31: F31:I31 -> F31:LAST_COL
+    try { ws.unMergeCells(31, 6, 31, ORIG_LAST_COL); } catch(e) {}
+    try { ws.mergeCells(31, 6, 31, LAST_COL); } catch(e) {}
+    // R33: F33:I33 -> F33:LAST_COL
+    try { ws.unMergeCells(33, 6, 33, ORIG_LAST_COL); } catch(e) {}
+    try { ws.mergeCells(33, 6, 33, LAST_COL); } catch(e) {}
+
+    // Set right:medium border on last column for outer frame on extra column cells
+    var medBrd = { style: 'medium' };
+    for (var ofr = 1; ofr <= 33; ofr++) {
+      var oRow = ws.getRow(ofr);
+      var cL = oRow.getCell(LAST_COL);
+      var bL = cL.border ? JSON.parse(JSON.stringify(cL.border)) : {};
+      bL.right = medBrd;
+      cL.border = bL;
+      oRow.commit();
+    }
+
     console.log('[V2 EXPORT] Extra columns:', extraOps.join(', '));
   }
 
-  // ── 4. Fill header values (R7) ──
+  // ── 3. Fill header values (R7) ──
   _setCellValue(ws, 7, 1, client.name || '');
   _setCellValue(ws, 7, 3, period);
   _setCellValue(ws, 7, 6, docNr);
   _setCellValue(ws, 7, 8, todayStr);
 
-  // ── 5. Write data rows (fill-in-place) ──
-  var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF0D2D5A' } };
+  // ── 4. Write data rows (fill-in-place, preserve template styles) ──
+  var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: 'FF1A6B2A' } };
+  var dataFont  = { name: 'Calibri', size: 10, color: { argb: 'FF333333' } };
   var lastDataRow = FIRST_DATA_ROW + NR - 1;
 
   for (var di = 0; di < NR; di++) {
     var rowNum = FIRST_DATA_ROW + di;
     var entry = sorted[di];
-    var styles = (di % 2 === 0) ? creamStyle : whiteStyle;
     var row = ws.getRow(rowNum);
 
-    _setCellValueWithStyle(row, 1, fmtDateDMY(entry.date), styles[1]);
+    // A: date — set value + font, preserve fill/border/alignment from template
+    var cA = row.getCell(1);
+    cA.value = fmtDateDMY(entry.date);
+    cA.font = JSON.parse(JSON.stringify(dataFont));
+
+    // B-I (and extra): clear first, then set checkmarks
     for (var cc = FIRST_OP_COL; cc <= LAST_COL; cc++) {
-      _setCellValueWithStyle(row, cc, '', styles[cc] || styles[ORIG_LAST_COL] || styles[FIRST_OP_COL]);
+      var cell = row.getCell(cc);
+      cell.value = '';
+      cell.font = JSON.parse(JSON.stringify(dataFont));
     }
-    // Fill checkmarks
+
+    // Fill checkmarks for this entry's operations
     var ops = _parseOps(entry.operations);
     for (var oi = 0; oi < ops.length; oi++) {
       var col = opToCol[ops[oi]];
       if (!col) col = _findOpColumn(ops[oi], templateHeaders);
       if (col && col >= FIRST_OP_COL) {
-        var cStyle = styles[col] || styles[ORIG_LAST_COL] || styles[FIRST_OP_COL];
-        _setCellValueWithStyle(row, col, '\u2713', _mergeStyle(cStyle, { font: checkFont }));
+        var chkCell = row.getCell(col);
+        chkCell.value = '\u2713';
+        chkCell.font = JSON.parse(JSON.stringify(checkFont));
       }
     }
+
     row.height = 19.5;
     row.commit();
   }
 
-  // ── 6. Clear unused data rows (value only) ──
-  var templateEnd = FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; // R27
-  for (var cr = FIRST_DATA_ROW + NR; cr <= templateEnd; cr++) {
+  // ── 5. Clear unused data rows (value only — keep fill, border, alignment) ──
+  for (var cr = FIRST_DATA_ROW + NR; cr <= FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; cr++) {
     var cRow = ws.getRow(cr);
-    for (var cc2 = 1; cc2 <= LAST_COL; cc2++) cRow.getCell(cc2).value = null;
+    for (var cc2 = 1; cc2 <= LAST_COL; cc2++) {
+      cRow.getCell(cc2).value = '';
+    }
     cRow.commit();
   }
 
-  // ── 7. Position footer ──
-  var rowShift = NR - TEMPLATE_SLOTS;
-  var totalRow = FOOTER_START + 1 + rowShift; // R29 shifted
-  var payRow   = FOOTER_START + 3 + rowShift; // R31 shifted
-  var lastContentRow = FOOTER_START + 5 + rowShift; // R33 shifted
+  // ── 6. Write formulas (footer stays at fixed R28-R33 positions) ──
+  var totalRow = 29;  // R29: "Total interventii efectuate"
+  var payRow   = 31;  // R31: "TOTAL DE PLATA"
+  var footerTextRow = 33; // R33: footer text
+  var lastContentRow = 33;
 
-  if (rowShift !== 0) {
-    // Relocate footer styles to new positions
-    var clearFrom = Math.min(FOOTER_START, FOOTER_START + rowShift);
-    var clearTo   = Math.max(FOOTER_START + 5, lastContentRow);
-    for (var clr = clearFrom; clr <= clearTo; clr++) {
-      var clRow = ws.getRow(clr);
-      for (var clc = 1; clc <= LAST_COL; clc++) { clRow.getCell(clc).value = null; clRow.getCell(clc).style = {}; }
-      clRow.commit();
-    }
-    FOOTER_ROWS.forEach(function(origRow, idx) {
-      var newRow = FOOTER_START + rowShift + idx;
-      var sty = footerStyles[origRow];
-      var tgtRow = ws.getRow(newRow);
-      for (var c = 1; c <= LAST_COL; c++) {
-        _setCellValueWithStyle(tgtRow, c, null, sty[c] || sty[ORIG_LAST_COL]);
-      }
-      if (footerHeights[origRow]) tgtRow.height = footerHeights[origRow];
-      tgtRow.commit();
-    });
-    // Shift footer merges only
-    _shiftFooterMerges(ws, rowShift, FOOTER_START);
-    // If extra columns, extend the new footer merges
-    if (LAST_COL > ORIG_LAST_COL) _extendMergesToColumn(ws, ORIG_LAST_COL, LAST_COL);
-  }
-
-  // ── 8. Write formulas (always explicit) ──
   _setCellValue(ws, totalRow, 1, 'Total interventii efectuate');
   _setCellFormula(ws, totalRow, 7, 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
 
@@ -1808,20 +1763,25 @@ async function _fillV2Template(wb, client, sorted, prices) {
   _setCellFormula(ws, payRow, 6, 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
 
   // Footer text
-  var footerTextRow = FOOTER_START + 5 + rowShift;
   _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
   _setCellValue(ws, footerTextRow, 6, 'www.aquatis.ro  |  0721.137.178');
 
-  // ── 9. Outer frame: left:medium on A, right:medium on LAST_COL ──
+  // ── 7. Outer frame: left:medium on A, right:medium on LAST_COL ──
   var medB = { style: 'medium' };
-  for (var ofr = 1; ofr <= lastContentRow; ofr++) {
-    var oRow = ws.getRow(ofr);
-    var cA = oRow.getCell(1); var bA = cA.border ? JSON.parse(JSON.stringify(cA.border)) : {}; bA.left = medB; cA.border = bA;
-    var cL = oRow.getCell(LAST_COL); var bL = cL.border ? JSON.parse(JSON.stringify(cL.border)) : {}; bL.right = medB; cL.border = bL;
-    oRow.commit();
+  for (var ofr2 = 1; ofr2 <= lastContentRow; ofr2++) {
+    var oRow2 = ws.getRow(ofr2);
+    var cA2 = oRow2.getCell(1);
+    var bA2 = cA2.border ? JSON.parse(JSON.stringify(cA2.border)) : {};
+    bA2.left = medB;
+    cA2.border = bA2;
+    var cL2 = oRow2.getCell(LAST_COL);
+    var bL2 = cL2.border ? JSON.parse(JSON.stringify(cL2.border)) : {};
+    bL2.right = medB;
+    cL2.border = bL2;
+    oRow2.commit();
   }
 
-  // ── 10. Strip diacritics (master cells only) ──
+  // ── 8. Strip diacritics (master cells only) ──
   _stripAllDiacritics(ws, lastContentRow, LAST_COL);
 
   return wb;
@@ -1873,13 +1833,12 @@ var V1_COL_PRICE_KEYS = {
 };
 
 async function _fillV1Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V1] v159 fill-in-place');
+  console.log('[EXPORT V1] v160 fill-in-place, no merge manipulation');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V1 template: sheet not found'); }
 
   var FIRST_DATA_ROW = 10, TEMPLATE_SLOTS = 10, LAST_COL = 11;
-  var FOOTER_START = 20; // R20=totals, R21=prices, R22=general, R23=footer
-  var NR = sorted.length;
+  var NR = Math.min(sorted.length, TEMPLATE_SLOTS); // cap at 10
 
   // ── Date helpers ──
   var today = new Date();
@@ -1891,23 +1850,9 @@ async function _fillV1Template(wb, client, sorted, prices) {
   var docNr  = 'AQS - ' + todayYMD;
   var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
 
-  // ── 1. Capture alternating row styles (R10=blue, R11=white) ──
-  var blueStyle  = _captureRowStyles(ws, 10, LAST_COL);
-  var whiteStyle = _captureRowStyles(ws, 11, LAST_COL);
-  // Fix: R10 captured style has top:medium (header separator). Use thin for reuse.
-  for (var fc = 1; fc <= LAST_COL; fc++) {
-    if (blueStyle[fc] && blueStyle[fc].border) {
-      var bdr = JSON.parse(JSON.stringify(blueStyle[fc].border));
-      if (bdr.top && bdr.top.style === 'medium') bdr.top = { style: 'thin' };
-      blueStyle[fc].border = bdr;
-    }
-  }
-  // Capture footer styles + heights (for relocation if N != 10)
-  var footerStyles = {}, footerHeights = {};
-  [20, 21, 22, 23].forEach(function(r) {
-    footerStyles[r] = _captureRowStyles(ws, r, LAST_COL);
-    footerHeights[r] = ws.getRow(r).height;
-  });
+  // ── 1. Capture alternating data row styles (R10=blue, R11=white) ──
+  // These are used ONLY for font — fill/border/alignment come from the template cells themselves.
+  var dataFont = { name: 'Calibri', size: 10, color: { argb: 'FF0D2D5A' } };
 
   // ── 2. Fill header (R6) — write to merge master cells only ──
   _setCellValue(ws, 6, 1, client.name || '');
@@ -1915,88 +1860,78 @@ async function _fillV1Template(wb, client, sorted, prices) {
   _setCellValue(ws, 6, 7, docNr);
   _setCellValue(ws, 6, 10, todayStr);
 
-  // ── 3. Write data rows (fill-in-place into R10+) ──
+  // ── 3. Write data rows (fill-in-place, R10..R10+NR-1) ──
+  // Template rows R10-R19 already have correct fill, border, alignment.
+  // We only set value + font, preserving everything else.
   var lastDataRow = FIRST_DATA_ROW + NR - 1;
   for (var di = 0; di < NR; di++) {
     var rowNum = FIRST_DATA_ROW + di;
     var entry = sorted[di];
-    var styles = (di % 2 === 0) ? blueStyle : whiteStyle;
     var row = ws.getRow(rowNum);
 
-    _setCellValueWithStyle(row, 1, fmtDateDMY(entry.date), styles[1]);
-    _setCellValueWithStyle(row, 2, 1, styles[2]);
+    // A: date
+    var cA = row.getCell(1);
+    cA.value = fmtDateDMY(entry.date);
+    cA.font = JSON.parse(JSON.stringify(dataFont));
+
+    // B: count = 1
+    var cB = row.getCell(2);
+    cB.value = 1;
+    cB.font = JSON.parse(JSON.stringify(dataFont));
+
+    // C-J: chemical values
     V1_CHEM_COLUMNS.forEach(function(cc) {
       var val = _getChemValue(entry, cc.keys);
-      _setCellValueWithStyle(row, cc.col, val > 0 ? Math.round(val) : '', styles[cc.col]);
+      var cell = row.getCell(cc.col);
+      cell.value = val > 0 ? Math.round(val) : '';
+      cell.font = JSON.parse(JSON.stringify(dataFont));
     });
-    _setCellValueWithStyle(row, 11, '', styles[11]);
+
+    // K: empty (total plata — will be calculated by formula or left empty)
+    var cK = row.getCell(11);
+    cK.value = '';
+    cK.font = JSON.parse(JSON.stringify(dataFont));
+
     row.height = 18;
     row.commit();
   }
 
-  // First data row: restore top:medium border (header-data separator)
-  if (NR > 0) {
-    var r10 = ws.getRow(FIRST_DATA_ROW);
-    for (var bc = 1; bc <= LAST_COL; bc++) {
-      var bCell = r10.getCell(bc);
-      var bb = bCell.border ? JSON.parse(JSON.stringify(bCell.border)) : {};
-      bb.top = { style: 'medium' };
-      bCell.border = bb;
-    }
-    r10.commit();
-  }
-
-  // ── 4. Clear unused data rows (value only, keep template styles) ──
-  var templateEnd = FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; // R19
-  for (var cr = FIRST_DATA_ROW + NR; cr <= templateEnd; cr++) {
+  // ── 4. Clear unused data rows (value only — keep fill, border, alignment) ──
+  for (var cr = FIRST_DATA_ROW + NR; cr <= FIRST_DATA_ROW + TEMPLATE_SLOTS - 1; cr++) {
     var cRow = ws.getRow(cr);
-    for (var cc2 = 1; cc2 <= LAST_COL; cc2++) cRow.getCell(cc2).value = null;
+    for (var cc2 = 1; cc2 <= LAST_COL; cc2++) {
+      cRow.getCell(cc2).value = '';
+    }
     cRow.commit();
   }
 
-  // ── 5. Position footer ──
-  var rowShift = NR - TEMPLATE_SLOTS; // negative if fewer, positive if more
-  var totalsRow = FOOTER_START + rowShift;
-  var pretRow   = totalsRow + 1;
-  var genRow    = totalsRow + 2;
-  var footerTextRow = totalsRow + 3;
-  var lastV1Row = footerTextRow;
-
-  if (rowShift !== 0) {
-    // Need to relocate footer rows
-    // First clear the area where footer will go AND old footer position
-    var clearFrom = Math.min(FOOTER_START, totalsRow);
-    var clearTo   = Math.max(FOOTER_START + 3, footerTextRow);
-    for (var clr = clearFrom; clr <= clearTo; clr++) {
-      var clRow = ws.getRow(clr);
-      for (var clc = 1; clc <= LAST_COL; clc++) { clRow.getCell(clc).value = null; clRow.getCell(clc).style = {}; }
-      clRow.commit();
+  // ── 5. Fix last data row bottom border (medium, to separate data from footer) ──
+  if (NR > 0) {
+    var lastRow = ws.getRow(lastDataRow);
+    for (var bc = 1; bc <= LAST_COL; bc++) {
+      var bCell = lastRow.getCell(bc);
+      var bb = bCell.border ? JSON.parse(JSON.stringify(bCell.border)) : {};
+      bb.bottom = { style: 'medium' };
+      bCell.border = bb;
     }
-    // Write footer content with captured styles
-    [20, 21, 22, 23].forEach(function(origRow, idx) {
-      var newRow = totalsRow + idx;
-      var sty = footerStyles[origRow];
-      var srcRow = ws.getRow(origRow); // original position (already cleared)
-      var tgtRow = ws.getRow(newRow);
-      for (var c = 1; c <= LAST_COL; c++) {
-        _setCellValueWithStyle(tgtRow, c, null, sty[c]);
-      }
-      if (footerHeights[origRow]) tgtRow.height = footerHeights[origRow];
-      tgtRow.commit();
-    });
-    // Shift only footer merges (R20-R23)
-    _shiftFooterMerges(ws, rowShift, FOOTER_START);
+    lastRow.commit();
   }
 
-  // ── 6. Write formulas (always explicit, never rely on template formulas) ──
-  // Totals row: SUM for each chemical column + B
+  // ── 6. Write footer formulas (R20, R21, R22 are FIXED positions — template has them) ──
+  // Footer rows stay at R20-R23 always (template has 10 slots, we fill up to 10).
+  var totalsRow = 20;
+  var pretRow = 21;
+  var genRow = 22;
+  var footerTextRow = 23;
+
+  // Totals row (R20): SUM formulas
   _setCellValue(ws, totalsRow, 1, 'Cantitate totala');
+  _setCellFormula(ws, totalsRow, 2, 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')');
   V1_CHEM_COLUMNS.forEach(function(cc) {
     _setCellFormula(ws, totalsRow, cc.col, 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + lastDataRow + ')');
   });
-  _setCellFormula(ws, totalsRow, 2, 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')');
 
-  // Price row
+  // Price row (R21)
   _setCellValue(ws, pretRow, 1, 'Pret unitar (RON)');
   _setCellValue(ws, pretRow, 2, Math.round(pretIntv));
   V1_CHEM_COLUMNS.forEach(function(cc) {
@@ -2009,7 +1944,7 @@ async function _fillV1Template(wb, client, sorted, prices) {
     if (price > 0) _setCellValue(ws, pretRow, cc.col, Math.round(price));
   });
 
-  // Total general row
+  // Total general row (R22)
   _setCellValue(ws, genRow, 1, 'TOTAL GENERAL (RON)');
   _setCellFormula(ws, genRow, 2, 'B' + totalsRow + '*B' + pretRow);
   V1_CHEM_COLUMNS.forEach(function(cc) {
@@ -2018,12 +1953,12 @@ async function _fillV1Template(wb, client, sorted, prices) {
   });
   _setCellFormula(ws, genRow, 11, 'SUM(B' + genRow + ':J' + genRow + ')');
 
-  // Footer text
+  // Footer text (R23)
   _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
   _setCellValue(ws, footerTextRow, 8, 'www.aquatis.ro  |  0721.137.178');
 
   // ── 7. Number format: integer on all numeric/formula cells ──
-  for (var nfr = FIRST_DATA_ROW; nfr <= lastV1Row; nfr++) {
+  for (var nfr = FIRST_DATA_ROW; nfr <= footerTextRow; nfr++) {
     var nfRow = ws.getRow(nfr);
     for (var nfc = 2; nfc <= LAST_COL; nfc++) {
       var nfCell = nfRow.getCell(nfc);
@@ -2036,7 +1971,7 @@ async function _fillV1Template(wb, client, sorted, prices) {
   }
 
   // ── 8. Strip diacritics (master cells only) ──
-  _stripAllDiacritics(ws, lastV1Row, LAST_COL);
+  _stripAllDiacritics(ws, footerTextRow, LAST_COL);
 
   return wb;
 }
@@ -2168,61 +2103,65 @@ function _mergeStyle(base, overrides) {
 function _copyWorksheet(sourceWs, targetWb, sheetName) {
   var targetWs = targetWb.addWorksheet(sheetName);
 
-  // Build slave cells set (skip these when copying values to prevent duplication)
-  var slaveCells = {};
+  // 1. Copy column widths
+  for (var ci = 1; ci <= sourceWs.columnCount; ci++) {
+    var srcCol = sourceWs.getColumn(ci);
+    targetWs.getColumn(ci).width = srcCol.width;
+    if (srcCol.hidden) targetWs.getColumn(ci).hidden = true;
+  }
+
+  // 2. Build slave cells set from merges
+  var slaves = {};
   if (sourceWs._merges) {
     Object.keys(sourceWs._merges).forEach(function(key) {
       var m = sourceWs._merges[key].model;
-      for (var mr = m.top; mr <= m.bottom; mr++) {
-        for (var mc = m.left; mc <= m.right; mc++) {
-          if (mr !== m.top || mc !== m.left) slaveCells[mr + '_' + mc] = true;
+      for (var r = m.top; r <= m.bottom; r++) {
+        for (var c = m.left; c <= m.right; c++) {
+          if (r !== m.top || c !== m.left) slaves[r + ',' + c] = true;
         }
       }
     });
   }
 
-  // Copy column widths
-  sourceWs.columns.forEach(function(col, idx) {
-    if (col.width) targetWs.getColumn(idx + 1).width = col.width;
-    if (col.hidden) targetWs.getColumn(idx + 1).hidden = col.hidden;
-  });
-
-  // Copy rows with values and styles
-  sourceWs.eachRow({ includeEmpty: true }, function(row, rowNum) {
-    var targetRow = targetWs.getRow(rowNum);
-    targetRow.height = row.height;
-    targetRow.hidden = row.hidden;
-
-    row.eachCell({ includeEmpty: true }, function(cell, colNum) {
-      var targetCell = targetRow.getCell(colNum);
-      // Skip value for slave cells (master cell value is sufficient)
-      if (!slaveCells[rowNum + '_' + colNum]) {
-        if (cell.formula) {
-          targetCell.value = { formula: cell.formula };
+  // 3. Copy all rows (values + styles)
+  sourceWs.eachRow({ includeEmpty: true }, function(row, rn) {
+    var tRow = targetWs.getRow(rn);
+    tRow.height = row.height;
+    row.eachCell({ includeEmpty: true }, function(cell, cn) {
+      var tCell = tRow.getCell(cn);
+      // Value: skip slaves to prevent duplicated text
+      if (!slaves[rn + ',' + cn]) {
+        if (cell.value && typeof cell.value === 'object' && cell.value.formula) {
+          tCell.value = { formula: cell.value.formula };
         } else {
-          targetCell.value = cell.value;
+          tCell.value = cell.value;
         }
       }
-      // Always copy styles (even for slave cells — needed for borders)
-      if (cell.font) targetCell.font = JSON.parse(JSON.stringify(cell.font));
-      if (cell.fill) targetCell.fill = JSON.parse(JSON.stringify(cell.fill));
-      if (cell.border) targetCell.border = JSON.parse(JSON.stringify(cell.border));
-      if (cell.alignment) targetCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
-      if (cell.numFmt) targetCell.numFmt = cell.numFmt;
+      // Styles: always copy
+      if (cell.font) tCell.font = JSON.parse(JSON.stringify(cell.font));
+      if (cell.fill) tCell.fill = JSON.parse(JSON.stringify(cell.fill));
+      if (cell.border) tCell.border = JSON.parse(JSON.stringify(cell.border));
+      if (cell.alignment) tCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
+      if (cell.numFmt) tCell.numFmt = cell.numFmt;
     });
-
-    targetRow.commit();
+    tRow.commit();
   });
 
-  // Copy merges
+  // 4. Copy merges using INTEGER COORDINATES (not string keys!)
   if (sourceWs._merges) {
     Object.keys(sourceWs._merges).forEach(function(key) {
-      try { targetWs.mergeCells(key); } catch (e) {}
+      var m = sourceWs._merges[key].model;
+      try {
+        targetWs.mergeCells(m.top, m.left, m.bottom, m.right);
+      } catch (e) {
+        console.warn('[COPY] Merge failed:', key, e.message);
+      }
     });
   }
 
+  // 5. Page setup
   if (sourceWs.pageSetup) {
-    targetWs.pageSetup = JSON.parse(JSON.stringify(sourceWs.pageSetup));
+    try { targetWs.pageSetup = JSON.parse(JSON.stringify(sourceWs.pageSetup)); } catch(e) {}
   }
 
   return targetWs;
