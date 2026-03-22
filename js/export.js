@@ -1585,7 +1585,7 @@ function _clearRow(ws, rowNum, numCols) {
 }
 
 async function _fillV2Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V2] v160 fill-in-place, targeted merge extension');
+  console.log('[EXPORT V2] v162 fill-in-place, targeted merge extension');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V2 template: sheet not found'); }
 
@@ -1731,6 +1731,10 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var dataFont  = { name: 'Calibri', size: 10, color: { argb: 'FF333333' } };
   var lastDataRow = FIRST_DATA_ROW + NR - 1;
 
+  // Debug: log opToCol mapping and template headers
+  console.log('[V2 EXPORT] opToCol mapping:', JSON.stringify(opToCol));
+  console.log('[V2 EXPORT] Template headers:', templateHeaders.map(function(h){return h.col+':'+h.norm}).join(', '));
+
   for (var di = 0; di < NR; di++) {
     var rowNum = FIRST_DATA_ROW + di;
     var entry = sorted[di];
@@ -1750,15 +1754,20 @@ async function _fillV2Template(wb, client, sorted, prices) {
 
     // Fill checkmarks for this entry's operations
     var ops = _parseOps(entry.operations);
+    console.log('[V2 EXPORT] R' + rowNum + ' date=' + entry.date + ' operations=' + JSON.stringify(entry.operations) + ' parsed=' + JSON.stringify(ops));
     for (var oi = 0; oi < ops.length; oi++) {
       var col = opToCol[ops[oi]];
-      if (!col) col = _findOpColumn(ops[oi], templateHeaders);
+      if (!col || col < FIRST_OP_COL) col = _findOpColumn(ops[oi], templateHeaders);
       if (col && col >= FIRST_OP_COL) {
         var chkCell = row.getCell(col);
         chkCell.value = '\u2713';
         chkCell.font = JSON.parse(JSON.stringify(checkFont));
+        console.log('[V2 EXPORT]   ✓ "' + ops[oi] + '" → col ' + col);
+      } else {
+        console.warn('[V2 EXPORT]   ✗ "' + ops[oi] + '" → NO COLUMN MATCH');
       }
     }
+    if (ops.length === 0) console.warn('[V2 EXPORT]   ⚠ No operations for this intervention!');
 
     row.height = 19.5;
     row.commit();
@@ -1857,7 +1866,7 @@ var V1_COL_PRICE_KEYS = {
 };
 
 async function _fillV1Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V1] v160 fill-in-place, no merge manipulation');
+  console.log('[EXPORT V1] v162 fill-in-place, no merge manipulation');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V1 template: sheet not found'); }
 
@@ -1904,12 +1913,16 @@ async function _fillV1Template(wb, client, sorted, prices) {
     cB.font = JSON.parse(JSON.stringify(dataFont));
 
     // C-J: chemical values
+    var chemDebug = [];
     V1_CHEM_COLUMNS.forEach(function(cc) {
       var val = _getChemValue(entry, cc.keys);
+      if (val > 0) chemDebug.push('C' + cc.col + '=' + val + '(keys:' + cc.keys.join('/') + ')');
       var cell = row.getCell(cc.col);
       cell.value = val > 0 ? Math.round(val) : '';
       cell.font = JSON.parse(JSON.stringify(dataFont));
     });
+    console.log('[V1 EXPORT] R' + rowNum + ' date=' + entry.date + ' chems=[' + chemDebug.join(', ') + ']' +
+      (chemDebug.length === 0 ? ' ⚠ NO CHEMICALS' : ''));
 
     // K: empty (total plata — will be calculated by formula or left empty)
     var cK = row.getCell(11);
