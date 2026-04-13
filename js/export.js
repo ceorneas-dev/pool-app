@@ -1653,14 +1653,14 @@ async function _buildV1(wb, client, sorted, prices) {
   var r20 = ws.getRow(totalsRow); r20.height = 20.1;
   var cA20 = r20.getCell(1);
   cA20.value = 'Cantitate totala';
-  cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
+  cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
   cA20.fill = fillAccent;
   cA20.alignment = centerMiddle;
-  cA20.border = { left: medBdr, right: thinA8, top: thinA8, bottom: thinA8 };
+  cA20.border = { left: medBdr, top: thinA8, bottom: thinA8, right: thinA8 };
   // B20: SUM formula (separate cell, NOT merged with A20)
   var cB20 = r20.getCell(2);
   cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')' };
-  cB20.font = { name: 'Arial', size: 9, bold: true, color: { theme: 0 } };
+  cB20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
   cB20.fill = fillAccent;
   cB20.alignment = centerMiddle;
   cB20.numFmt = '0';
