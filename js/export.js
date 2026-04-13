@@ -1191,7 +1191,7 @@ async function _buildV2(wb, client, sorted, prices) {
   cG23.numFmt = '0';
   cG23.border = { top: medIdx, left: medIdx, bottom: medIdx, right: thin0D };
   if (NR > 0) {
-    cG23.value = { formula: 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')' };
+    cG23.value = { formula: 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')' };
   } else {
     cG23.value = 0;
   }
@@ -1233,7 +1233,7 @@ async function _buildV2(wb, client, sorted, prices) {
   cF25.numFmt = '#,##0 "Lei"';
   cF25.border = { bottom: medBDRK, right: medBDRK };
   if (NR > 0) {
-    cF25.value = { formula: 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
+    cF25.value = { formula: 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
   } else {
     cF25.value = 0;
   }
@@ -1415,7 +1415,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cE2.border = { left: thinA8, right: thinA8, top: medBdr, bottom: medBdr };
   // H2:K2 — Registration details
   var cH2 = r2.getCell(8);
-  cH2.value = 'J40/18144/2007  CUI:RO22479681  RO77RNCB0074092331280001';
+  cH2.value = 'J40/18144/2007\nCUI:RO22479681\nRO77RNCB0074092331280001';
   cH2.font = { name: 'Arial', size: 8, color: { theme: 1 } };
   cH2.fill = fillCompany;
   cH2.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
@@ -1614,9 +1614,8 @@ async function _buildV1(wb, client, sorted, prices) {
     row.commit();
   }
 
-  // ── R20 (h=20.1): Cantitate totala ──
+  // ── R20 (h=20.1): Cantitate totala (NO merge — A20 and B20 are separate cells) ──
   var totalsRow = 20;
-  ws.mergeCells('A20:B20');
   var r20 = ws.getRow(totalsRow); r20.height = 20.1;
   var cA20 = r20.getCell(1);
   cA20.value = 'Cantitate totala';
@@ -1624,7 +1623,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cA20.fill = fillAccent;
   cA20.alignment = centerMiddle;
   cA20.border = { left: medBdr, right: thin0D, top: medBdr, bottom: thin0D };
-  // B20: SUM formula
+  // B20: SUM formula (separate cell, NOT merged with A20)
   var cB20 = r20.getCell(2);
   cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
   cB20.font = { name: 'Arial', size: 9, bold: true, color: { theme: 0 } };
@@ -1645,9 +1644,8 @@ async function _buildV1(wb, client, sorted, prices) {
   r20.getCell(11).border = { right: medBdr, top: thinA8, bottom: thinA8 };
   r20.commit();
 
-  // ── R21 (h=17.1): Pret unitar (RON) ──
+  // ── R21 (h=17.1): Pret unitar (RON) (NO merge — A21 standalone) ──
   var pretRow = 21;
-  ws.mergeCells('A21:B21');
   var r21 = ws.getRow(pretRow); r21.height = 17.1;
   var cA21 = r21.getCell(1);
   cA21.value = 'Pret unitar (RON)';
@@ -1674,9 +1672,8 @@ async function _buildV1(wb, client, sorted, prices) {
   r21.getCell(11).border = { right: medBdr };
   r21.commit();
 
-  // ── R22 (h=21.95): Total general ──
+  // ── R22 (h=21.95): Total general (NO merge — A22 standalone) ──
   var genRow = 22;
-  ws.mergeCells('A22:B22');
   var r22 = ws.getRow(genRow); r22.height = 21.95;
   var cA22 = r22.getCell(1);
   cA22.value = 'TOTAL GENERAL (RON)';
