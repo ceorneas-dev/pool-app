@@ -3,6 +3,52 @@
 
 'use strict';
 
+// ── Global Error Handling + Error Log ────────────────────────
+// Catches unhandled errors and stores last 50 in localStorage for debugging.
+var _ERROR_LOG_KEY = 'pool_error_log';
+var _ERROR_LOG_MAX = 50;
+
+function _logError(source, message, extra) {
+  try {
+    var log = JSON.parse(localStorage.getItem(_ERROR_LOG_KEY) || '[]');
+    log.unshift({
+      ts: new Date().toISOString(),
+      src: source,
+      msg: String(message).substring(0, 300),
+      extra: extra ? String(extra).substring(0, 200) : undefined
+    });
+    if (log.length > _ERROR_LOG_MAX) log = log.slice(0, _ERROR_LOG_MAX);
+    localStorage.setItem(_ERROR_LOG_KEY, JSON.stringify(log));
+  } catch (_) {}
+}
+
+function getErrorLog() {
+  try { return JSON.parse(localStorage.getItem(_ERROR_LOG_KEY) || '[]'); } catch (_) { return []; }
+}
+
+function clearErrorLog() {
+  try { localStorage.removeItem(_ERROR_LOG_KEY); } catch (_) {}
+}
+
+window.onerror = function(msg, src, line, col, err) {
+  var loc = (src || '').split('/').pop() + ':' + line + ':' + col;
+  console.error('[ERROR]', loc, msg);
+  _logError('onerror', msg, loc);
+  // Show toast if app is loaded (not during startup)
+  if (typeof showToast === 'function' && APP && APP.currentScreen !== 'login') {
+    showToast('Eroare: ' + String(msg).substring(0, 80), 'error', 5000);
+  }
+};
+
+window.addEventListener('unhandledrejection', function(e) {
+  var msg = e.reason ? (e.reason.message || String(e.reason)) : 'Promise rejected';
+  console.error('[UNHANDLED]', msg);
+  _logError('promise', msg);
+  if (typeof showToast === 'function' && APP && APP.currentScreen !== 'login') {
+    showToast('Eroare: ' + String(msg).substring(0, 80), 'error', 5000);
+  }
+});
+
 // ── Helpers ───────────────────────────────────────────────────
 const $ = id => document.getElementById(id);
 const $q = sel => document.querySelector(sel);
@@ -68,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 172;
+const APP_VERSION = 173;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -286,10 +332,26 @@ async function initApp() {
     if (allTechs.length) await setSetting('technicians_backup', JSON.stringify(allTechs));
   } catch(_) {}
 
-  // Register service worker
+  // Register service worker with auto-update detection
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
-      .then(reg => console.log('[SW] Registered:', reg.scope))
+      .then(reg => {
+        console.log('[SW] Registered:', reg.scope);
+        // Check for updates every 5 minutes
+        setInterval(() => { reg.update().catch(() => {}); }, 300000);
+        // When a new SW is installed, notify user to refresh
+        reg.addEventListener('updatefound', () => {
+          var newSW = reg.installing;
+          if (newSW) {
+            newSW.addEventListener('statechange', () => {
+              if (newSW.state === 'activated' && navigator.serviceWorker.controller) {
+                showToast('Versiune nouă disponibilă! Se reîncarcă...', 'info', 2000);
+                setTimeout(() => window.location.reload(), 2000);
+              }
+            });
+          }
+        });
+      })
       .catch(err => console.warn('[SW] Registration failed:', err));
   }
 
@@ -1020,8 +1082,10 @@ function getLastVisitInfo(clientId) {
   const ci = APP.interventions.filter(i => i.client_id === clientId);
   if (!ci.length) return { badge: '<span class="last-visit-badge none">Nicio vizită</span>', days: null };
 
-  const latest = ci.sort((a, b) => b.date.localeCompare(a.date))[0];
+  const latest = ci.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0];
+  if (!latest || !latest.date) return { badge: '<span class="last-visit-badge none">Nicio vizită</span>', days: null };
   const days = Math.floor((Date.now() - Date.parse(latest.date)) / 86400000);
+  if (isNaN(days)) return { badge: '<span class="last-visit-badge none">Dată necunoscută</span>', days: null };
   let cls = 'good', label = 'Ultima vizită: ' + days + ' zile';
   if (days > 30) cls = 'overdue';
   else if (days > 14) cls = 'warn';
@@ -3907,14 +3971,14 @@ function _getBillableClients() {
     if (!interval || interval <= 0) return false;
     var since = client.last_billing_date || '1970-01-01';
     var count = APP.interventions.filter(function(i) {
-      return i.client_id === client.client_id && i.date > since;
+      return i.client_id === client.client_id && String(i.date || '') > since;
     }).length;
     return count >= interval;
   }).map(function(client) {
     var since = client.last_billing_date || '1970-01-01';
     var billable = APP.interventions.filter(function(i) {
-      return i.client_id === client.client_id && i.date > since;
-    }).sort(function(a, b) { return a.date.localeCompare(b.date); });
+      return i.client_id === client.client_id && String(i.date || '') > since;
+    }).sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
     return { client: client, interventions: billable, count: billable.length };
   });
 }

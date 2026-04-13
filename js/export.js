@@ -2308,67 +2308,68 @@ function _copyWorksheet(sourceWs, targetWb, sheetName) {
 // ── NEW: Export Deviz Chimicale (V1 template-based) ────────────────
 function exportDevizChimicale(client, interventions) {
   return loadExcelJS().then(async function() {
-    var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
-    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+    try {
+      var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
+      var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
 
-    // Load V1 template
-    if (typeof TEMPLATE_V1_B64 === 'undefined') {
-      console.warn('[EXPORT] V1 template not available, falling back to legacy');
-      return exportDevizChimicale_legacy(client, interventions);
+      if (typeof TEMPLATE_V1_B64 === 'undefined') {
+        console.warn('[EXPORT] V1 template not available, falling back to legacy');
+        return exportDevizChimicale_legacy(client, interventions);
+      }
+
+      var wb = new ExcelJS.Workbook();
+      await wb.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+      await _fillV1Template(wb, client, sorted, prices);
+
+      var ws = wb.getWorksheet(1);
+      if (ws) ws.name = sanitizeSheetName(client.name || 'Chimicale');
+
+      var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
+      await _writeExcelJSFile(wb, fname, client.name);
+      return fname;
+    } catch (e) {
+      console.error('[EXPORT] exportDevizChimicale failed:', e.message, e.stack);
+      if (typeof showToast === 'function') showToast('Eroare export chimicale: ' + e.message, 'error');
+      throw e;
     }
-
-    var wb = new ExcelJS.Workbook();
-    await wb.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
-
-    // Fill template
-    await _fillV1Template(wb, client, sorted, prices);
-
-    // Rename sheet
-    var ws = wb.getWorksheet(1);
-    if (ws) ws.name = sanitizeSheetName(client.name || 'Chimicale');
-
-    var fname = sanitizeFilename(client.name) + '_Chimicale_' + fmtDateExport(new Date()) + '.xlsx';
-    var buf = await wb.xlsx.writeBuffer();
-    await _writeExcelJSFile(wb, fname, client.name);
-    // Drive upload disabled — single export only
-    return fname;
   });
 }
 
 // ── NEW: Export Deviz Complet (V1 + V2 template-based) ─────────────
 function exportDevizComplet(client, interventions) {
   return loadExcelJS().then(async function() {
-    var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
-    var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
+    try {
+      var sorted = interventions.slice().sort(function(a, b) { return String(a.date).localeCompare(String(b.date)); });
+      var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
 
-    if (typeof TEMPLATE_V1_B64 === 'undefined' || typeof TEMPLATE_V2_B64 === 'undefined') {
-      console.warn('[EXPORT] Templates not available, falling back to legacy');
-      return exportDevizComplet_legacy(client, interventions);
+      if (typeof TEMPLATE_V1_B64 === 'undefined' || typeof TEMPLATE_V2_B64 === 'undefined') {
+        console.warn('[EXPORT] Templates not available, falling back to legacy');
+        return exportDevizComplet_legacy(client, interventions);
+      }
+
+      var wbV1 = new ExcelJS.Workbook();
+      await wbV1.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
+      await _fillV1Template(wbV1, client, sorted, prices);
+
+      var wbV2 = new ExcelJS.Workbook();
+      await wbV2.xlsx.load(_b64toBuffer(TEMPLATE_V2_B64));
+      await _fillV2Template(wbV2, client, sorted, prices);
+
+      var wbFinal = new ExcelJS.Workbook();
+      var nameChim = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Chim');
+      var nameServ = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Serv');
+
+      _copyWorksheet(wbV1.getWorksheet(1), wbFinal, nameChim);
+      _copyWorksheet(wbV2.getWorksheet(1), wbFinal, nameServ);
+
+      var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
+      await _writeExcelJSFile(wbFinal, fname, client.name);
+      return fname;
+    } catch (e) {
+      console.error('[EXPORT] exportDevizComplet failed:', e.message, e.stack);
+      if (typeof showToast === 'function') showToast('Eroare export complet: ' + e.message, 'error');
+      throw e;
     }
-
-    // Process V1 (Chimicale) in a temp workbook
-    var wbV1 = new ExcelJS.Workbook();
-    await wbV1.xlsx.load(_b64toBuffer(TEMPLATE_V1_B64));
-    await _fillV1Template(wbV1, client, sorted, prices);
-
-    // Process V2 (Servicii) in a temp workbook
-    var wbV2 = new ExcelJS.Workbook();
-    await wbV2.xlsx.load(_b64toBuffer(TEMPLATE_V2_B64));
-    await _fillV2Template(wbV2, client, sorted, prices);
-
-    // Build combined workbook
-    var wbFinal = new ExcelJS.Workbook();
-    var nameChim = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Chim');
-    var nameServ = sanitizeSheetName((client.name || 'Client').substring(0, 25) + '_Serv');
-
-    _copyWorksheet(wbV1.getWorksheet(1), wbFinal, nameChim);
-    _copyWorksheet(wbV2.getWorksheet(1), wbFinal, nameServ);
-
-    var fname = sanitizeFilename(client.name) + '_Deviz_' + fmtDateExport(new Date()) + '.xlsx';
-    var buf = await wbFinal.xlsx.writeBuffer();
-    await _writeExcelJSFile(wbFinal, fname, client.name);
-    // Drive upload disabled — single export only
-    return fname;
   });
 }
 
@@ -2461,10 +2462,12 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
     }
 
     var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
-    var buf = await wbFinal.xlsx.writeBuffer();
     await _writeExcelJSFile(wbFinal, fname);
-    // Drive upload disabled — single export only
     return fname;
+  }).catch(function(e) {
+    console.error('[EXPORT] exportAllDevizMixed failed:', e.message, e.stack);
+    if (typeof showToast === 'function') showToast('Eroare export: ' + e.message, 'error');
+    throw e;
   });
 }
 
