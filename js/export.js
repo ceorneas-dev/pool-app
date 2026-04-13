@@ -950,10 +950,10 @@ async function _buildV2(wb, client, sorted, prices) {
   c1.font = { name: 'Arial', size: 18, bold: true, color: { argb: WHITE } };
   c1.fill = fillBlue;
   c1.alignment = leftMiddle1;
-  // Borders R1: top/left/right = medium BDRK
+  // Borders R1: top/bottom/left/right = medium BDRK
   for (var c1c = 1; c1c <= LAST_COL; c1c++) {
     var c1cell = r1.getCell(c1c);
-    c1cell.border = { top: medBDRK, left: c1c === 1 ? medBDRK : undefined, right: c1c === LAST_COL ? medBDRK : undefined };
+    c1cell.border = { top: medBDRK, bottom: medBDRK, left: c1c === 1 ? medBDRK : undefined, right: c1c === LAST_COL ? medBDRK : undefined };
   }
   r1.commit();
 
@@ -966,7 +966,7 @@ async function _buildV2(wb, client, sorted, prices) {
   c2.fill = fillBlue;
   c2.alignment = leftMiddle1;
   for (var c2c = 1; c2c <= LAST_COL; c2c++) {
-    r2.getCell(c2c).border = { left: c2c === 1 ? medBDRK : undefined, right: c2c === LAST_COL ? medBDRK : undefined };
+    r2.getCell(c2c).border = { top: medBDRK, bottom: medBDRK, left: c2c === 1 ? medBDRK : undefined, right: c2c === LAST_COL ? medBDRK : undefined };
   }
   r2.commit();
 
@@ -979,7 +979,7 @@ async function _buildV2(wb, client, sorted, prices) {
   c3.fill = fillBlue;
   c3.alignment = leftMiddle1;
   for (var c3c = 1; c3c <= LAST_COL; c3c++) {
-    r3.getCell(c3c).border = { left: c3c === 1 ? medBDRK : undefined, right: c3c === LAST_COL ? medBDRK : undefined };
+    r3.getCell(c3c).border = { top: medBDRK, bottom: medBDRK, left: c3c === 1 ? medBDRK : undefined, right: c3c === LAST_COL ? medBDRK : undefined };
   }
   r3.commit();
 
@@ -1004,7 +1004,7 @@ async function _buildV2(wb, client, sorted, prices) {
   c5.fill = fillBlue;
   c5.alignment = centerMiddle;
   for (var c5c = 1; c5c <= LAST_COL; c5c++) {
-    r5.getCell(c5c).border = { left: c5c === 1 ? medBDRK : undefined, right: (c5c === LAST_COL ? medBDRK : thinA8) };
+    r5.getCell(c5c).border = { top: medBDRK, bottom: medBDRK, left: c5c === 1 ? medBDRK : undefined, right: (c5c === LAST_COL ? medBDRK : thinA8) };
   }
   r5.commit();
 
@@ -1070,7 +1070,7 @@ async function _buildV2(wb, client, sorted, prices) {
   for (var c8c = 1; c8c <= LAST_COL; c8c++) {
     var c8cell = r8.getCell(c8c);
     c8cell.fill = fillAccent;
-    c8cell.border = { left: c8c === 1 ? thin0D : undefined, right: c8c === LAST_COL ? medBDRK : undefined };
+    c8cell.border = { top: medBDRK, bottom: medBDRK, left: c8c === 1 ? thin0D : undefined, right: c8c === LAST_COL ? medBDRK : undefined };
   }
   r8.commit();
 
@@ -1095,7 +1095,7 @@ async function _buildV2(wb, client, sorted, prices) {
     c9cell.fill = fillBlue;
     c9cell.border = { top: thin5A, left: thin5A, bottom: thin5A, right: c9 === LAST_COL ? thin1A : thin5A };
   }
-  r9.getCell(1).border = { top: thin5A, left: medBDRK };
+  r9.getCell(1).border = { top: thin5A, left: medBDRK, bottom: thin5A, right: thin5A };
   r9.commit();
 
   // ── R10 (h=45.75): Sub-headers ──
@@ -1105,7 +1105,7 @@ async function _buildV2(wb, client, sorted, prices) {
   var cA10 = r10.getCell(1);
   cA10.fill = fillBlue;
   cA10.alignment = centerMiddleWrap;
-  cA10.border = { bottom: thinA8, left: medBDRK };
+  cA10.border = { top: thinA8, bottom: thinA8, left: medBDRK, right: thinA8 };
   // Write default ops in B10-I10
   for (var oi2 = 0; oi2 < DEFAULT_OPS.length; oi2++) {
     var opCol = FIRST_OP_COL + oi2;
@@ -1183,22 +1183,25 @@ async function _buildV2(wb, client, sorted, prices) {
   cA23.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
   cA23.fill = fillBlue;
   cA23.alignment = leftMiddle1;
-  cA23.border = { top: thin1E, left: medBDRK, bottom: thin1E, right: thin1E };
+  cA23.border = { top: medBDRK, left: medBDRK, bottom: medBDRK, right: thin1E };
   var cG23 = r23.getCell(7);
   cG23.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cG23.fill = fillBlue;
   cG23.alignment = centerMiddle;
   cG23.numFmt = '0';
-  cG23.border = { top: medIdx, left: medIdx, bottom: medIdx, right: thin0D };
+  cG23.border = { top: medBDRK, left: medIdx, bottom: medBDRK, right: medBDRK };
   if (NR > 0) {
     cG23.value = { formula: 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')' };
   } else {
     cG23.value = 0;
   }
-  // Fill all R23 cells with blue
+  // Fill all R23 cells with blue + borders
   for (var c23 = 1; c23 <= LAST_COL; c23++) {
     var cell23 = r23.getCell(c23);
     if (!cell23.fill || !cell23.fill.fgColor) cell23.fill = fillBlue;
+    if (!cell23.border || (!cell23.border.top && !cell23.border.bottom)) {
+      cell23.border = { top: medBDRK, bottom: medBDRK, left: c23 === 1 ? medBDRK : undefined, right: c23 === LAST_COL ? medBDRK : undefined };
+    }
   }
   r23.commit();
 
@@ -1225,22 +1228,25 @@ async function _buildV2(wb, client, sorted, prices) {
   cA25.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
   cA25.fill = fillBlue;
   cA25.alignment = leftMiddle1;
-  cA25.border = { left: medBDRK, bottom: medBDRK };
+  cA25.border = { top: medBDRK, left: medBDRK, bottom: medBDRK };
   var cF25 = r25.getCell(6);
   cF25.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cF25.fill = fillBlue;
   cF25.alignment = centerMiddle;
-  cF25.numFmt = '#,##0 "Lei"';
-  cF25.border = { bottom: medBDRK, right: medBDRK };
+  cF25.numFmt = '#,##0';
+  cF25.border = { top: medBDRK, bottom: medBDRK, right: medBDRK };
   if (NR > 0) {
     cF25.value = { formula: 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
   } else {
     cF25.value = 0;
   }
-  // Fill remaining R25 cells
+  // Fill remaining R25 cells + borders
   for (var c25 = 1; c25 <= LAST_COL; c25++) {
     var cell25 = r25.getCell(c25);
     if (!cell25.fill || !cell25.fill.fgColor) cell25.fill = fillBlue;
+    if (!cell25.border || (!cell25.border.top && !cell25.border.bottom)) {
+      cell25.border = { top: medBDRK, bottom: medBDRK, left: c25 === 1 ? medBDRK : undefined, right: c25 === LAST_COL ? medBDRK : undefined };
+    }
   }
   r25.commit();
 
@@ -1251,7 +1257,7 @@ async function _buildV2(wb, client, sorted, prices) {
   r26.getCell(1).fill = fillLBG;
   for (var c26 = 1; c26 <= LAST_COL; c26++) {
     r26.getCell(c26).fill = fillLBG;
-    r26.getCell(c26).border = { left: c26 === 1 ? medBDRK : undefined, right: c26 === LAST_COL ? medBDRK : undefined };
+    r26.getCell(c26).border = { top: medBDRK, bottom: medBDRK, left: c26 === 1 ? medBDRK : undefined, right: c26 === LAST_COL ? medBDRK : undefined };
   }
   r26.commit();
 
@@ -1265,13 +1271,21 @@ async function _buildV2(wb, client, sorted, prices) {
   cA27.font = { name: 'Arial', size: 9, italic: true, color: { argb: MTXT } };
   cA27.fill = fillWhite;
   cA27.alignment = leftMiddle1;
-  cA27.border = { left: medBDRK, bottom: medBDRK };
+  cA27.border = { top: medBDRK, left: medBDRK, bottom: medBDRK };
   var cF27 = r27.getCell(6);
   cF27.value = 'www.aquatis.ro  |  0721.137.178';
   cF27.font = { name: 'Arial', size: 9, italic: true, color: { argb: MTXT } };
   cF27.fill = fillWhite;
   cF27.alignment = { horizontal: 'right', vertical: 'middle' };
-  cF27.border = { bottom: medBDRK, right: medBDRK };
+  cF27.border = { top: medBDRK, bottom: medBDRK, right: medBDRK };
+  // Fill all R27 cells with white + borders
+  for (var c27 = 1; c27 <= LAST_COL; c27++) {
+    var cell27 = r27.getCell(c27);
+    if (!cell27.fill || !cell27.fill.fgColor) cell27.fill = fillWhite;
+    if (!cell27.border || (!cell27.border.top && !cell27.border.bottom)) {
+      cell27.border = { top: medBDRK, bottom: medBDRK, left: c27 === 1 ? medBDRK : undefined, right: c27 === LAST_COL ? medBDRK : undefined };
+    }
+  }
   r27.commit();
 
   // ── Strip diacritics on data rows only ──
@@ -1388,7 +1402,7 @@ async function _buildV1(wb, client, sorted, prices) {
   var r1 = ws.getRow(1); r1.height = 3.95;
   r1.getCell(1).fill = fillNavy;
   for (var c1i = 1; c1i <= LAST_COL; c1i++) {
-    r1.getCell(c1i).border = { top: medBdr, left: c1i === 1 ? medBdr : undefined, right: c1i === LAST_COL ? medBdr : undefined };
+    r1.getCell(c1i).border = { top: medBdr, bottom: medBdr, left: c1i === 1 ? medBdr : undefined, right: c1i === LAST_COL ? medBdr : undefined };
   }
   r1.commit();
 
@@ -1435,7 +1449,7 @@ async function _buildV1(wb, client, sorted, prices) {
   var r3 = ws.getRow(3); r3.height = 3;
   for (var c3i = 1; c3i <= LAST_COL; c3i++) {
     r3.getCell(c3i).fill = fillAccent;
-    r3.getCell(c3i).border = { left: c3i === 1 ? medBdr : undefined, right: c3i === LAST_COL ? medBdr : undefined };
+    r3.getCell(c3i).border = { top: medBdr, bottom: medBdr, left: c3i === 1 ? medBdr : undefined, right: c3i === LAST_COL ? medBdr : undefined };
   }
   r3.commit();
 
@@ -1448,7 +1462,7 @@ async function _buildV1(wb, client, sorted, prices) {
   c4.fill = fillDkblue;
   c4.alignment = centerMiddle;
   for (var c4i = 1; c4i <= LAST_COL; c4i++) {
-    r4.getCell(c4i).border = { left: c4i === 1 ? medBdr : undefined, right: c4i === LAST_COL ? medBdr : undefined };
+    r4.getCell(c4i).border = { top: medBdr, bottom: medBdr, left: c4i === 1 ? medBdr : undefined, right: c4i === LAST_COL ? medBdr : undefined };
   }
   r4.commit();
 
@@ -1475,7 +1489,7 @@ async function _buildV1(wb, client, sorted, prices) {
   for (var c5i = 1; c5i <= LAST_COL; c5i++) {
     var c5c = r5.getCell(c5i);
     if (!c5c.fill || !c5c.fill.fgColor) c5c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
-    c5c.border = { left: c5i === 1 ? medBdr : thinA8, right: c5i === LAST_COL ? medBdr : thinA8 };
+    c5c.border = { top: thinA8, bottom: thinA8, left: c5i === 1 ? medBdr : thinA8, right: c5i === LAST_COL ? medBdr : thinA8 };
   }
   r5.commit();
 
@@ -1502,7 +1516,7 @@ async function _buildV1(wb, client, sorted, prices) {
   for (var c6i = 1; c6i <= LAST_COL; c6i++) {
     var c6c = r6.getCell(c6i);
     if (!c6c.fill || !c6c.fill.fgColor) c6c.fill = fillWhite;
-    c6c.border = { left: c6i === 1 ? medBdr : undefined, right: c6i === LAST_COL ? medBdr : undefined, bottom: dotBdr };
+    c6c.border = { top: thinA8, left: c6i === 1 ? medBdr : undefined, right: c6i === LAST_COL ? medBdr : undefined, bottom: dotBdr };
   }
   r6.commit();
 
@@ -1511,7 +1525,7 @@ async function _buildV1(wb, client, sorted, prices) {
   var r7 = ws.getRow(7); r7.height = 3.95;
   r7.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
   for (var c7i = 1; c7i <= LAST_COL; c7i++) {
-    r7.getCell(c7i).border = { left: c7i === 1 ? medBdr : undefined, right: c7i === LAST_COL ? medBdr : undefined };
+    r7.getCell(c7i).border = { top: thinA8, bottom: thinA8, left: c7i === 1 ? medBdr : undefined, right: c7i === LAST_COL ? medBdr : undefined };
   }
   r7.commit();
 
@@ -1526,7 +1540,7 @@ async function _buildV1(wb, client, sorted, prices) {
     { col: 1, text: 'Data\ninterventie' },
     { col: 2, text: 'Cant.\n' },
     { col: 3, text: 'CHIMICALE FOLOSITE' },
-    { col: 11, text: 'Total plata\n(RON)' }
+    { col: 11, text: 'Total\nplata' }
   ];
   hdrCells8.forEach(function(h) {
     var cell = r8.getCell(h.col);
@@ -1555,15 +1569,15 @@ async function _buildV1(wb, client, sorted, prices) {
     chCell.font = JSON.parse(JSON.stringify(subFont));
     chCell.fill = fillAccent; // theme:5 tint:0.4
     chCell.alignment = centerMiddleWrap;
-    chCell.border = { right: thin1E, bottom: medBdr };
+    chCell.border = { top: thin1E, right: thin1E, bottom: medBdr, left: thin1E };
   }
   // A9, B9 merged with R8 — fill header blue
   r9.getCell(1).fill = fillHdrBlue;
-  r9.getCell(1).border = { left: medBdr, bottom: thin0D };
+  r9.getCell(1).border = { left: medBdr, right: thin1E, bottom: thin0D };
   r9.getCell(2).fill = fillHdrBlue;
-  r9.getCell(2).border = { bottom: thin0D };
+  r9.getCell(2).border = { left: thin1E, right: thin1E, bottom: thin0D };
   r9.getCell(11).fill = fillHdrBlue;
-  r9.getCell(11).border = { right: medBdr, bottom: medBdr };
+  r9.getCell(11).border = { left: thin1E, right: medBdr, bottom: medBdr };
   r9.commit();
 
   // ── R10-R19: Data rows (10 slots, alternating zebra) ──
@@ -1651,18 +1665,18 @@ async function _buildV1(wb, client, sorted, prices) {
   cK20.fill = fillAccent;
   cK20.alignment = centerMiddle;
   cK20.numFmt = '#,##0.00';
-  cK20.border = { right: medBdr, top: thinA8, bottom: thinA8 };
+  cK20.border = { left: thinA8, right: medBdr, top: thinA8, bottom: thinA8 };
   r20.commit();
 
   // ── R21 (h=17.1): Pret unitar (RON) (NO merge — A21 standalone) ──
   var pretRow = 21;
   var r21 = ws.getRow(pretRow); r21.height = 17.1;
   var cA21 = r21.getCell(1);
-  cA21.value = 'Pret unitar (RON)';
+  cA21.value = 'Pret unitar';
   cA21.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
   cA21.fill = fillPaleblue;
   cA21.alignment = centerMiddle;
-  cA21.border = { left: medBdr };
+  cA21.border = { left: medBdr, top: thinA8, bottom: thinA8, right: thinA8 };
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var price = 0;
     var priceKeys = V1_COL_PRICE_KEYS[cc.col] || [];
@@ -1696,16 +1710,16 @@ async function _buildV1(wb, client, sorted, prices) {
   var genRow = 22;
   var r22 = ws.getRow(genRow); r22.height = 21.95;
   var cA22 = r22.getCell(1);
-  cA22.value = 'TOTAL GENERAL (RON)';
+  cA22.value = 'TOTAL GENERAL';
   cA22.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
   cA22.fill = fillDkblue;
   cA22.alignment = centerMiddle;
-  cA22.border = { left: medBdr, right: thin1E };
+  cA22.border = { left: medBdr, right: thin1E, top: thin1E, bottom: medBdr };
   // B22: fill + border (standalone cell, same style as A22)
   r22.getCell(2).fill = fillDkblue;
   r22.getCell(2).font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   r22.getCell(2).alignment = centerMiddle;
-  r22.getCell(2).border = { left: thin1E, right: thin1E };
+  r22.getCell(2).border = { left: thin1E, right: thin1E, top: thin1E, bottom: medBdr };
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cl = _excelCol(cc.col);
     var cell = r22.getCell(cc.col);
@@ -1714,7 +1728,7 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.fill = fillDkblue;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
-    cell.border = { left: thin1E, right: thin1E };
+    cell.border = { left: thin1E, right: thin1E, top: thin1E, bottom: medBdr };
   });
   // K22: SUM of K data rows (total plata)
   var cK22 = r22.getCell(11);
@@ -1723,7 +1737,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
   cK22.numFmt = '#,##0.00';
-  cK22.border = { left: thin0D, right: medBdr, top: thin0D, bottom: thin0D };
+  cK22.border = { left: thin0D, right: medBdr, top: thin0D, bottom: medBdr };
   r22.commit();
 
   // ── R23 (h=20.25): Footer ──
@@ -1735,21 +1749,16 @@ async function _buildV1(wb, client, sorted, prices) {
   cA23.font = { name: 'Arial', size: 9, italic: true, color: { theme: 1 } };
   cA23.fill = fillWhiteTheme;
   cA23.alignment = leftMiddle;
-  cA23.border = { left: medBdr, bottom: medBdr };
+  cA23.border = { left: medBdr, top: medBdr, bottom: medBdr };
   var cH23 = r23.getCell(8);
   cH23.value = 'S.C. Aquatis Engineering S.R.L.';
   cH23.font = { name: 'Arial', size: 9, italic: true, color: { theme: 1 } };
   cH23.fill = fillWhiteTheme;
   cH23.alignment = rightMiddle;
-  // K23 right+bottom border
-  r23.getCell(11).border = { right: medBdr, bottom: medBdr };
   for (var c23i = 1; c23i <= LAST_COL; c23i++) {
     var c23c = r23.getCell(c23i);
     if (!c23c.fill || (!c23c.fill.fgColor && !c23c.fill.theme)) c23c.fill = fillWhiteTheme;
-    if (!c23c.border) c23c.border = {};
-    var b23 = c23c.border ? JSON.parse(JSON.stringify(c23c.border)) : {};
-    b23.bottom = medBdr;
-    c23c.border = b23;
+    c23c.border = { top: medBdr, bottom: medBdr, left: c23i === 1 ? medBdr : undefined, right: c23i === LAST_COL ? medBdr : undefined };
   }
   r23.commit();
 
