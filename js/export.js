@@ -1294,6 +1294,20 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r27.commit();
 
+  // ── Force continuous perimeter border on ALL rows (col 1 left + last col right) ──
+  for (var pr2 = 1; pr2 <= ROW_FOOTER; pr2++) {
+    var pRow2 = ws.getRow(pr2);
+    var cL2 = pRow2.getCell(1);
+    var cR2 = pRow2.getCell(LAST_COL);
+    var bL2 = cL2.border ? JSON.parse(JSON.stringify(cL2.border)) : {};
+    bL2.left = medBDRK;
+    cL2.border = bL2;
+    var bR2 = cR2.border ? JSON.parse(JSON.stringify(cR2.border)) : {};
+    bR2.right = medBDRK;
+    cR2.border = bR2;
+    pRow2.commit();
+  }
+
   // ── Strip diacritics on data rows only ──
   if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
 
@@ -1737,9 +1751,9 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { left: thin1E, right: thin1E, top: thin1E, bottom: medBdr };
   });
-  // K22: empty (total plata not used on K column)
+  // K22: Total de plata = total cantitate × pret unitar interventie
   var cK22 = r22.getCell(11);
-  cK22.value = '';
+  cK22.value = { formula: 'B' + totalsRow + '*B' + pretRow };
   cK22.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
@@ -1769,6 +1783,20 @@ async function _buildV1(wb, client, sorted, prices) {
     c23c.border = { top: medBdr, bottom: medBdr, left: c23i === 1 ? medBdr : undefined, right: c23i === LAST_COL ? medBdr : undefined };
   }
   r23.commit();
+
+  // ── Force continuous perimeter border on ALL rows (col 1 left + col K right) ──
+  for (var pr = 1; pr <= footerRow; pr++) {
+    var pRow = ws.getRow(pr);
+    var cLeft = pRow.getCell(1);
+    var cRight = pRow.getCell(LAST_COL);
+    var bL = cLeft.border ? JSON.parse(JSON.stringify(cLeft.border)) : {};
+    bL.left = medBdr;
+    cLeft.border = bL;
+    var bR = cRight.border ? JSON.parse(JSON.stringify(cRight.border)) : {};
+    bR.right = medBdr;
+    cRight.border = bR;
+    pRow.commit();
+  }
 
   // ── Strip diacritics on data rows only ──
   if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
