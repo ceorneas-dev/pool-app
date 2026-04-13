@@ -1653,14 +1653,14 @@ async function _buildV1(wb, client, sorted, prices) {
   var r20 = ws.getRow(totalsRow); r20.height = 20.1;
   var cA20 = r20.getCell(1);
   cA20.value = 'Cantitate totala';
-  cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+  cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cA20.fill = fillAccent;
   cA20.alignment = centerMiddle;
   cA20.border = { left: medBdr, top: thinA8, bottom: thinA8, right: thinA8 };
   // B20: SUM formula (separate cell, NOT merged with A20)
   var cB20 = r20.getCell(2);
   cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')' };
-  cB20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+  cB20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cB20.fill = fillAccent;
   cB20.alignment = centerMiddle;
   cB20.numFmt = '0';
@@ -1669,7 +1669,7 @@ async function _buildV1(wb, client, sorted, prices) {
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cell = r20.getCell(cc.col);
     cell.value = { formula: 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + lastDataRow + ')' };
-    cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+    cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
     cell.fill = fillAccent;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
@@ -1678,7 +1678,7 @@ async function _buildV1(wb, client, sorted, prices) {
   // K20: empty (K data rows have no values)
   var cK20 = r20.getCell(11);
   cK20.value = '';
-  cK20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+  cK20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cK20.fill = fillAccent;
   cK20.alignment = centerMiddle;
   cK20.numFmt = '#,##0.00';
