@@ -950,10 +950,10 @@ async function _buildV2(wb, client, sorted, prices) {
   c1.font = { name: 'Arial', size: 18, bold: true, color: { argb: WHITE } };
   c1.fill = fillBlue;
   c1.alignment = leftMiddle1;
-  // Borders R1: top/bottom/left/right = medium BDRK
+  // Borders R1: top+left+right only (no bottom — seamless blue header block R1-R3)
   for (var c1c = 1; c1c <= LAST_COL; c1c++) {
     var c1cell = r1.getCell(c1c);
-    c1cell.border = { top: medBDRK, bottom: medBDRK, left: c1c === 1 ? medBDRK : undefined, right: c1c === LAST_COL ? medBDRK : undefined };
+    c1cell.border = { top: medBDRK, left: c1c === 1 ? medBDRK : undefined, right: c1c === LAST_COL ? medBDRK : undefined };
   }
   r1.commit();
 
@@ -965,8 +965,9 @@ async function _buildV2(wb, client, sorted, prices) {
   c2.font = { name: 'Arial', size: 8, color: { argb: LTXT } };
   c2.fill = fillBlue;
   c2.alignment = leftMiddle1;
+  // R2: only left+right (no top/bottom — seamless with R1 and R3)
   for (var c2c = 1; c2c <= LAST_COL; c2c++) {
-    r2.getCell(c2c).border = { top: medBDRK, bottom: medBDRK, left: c2c === 1 ? medBDRK : undefined, right: c2c === LAST_COL ? medBDRK : undefined };
+    r2.getCell(c2c).border = { left: c2c === 1 ? medBDRK : undefined, right: c2c === LAST_COL ? medBDRK : undefined };
   }
   r2.commit();
 
@@ -978,8 +979,9 @@ async function _buildV2(wb, client, sorted, prices) {
   c3.font = { name: 'Arial', size: 8, color: { argb: LTXT } };
   c3.fill = fillBlue;
   c3.alignment = leftMiddle1;
+  // R3: left+right+bottom only (bottom separates from R4 accent)
   for (var c3c = 1; c3c <= LAST_COL; c3c++) {
-    r3.getCell(c3c).border = { top: medBDRK, bottom: medBDRK, left: c3c === 1 ? medBDRK : undefined, right: c3c === LAST_COL ? medBDRK : undefined };
+    r3.getCell(c3c).border = { bottom: medBDRK, left: c3c === 1 ? medBDRK : undefined, right: c3c === LAST_COL ? medBDRK : undefined };
   }
   r3.commit();
 
@@ -1137,8 +1139,8 @@ async function _buildV2(wb, client, sorted, prices) {
     var rowNum = FIRST_DATA_ROW + dr;
     var row = ws.getRow(rowNum);
     row.height = 19.5;
-    // Alternating fill: odd rows (11,13,15...)=CREAM, even (12,14,16...)=WHITE
-    var rowFill = (rowNum % 2 === 1) ? fillCream : fillCreamW;
+    // Alternating fill: odd rows (11,13,15...)=LBG (same as R6), even (12,14,16...)=WHITE
+    var rowFill = (rowNum % 2 === 1) ? fillLBG : fillCreamW;
 
     for (var dc = 1; dc <= LAST_COL; dc++) {
       var dCell = row.getCell(dc);
@@ -1626,8 +1628,6 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
-      // K: total plata = cant * pret unitar B21 (formula)
-      row.getCell(11).value = { formula: 'B' + rowNum + '*$B$21' };
     }
 
     row.commit();
