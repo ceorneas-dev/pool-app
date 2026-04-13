@@ -1082,13 +1082,13 @@ async function _buildV2(wb, client, sorted, prices) {
   var r9 = ws.getRow(9); r9.height = 21.75;
   var cA9 = r9.getCell(1);
   cA9.value = 'Data\ninterventie';
-  cA9.font = { name: 'Arial', size: 8, bold: true, color: { argb: WHITE } };
+  cA9.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cA9.fill = fillBlue;
   cA9.alignment = centerMiddleWrap;
   cA9.border = { top: thin5A, left: medBDRK };
   var cB9 = r9.getCell(2);
   cB9.value = 'SERVICII INCLUSE IN ABONAMENT';
-  cB9.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
+  cB9.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
   cB9.fill = fillBlue;
   cB9.alignment = centerMiddle;
   // Fill all R9 cells with blue
@@ -1102,7 +1102,7 @@ async function _buildV2(wb, client, sorted, prices) {
 
   // ── R10 (h=45.75): Sub-headers ──
   var r10 = ws.getRow(10); r10.height = 45.75;
-  var subFont = { name: 'Arial', size: 7, bold: true, color: { argb: WHITE } };
+  var subFont = { name: 'Arial', size: 8, bold: true, color: { argb: WHITE } };
   // A10 is merged with A9 — fill blue, border
   var cA10 = r10.getCell(1);
   cA10.fill = fillBlue;
