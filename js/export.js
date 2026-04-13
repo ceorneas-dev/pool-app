@@ -1736,7 +1736,8 @@ async function _buildV1(wb, client, sorted, prices) {
   cA22.fill = fillDkblue;
   cA22.alignment = centerMiddle;
   cA22.border = { left: medBdr, right: thin1E, top: thin1E, bottom: medBdr };
-  // B22: fill + border (standalone cell, same style as A22)
+  // B22: empty cell (fill + border only)
+  r22.getCell(2).value = '';
   r22.getCell(2).fill = fillDkblue;
   r22.getCell(2).font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   r22.getCell(2).alignment = centerMiddle;
@@ -1751,9 +1752,9 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { left: thin1E, right: thin1E, top: thin1E, bottom: medBdr };
   });
-  // K22: Total de plata = total cantitate × pret unitar interventie
+  // K22: Total de plata = SUM of all chemical totals on this row (B:J)
   var cK22 = r22.getCell(11);
-  cK22.value = { formula: 'B' + totalsRow + '*B' + pretRow };
+  cK22.value = { formula: 'SUM(B' + genRow + ':J' + genRow + ')' };
   cK22.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
