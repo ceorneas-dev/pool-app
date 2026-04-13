@@ -1171,9 +1171,23 @@ async function _buildV2(wb, client, sorted, prices) {
           chkCell.font = JSON.parse(JSON.stringify(checkFont));
         }
       }
+    } else {
+      // Hide empty rows
+      row.hidden = true;
     }
 
     row.commit();
+  }
+  // Fix bottom border on last visible data row (must connect with R23)
+  if (NR > 0) {
+    var lastVisV2 = ws.getRow(FIRST_DATA_ROW + NR - 1);
+    for (var lv = 1; lv <= LAST_COL; lv++) {
+      var lvc = lastVisV2.getCell(lv);
+      var lvb = lvc.border ? JSON.parse(JSON.stringify(lvc.border)) : {};
+      lvb.bottom = medBDRK;
+      lvc.border = lvb;
+    }
+    lastVisV2.commit();
   }
 
   // ── R23 (h=24): Total interventii ──
@@ -1628,9 +1642,23 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
+    } else {
+      // Hide empty rows
+      row.hidden = true;
     }
 
     row.commit();
+  }
+  // Fix bottom border on last visible data row (must be medBdr to connect with R20)
+  if (NR > 0) {
+    var lastVisRow = ws.getRow(FIRST_DATA_ROW + NR - 1);
+    for (var lc = 1; lc <= LAST_COL; lc++) {
+      var lcell = lastVisRow.getCell(lc);
+      var lb = lcell.border ? JSON.parse(JSON.stringify(lcell.border)) : {};
+      lb.bottom = medBdr;
+      lcell.border = lb;
+    }
+    lastVisRow.commit();
   }
 
   // ── R20 (h=20.1): Cantitate totala (NO merge — A20 and B20 are separate cells) ──
