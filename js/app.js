@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 198;
+const APP_VERSION = 199;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -4231,11 +4231,11 @@ function _sendBillingEmail(client, count) {
           setSetting(sentKey, cycleMarker);
         } else {
           console.warn('[EMAIL] Send failed:', res.error);
-          showToast('⚠ Email nereușit: ' + (res.error || 'eroare necunoscută'), 'error');
+          showToast('⚠ Email nereușit. Re-deploy GAS cu permisiuni noi (MailApp).', 'warning');
         }
       }).catch(function(e) {
         console.warn('[EMAIL] Error:', e.message);
-        showToast('⚠ Eroare email: ' + e.message, 'error');
+        showToast('⚠ Email nereușit. Verifică conexiunea și re-deploy GAS.', 'warning');
       });
     });
   });
