@@ -1,9 +1,9 @@
-﻿// sw.js — Service Worker v156 for Pool Manager PWA
+﻿// sw.js — Service Worker v179 for Pool Manager PWA
 // Strategy: cache-first for app shell, network-first for API
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v175';
+const CACHE_NAME   = 'pool-mgmt-v179';
 const APP_SHELL    = [
   './',
   './index.html',
@@ -133,14 +133,6 @@ self.addEventListener('fetch', event => {
       });
     })
   );
-});
-
-// ── Background sync (if supported) ───────────────────────────
-self.addEventListener('sync', event => {
-  if (event.tag === 'sync-interventions') {
-    console.log('[SW] Background sync triggered');
-    // The actual sync is handled by sync.js in the page context
-  }
 });
 
 // ── Push notifications ────────────────────────────────────────

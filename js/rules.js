@@ -225,18 +225,54 @@ const TREATMENT_RULES = [
  */
 function getRecommendation(poolVolume, chlorine, ph, rules) {
   const r = rules || TREATMENT_RULES;
+
+  // Validate inputs
+  if (!poolVolume || poolVolume <= 0 || chlorine == null || ph == null) return null;
+
+  // Clamp values to rule boundaries for out-of-range inputs
+  // Volume: rules cover 30-200 m³; clamp then scale proportionally
+  var vol = poolVolume;
+  if (vol < 30) vol = 30;
+  if (vol > 200) vol = 200;
+
+  // pH: rules cover 7.0-8.5; clamp to nearest band
+  var phC = ph;
+  if (phC < 7.0) phC = 7.0;
+  if (phC > 8.5) phC = 8.5;
+
+  // Chlorine: rules cover 0-99; no clamping needed (3.0+ band goes to 99)
+  var clC = Math.max(0, chlorine);
+
   const rule = r.find(rule =>
-    poolVolume >= rule.pool_vol_min && poolVolume <= rule.pool_vol_max &&
-    chlorine   >= rule.cl_min       && chlorine   <= rule.cl_max &&
-    ph         >= rule.ph_min       && ph         <= rule.ph_max
+    vol  >= rule.pool_vol_min && vol  <= rule.pool_vol_max &&
+    clC  >= rule.cl_min       && clC  <= rule.cl_max &&
+    phC  >= rule.ph_min       && phC  <= rule.ph_max
   );
   if (!rule) return null;
-  return {
+
+  var result = {
     cl_granule_gr: rule.rec_cl_gr,
     cl_tablete:    rule.rec_cl_tab,
     ph_kg:         rule.rec_ph_kg,
     antialgic_l:   rule.rec_anti
   };
+
+  // Scale proportionally if volume was clamped (outside 30-200 range)
+  if (poolVolume !== vol) {
+    var scale = poolVolume / vol;
+    result.cl_granule_gr = Math.round(result.cl_granule_gr * scale);
+    result.cl_tablete    = Math.round(result.cl_tablete * scale);
+    result.ph_kg         = Math.round(result.ph_kg * scale * 100) / 100;
+    result.antialgic_l   = Math.round(result.antialgic_l * scale * 100) / 100;
+    result._extrapolated = true;
+  }
+  // Flag if pH was clamped
+  if (ph !== phC) {
+    result._phClamped = true;
+    result._extrapolated = true;
+  }
+
+  return result;
 }
 
 /**

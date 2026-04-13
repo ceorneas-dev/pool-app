@@ -109,12 +109,16 @@ const APP = {
 
 // ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Show version immediately
+  const vb = document.getElementById('app-version-badge');
+  if (vb) vb.textContent = 'v' + APP_VERSION;
+
   setupConnectivityIndicator();
   setupInstallPrompt();
   initApp();
 });
 
-const APP_VERSION = 175;
+const APP_VERSION = 179;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -274,7 +278,6 @@ async function initApp() {
   try {
     var lastVer = await getSetting('app_version');
     if (parseInt(lastVer) !== APP_VERSION) {
-      console.log('[INIT] Version changed:', lastVer, '→', APP_VERSION);
       await setSetting('app_version', APP_VERSION);
     }
   } catch(e) { console.warn('[INIT] Version check error:', e.message); }
@@ -316,7 +319,6 @@ async function initApp() {
         const techs = JSON.parse(backup);
         if (techs && techs.length) {
           for (const t of techs) { try { await put('technicians', t); } catch(_) {} }
-          console.log('[DB] Restored', techs.length, 'technicians from backup');
           restored = (await count('technicians')) > 0;
         }
       }
@@ -336,7 +338,6 @@ async function initApp() {
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('./sw.js')
       .then(reg => {
-        console.log('[SW] Registered:', reg.scope);
         // Check for updates every 5 minutes
         setInterval(() => { reg.update().catch(() => {}); }, 300000);
         // When a new SW is installed, notify user to refresh
@@ -725,7 +726,6 @@ async function loadData() {
   clients.forEach(function(c) { clientIdSet[String(c.client_id)] = true; });
   var orphaned = interventions.filter(function(i) { return !clientIdSet[String(i.client_id)]; });
   if (orphaned.length > 0) {
-    console.log('[CLEANUP] Filtering out', orphaned.length, 'orphaned interventions from display (NOT deleting from server)');
     APP.interventions = interventions.filter(function(i) { return clientIdSet[String(i.client_id)]; });
   } else {
     APP.interventions = interventions;
@@ -739,7 +739,6 @@ async function loadData() {
   // Auto-sync if no clients locally but sync is configured (once per session)
   if (APP.clients.length === 0 && isSyncConfigured() && !APP._autoSyncAttempted) {
     APP._autoSyncAttempted = true; // prevent infinite loop
-    console.log('[LOAD] No local clients, triggering auto-sync...');
     try { await forceSync(); } catch(e) {}
     var freshClients = await getActiveClients();
     if (freshClients.length > 0) {
@@ -747,7 +746,6 @@ async function loadData() {
       var freshInt = await getAll('interventions');
       APP.interventions = freshInt;
       APP.pendingSync = freshInt.filter(i => !i.synced).length;
-      console.log('[LOAD] Auto-sync loaded', freshClients.length, 'clients');
     }
   }
 }
@@ -759,6 +757,10 @@ function isAdmin() {
 
 function renderDashboard() {
   if (!APP.user) return;
+
+  // Version badge
+  const vBadge = $('app-version-badge');
+  if (vBadge) vBadge.textContent = 'v' + APP_VERSION;
 
   // Apply role class on <body> — drives all .admin-only visibility via CSS
   document.body.classList.toggle('role-admin',      isAdmin());
@@ -1566,6 +1568,8 @@ function updateRecommendation() {
     ['rec-cl-granule','rec-cl-tab','rec-ph-kg','rec-anti'].forEach(id => {
       const el = $(id); if (el) el.textContent = '—';
     });
+    const extHide2 = $('rec-extrapolation');
+    if (extHide2) extHide2.style.display = 'none';
     updateSaveButton();
     return;
   }
@@ -1575,6 +1579,8 @@ function updateRecommendation() {
     ['rec-cl-granule','rec-cl-tab','rec-ph-kg','rec-anti'].forEach(id => {
       const el = $(id); if (el) el.textContent = 'N/A';
     });
+    const extHide = $('rec-extrapolation');
+    if (extHide) extHide.style.display = 'none';
     updateSaveButton();
     return;
   }
@@ -1587,6 +1593,20 @@ function updateRecommendation() {
   if (elTab) elTab.textContent = rec.cl_tablete + ' buc';
   if (elPh)  elPh.textContent  = rec.ph_kg + ' kg';
   if (elAnt) elAnt.textContent = rec.antialgic_l + ' L';
+
+  // Show extrapolation warning if values were outside rule ranges
+  const extEl = $('rec-extrapolation');
+  if (extEl) {
+    if (rec._extrapolated) {
+      const parts = [];
+      if (vol < 30 || vol > 200) parts.push('volum ' + vol + 'm³ (reguli: 30-200)');
+      if (rec._phClamped) parts.push('pH ' + ph + ' (reguli: 7.0-8.5)');
+      extEl.style.display = '';
+      extEl.innerHTML = '⚠️ <em>Valori extrapolate</em> — ' + parts.join(', ') + '. Dozele sunt estimate.';
+    } else {
+      extEl.style.display = 'none';
+    }
+  }
 
   updateSaveButton();
 }
@@ -1766,7 +1786,6 @@ async function doSaveIntervention() {
             method: 'POST',
             body: JSON.stringify({ action: 'push', type: 'delete_intervention', data: { intervention_id: oldIntv.intervention_id } })
           });
-          console.log('[SAVE] Server delete confirmed for', oldIntv.intervention_id);
         } catch(e) { console.warn('[SYNC] Duplicate delete push failed:', e.message); }
       }
     }
@@ -1774,7 +1793,6 @@ async function doSaveIntervention() {
       var oldIds = {};
       existingOld.forEach(function(o) { oldIds[o.intervention_id] = true; });
       APP.interventions = APP.interventions.filter(function(i) { return !oldIds[i.intervention_id]; });
-      console.log('[SAVE] Removed', existingOld.length, 'old intervention(s) for', intervention.date);
     }
 
     await saveIntervention(intervention);
@@ -2830,7 +2848,6 @@ async function doSaveTech() {
           body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
         });
         if (resp && resp.success) {
-          console.log('[SYNC] Technician pushed to GAS OK');
         } else {
           console.warn('[SYNC] Technician push response:', resp);
         }
@@ -2864,7 +2881,7 @@ async function toggleTechActive(techId) {
 async function deleteTech(techId, techName) {
   if (!confirm('Sigur vrei să ștergi tehnicianul "' + techName + '"?\n\nAceastă acțiune este ireversibilă.')) return;
   try {
-    await del('technicians', techId);
+    await deleteRecord('technicians', techId);
     // Push deletion to GAS if configured
     if (isSyncConfigured()) {
       try {
@@ -3634,7 +3651,7 @@ async function doSaveProduct() {
 /** Delete a product (with confirm) */
 async function deleteProduct(productId) {
   if (!confirm('Ștergi produsul? Această acțiune nu poate fi anulată.')) return;
-  await remove('stock', productId);
+  await deleteRecord('stock', productId);
   showToast('Produs șters.', 'success');
   showStockModal();
   renderTreatmentSteppers().catch(() => {}); // refresh treatment form if open
@@ -3873,7 +3890,7 @@ async function deleteIntervention(interventionId, clientId) {
   if (!confirm('Sigur vrei sa stergi aceasta interventie?')) return;
 
   try {
-    await remove('interventions', interventionId);
+    await deleteRecord('interventions', interventionId);
     APP.interventions = APP.interventions.filter(function(i) { return i.intervention_id !== interventionId; });
 
     // Track deleted ID so pull won't re-add it
@@ -4145,7 +4162,6 @@ async function resetAllBilling() {
 function checkBillingAlert(client) {
   const interval = parseInt(client.billing_interval_interventions) || 0;
   if (!interval || interval <= 0) {
-    console.log('[BILLING] Skip: interval not set for', client.name, '(value:', client.billing_interval_interventions, ')');
     return;
   }
 
@@ -4161,8 +4177,6 @@ function checkBillingAlert(client) {
     }
     return raw > since;
   }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-
-  console.log('[BILLING]', client.name, ':', billable.length, '/', interval, 'interventii (din', since, ')');
 
   if (billable.length >= interval) {
     // Send email notification via GAS (works for all roles)
@@ -4185,7 +4199,6 @@ function _sendBillingEmail(client, count) {
   var cycleMarker = (client.last_billing_date || 'initial') + '_' + count;
   getSetting(sentKey).then(function(alreadySent) {
     if (alreadySent === cycleMarker) {
-      console.log('[EMAIL] Deja trimis email pentru', client.name, '(ciclu:', cycleMarker, ')');
       return;
     }
     return getSetting('notification_email').then(function(email) {
@@ -4194,7 +4207,6 @@ function _sendBillingEmail(client, count) {
         showToast('⚠ Email notificare nesetat! Mergi la Settings.', 'warning');
         return;
       }
-      console.log('[EMAIL] Trimit notificare la', email, 'pentru', client.name, '(', count, 'intervenții)' );
       var subject = 'Factureaza: ' + client.name + ' (' + count + ' interventii)';
       var body = 'Clientul ' + client.name + ' are ' + count + ' interventii nefacturate.\n\n';
       body += 'Detalii:\n';
@@ -4215,7 +4227,6 @@ function _sendBillingEmail(client, count) {
         })
       }).then(function(res) {
         if (res.success) {
-          console.log('[EMAIL] Billing notification sent to', email);
           showToast('📧 Email trimis la ' + email, 'success');
           setSetting(sentKey, cycleMarker);
         } else {
@@ -5842,8 +5853,7 @@ async function _syncChecklistToGas(updatedAt) {
       updated_at: updatedAt
     })
   }).then(data => {
-    if (data.success) console.log('[CHECKLIST] Synced to GAS');
-    else console.warn('[CHECKLIST] GAS sync error:', data.error);
+    if (!data.success) console.warn('[CHECKLIST] GAS sync error:', data.error);
   });
 }
 
@@ -5866,7 +5876,6 @@ async function _fetchChecklistFromGas() {
       await setSetting('checklist_items', remote.items_json);
       await setSetting('checklist_updated_at', remoteUpdatedAt);
       renderChecklist();
-      console.log('[CHECKLIST] Updated from GAS (remote newer)');
     }
   } catch (err) {
     console.warn('[CHECKLIST] Fetch from GAS failed:', err.message);

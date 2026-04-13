@@ -109,17 +109,6 @@ function put(storeName, data) {
   }));
 }
 
-function del(storeName, key) {
-  return openDB().then(db => new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readwrite');
-    const req = tx.objectStore(storeName).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror    = () => reject(tx.error);
-    tx.onabort    = () => reject(tx.error || new Error('Transaction aborted'));
-    req.onerror   = () => reject(req.error);
-  }));
-}
-
 function putMany(storeName, items) {
   return openDB().then(db => new Promise((resolve, reject) => {
     const tx    = db.transaction(storeName, 'readwrite');
@@ -131,16 +120,6 @@ function putMany(storeName, items) {
     }
     tx.oncomplete = () => resolve(count);
     tx.onerror    = () => reject(tx.error);
-  }));
-}
-
-function remove(storeName, key) {
-  return openDB().then(db => new Promise((resolve, reject) => {
-    const tx  = db.transaction(storeName, 'readwrite');
-    tx.objectStore(storeName).delete(key);
-    tx.oncomplete = () => resolve();
-    tx.onerror    = () => reject(tx.error);
-    tx.onabort    = () => reject(tx.error || new Error('Transaction aborted'));
   }));
 }
 
@@ -224,7 +203,7 @@ function setSession(user) {
 }
 
 function clearSession() {
-  return remove('settings', 'session');
+  return deleteRecord('settings', 'session');
 }
 
 // ── Counts ───────────────────────────────────────────────────
@@ -445,7 +424,5 @@ function seedDemoData() {
     putMany('clients',      clients),
     putMany('interventions', interventions),
     putMany('stock',        stock)
-  ]).then(() => {
-    console.log('[DB] Demo data seeded: v3 complete');
-  });
+  ]);
 }

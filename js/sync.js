@@ -295,9 +295,34 @@ function pullData() {
         last_sync:     t.last_sync || null
       }));
       // Merge: upsert remote technicians one-by-one (avoids unique-index abort)
+      // Fix empty/duplicate usernames before inserting
       const techMerge = (async function() {
+        const usedUsernames = new Set();
+        // Pre-collect existing usernames from local DB
+        try {
+          const existing = await getAll('technicians');
+          existing.forEach(t => usedUsernames.add(t.username));
+        } catch(_) {}
         let ok = 0;
         for (const t of parsed) {
+          // Fix empty username: generate from technician_id
+          if (!t.username || !String(t.username).trim()) {
+            t.username = 'user_' + t.technician_id;
+          }
+          // Fix duplicate username: append technician_id suffix
+          if (usedUsernames.has(t.username)) {
+            // Check if it's the same technician (update case) — allow it
+            try {
+              const existingTech = await getByKey('technicians', t.technician_id);
+              if (!existingTech || existingTech.username !== t.username) {
+                // Different technician with same username — make unique
+                t.username = t.username + '_' + t.technician_id;
+              }
+            } catch(_) {
+              t.username = t.username + '_' + t.technician_id;
+            }
+          }
+          usedUsernames.add(t.username);
           try { await put('technicians', t); ok++; } catch(e) {
             console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
           }
