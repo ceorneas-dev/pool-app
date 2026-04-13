@@ -1736,8 +1736,8 @@ async function _buildV1(wb, client, sorted, prices) {
   cA22.fill = fillDkblue;
   cA22.alignment = centerMiddle;
   cA22.border = { left: medBdr, right: thin1E, top: thin1E, bottom: medBdr };
-  // B22: empty cell (fill + border only)
-  r22.getCell(2).value = '';
+  // B22: total interventii cost = cantitate totala × pret unitar
+  r22.getCell(2).value = { formula: 'B' + totalsRow + '*B' + pretRow };
   r22.getCell(2).fill = fillDkblue;
   r22.getCell(2).font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   r22.getCell(2).alignment = centerMiddle;
