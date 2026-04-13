@@ -114,7 +114,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 173;
+const APP_VERSION = 174;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -736,8 +736,9 @@ async function loadData() {
   // All interventions from server are kept as-is.
   APP.pendingSync   = APP.interventions.filter(i => !i.synced).length;
 
-  // Auto-sync if no clients locally but sync is configured
-  if (APP.clients.length === 0 && isSyncConfigured()) {
+  // Auto-sync if no clients locally but sync is configured (once per session)
+  if (APP.clients.length === 0 && isSyncConfigured() && !APP._autoSyncAttempted) {
+    APP._autoSyncAttempted = true; // prevent infinite loop
     console.log('[LOAD] No local clients, triggering auto-sync...');
     try { await forceSync(); } catch(e) {}
     var freshClients = await getActiveClients();
