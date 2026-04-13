@@ -1151,10 +1151,11 @@ async function _buildV2(wb, client, sorted, prices) {
 
     if (dr < NR) {
       var entry = sorted[dr];
-      // A: date
-      row.getCell(1).value = fmtDateDMY(entry.date);
-      row.getCell(1).font = JSON.parse(JSON.stringify(dataFont));
-      row.getCell(1).alignment = centerMiddle;
+      // A: date — force string and explicit center alignment
+      var dateCell = row.getCell(1);
+      dateCell.value = fmtDateDMY(entry.date);
+      dateCell.font = JSON.parse(JSON.stringify(dataFont));
+      dateCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false };
 
       // Fill checkmarks
       var ops = _parseOps(entry.operations);
@@ -1218,10 +1219,10 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r24.commit();
 
-  // ── R25 (h=25.5): Total de plata ──
+  // ── R25 (h=25.5): Total de plata (same merge pattern as R23: A:F + G:LAST) ──
   var ROW_PAY = 25;
-  ws.mergeCells(ROW_PAY, 1, ROW_PAY, 5); // A25:E25
-  ws.mergeCells(ROW_PAY, 6, ROW_PAY, LAST_COL); // F25:I25
+  ws.mergeCells(ROW_PAY, 1, ROW_PAY, 6); // A25:F25
+  ws.mergeCells(ROW_PAY, 7, ROW_PAY, LAST_COL); // G25:I25 (aligned with G23)
   var r25 = ws.getRow(ROW_PAY); r25.height = 25.5;
   var cA25 = r25.getCell(1);
   cA25.value = 'TOTAL DE PLATA';
@@ -1229,16 +1230,16 @@ async function _buildV2(wb, client, sorted, prices) {
   cA25.fill = fillBlue;
   cA25.alignment = leftMiddle1;
   cA25.border = { top: medBDRK, left: medBDRK, bottom: medBDRK };
-  var cF25 = r25.getCell(6);
-  cF25.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
-  cF25.fill = fillBlue;
-  cF25.alignment = centerMiddle;
-  cF25.numFmt = '#,##0';
-  cF25.border = { top: medBDRK, bottom: medBDRK, right: medBDRK };
+  var cG25 = r25.getCell(7);
+  cG25.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
+  cG25.fill = fillBlue;
+  cG25.alignment = centerMiddle;
+  cG25.numFmt = '#,##0';
+  cG25.border = { top: medBDRK, bottom: medBDRK, right: medBDRK };
   if (NR > 0) {
-    cF25.value = { formula: 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
+    cG25.value = { formula: 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
   } else {
-    cF25.value = 0;
+    cG25.value = 0;
   }
   // Fill remaining R25 cells + borders
   for (var c25 = 1; c25 <= LAST_COL; c25++) {
@@ -1601,7 +1602,8 @@ async function _buildV1(wb, client, sorted, prices) {
       dCell.font = JSON.parse(JSON.stringify(dataFont));
       dCell.alignment = (dc === 1) ? leftMiddle : centerMiddle;
       if (dc === 1) dCell.numFmt = 'dd.mm.yyyy';
-      if (dc >= 2 && dc <= LAST_COL) dCell.numFmt = '#,##0.00';
+      if (dc === 2) dCell.numFmt = '0';
+      if (dc >= 3 && dc <= LAST_COL) dCell.numFmt = '#,##0.00';
       // Borders with colors
       dCell.border = {
         top: rowNum === FIRST_DATA_ROW ? medBdr : thinA8,
@@ -1624,8 +1626,8 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
-      // K: intervention price per visit
-      row.getCell(11).value = pretIntv;
+      // K: total plata = cant * pret unitar B21 (formula)
+      row.getCell(11).value = { formula: 'B' + rowNum + '*$B$21' };
     }
 
     row.commit();
@@ -1646,7 +1648,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cB20.font = { name: 'Arial', size: 9, bold: true, color: { theme: 0 } };
   cB20.fill = fillAccent;
   cB20.alignment = centerMiddle;
-  cB20.numFmt = '#,##0.00';
+  cB20.numFmt = '0';
   cB20.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   // C-J: SUM formulas
   V1_CHEM_COLUMNS.forEach(function(cc) {
@@ -1692,13 +1694,17 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
-  // B21: fill + border (standalone cell, no formula)
-  r21.getCell(2).fill = fillPaleblue;
-  r21.getCell(2).font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
-  r21.getCell(2).border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
-  // K21: intervention unit price (from client or default 250)
+  // B21: intervention unit price (pretIntv)
+  var cB21 = r21.getCell(2);
+  cB21.value = pretIntv;
+  cB21.fill = fillPaleblue;
+  cB21.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
+  cB21.alignment = centerMiddle;
+  cB21.numFmt = '#,##0.00';
+  cB21.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
+  // K21: empty (price is now on B21)
   var cK21 = r21.getCell(11);
-  cK21.value = pretIntv;
+  cK21.value = '';
   cK21.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
   cK21.fill = fillPaleblue;
   cK21.alignment = centerMiddle;
