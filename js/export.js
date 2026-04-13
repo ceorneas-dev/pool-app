@@ -1864,7 +1864,7 @@ async function _fillV2Template(wb, client, sorted, prices) {
 // Floculant, Dedurizant, pH Lichid, Cl Lichid
 
 var V1_CHEM_COLUMNS = [
-  { col: 3,  label: 'Clor Rapid',  keys: ['treat_cl_granule_gr'] },
+  { col: 3,  label: 'Clor Rapid',  keys: ['treat_cl_granule_gr', 'treat_cl_granule'] },
   { col: 4,  label: 'Clor Lent',   keys: ['treat_cl_tablete', 'treat_cl_tablete_export_gr'] },
   { col: 5,  label: 'pH\u2212',    keys: ['treat_ph_granule', 'treat_ph_minus_gr'] },
   { col: 6,  label: 'Antialgic',   keys: ['treat_antialgic'] },
@@ -1951,7 +1951,12 @@ async function _fillV1Template(wb, client, sorted, prices) {
       var val = _getChemValue(entry, cc.keys);
       if (val > 0) chemDebug.push('C' + cc.col + '=' + val + '(keys:' + cc.keys.join('/') + ')');
       var cell = row.getCell(cc.col);
-      cell.value = val > 0 ? Math.round(val) : '';
+      // Cols 3-5 (gr/buc/kg): integer. Cols 6-10 (L/bidoane): 1 decimal if fractional
+      if (val > 0) {
+        cell.value = (cc.col <= 5) ? Math.round(val) : (val % 1 === 0 ? val : Math.round(val * 10) / 10);
+      } else {
+        cell.value = '';
+      }
       cell.font = JSON.parse(JSON.stringify(dataFont));
     });
     console.log('[V1 EXPORT] R' + rowNum + ' date=' + entry.date + ' chems=[' + chemDebug.join(', ') + ']' +
@@ -2047,14 +2052,14 @@ async function _fillV1Template(wb, client, sorted, prices) {
   cellB22.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
   ws.getRow(genRow).commit();
 
-  // ── 8. Number format: integer on all numeric/formula cells ──
+  // ── 8. Number format: integer for gr/buc/kg cols (2-5), 1 decimal for L cols (6-10), integer for K (11) ──
   for (var nfr = FIRST_DATA_ROW; nfr <= footerTextRow; nfr++) {
     var nfRow = ws.getRow(nfr);
     for (var nfc = 2; nfc <= LAST_COL; nfc++) {
       var nfCell = nfRow.getCell(nfc);
       var nfv = nfCell.value;
       if (nfv !== null && nfv !== '' && (typeof nfv === 'number' || (typeof nfv === 'object' && nfv && nfv.formula))) {
-        nfCell.numFmt = '0';
+        nfCell.numFmt = (nfc >= 6 && nfc <= 10) ? '0.#' : '0';
       }
     }
     nfRow.commit();
