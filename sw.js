@@ -1,9 +1,9 @@
-﻿// sw.js — Service Worker v180 for Pool Manager PWA
+﻿// sw.js — Service Worker v181 for Pool Manager PWA
 // Strategy: cache-first for app shell, network-first for API
 
 'use strict';
 
-const CACHE_NAME   = 'pool-mgmt-v180';
+const CACHE_NAME   = 'pool-mgmt-v181';
 const APP_SHELL    = [
   './',
   './index.html',
