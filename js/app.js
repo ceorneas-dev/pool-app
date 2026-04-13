@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 200;
+const APP_VERSION = 202;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -4041,9 +4041,11 @@ function renderBillingList() {
           item.count + ' interventii (prag: ' + interval + ') &middot; din ' + since +
         '</div>' +
       '</div>' +
-      '<div class="billing-list-actions">' +
-        '<button class="billing-list-btn export" onclick="exportBillingClient(\'' + c.client_id + '\')" title="Export Excel">&#128230;</button>' +
-        '<button class="billing-list-btn reset" onclick="resetBillingClient(\'' + c.client_id + '\')" title="Marcheaza facturat">&#8634;</button>' +
+      '<div class="billing-list-actions" style="display:flex;gap:6px;flex-wrap:wrap">' +
+        '<button class="billing-list-btn export" onclick="exportBillingClient(\'' + c.client_id + '\')" title="Deviz Excel" style="font-size:1.1rem">&#128230;</button>' +
+        '<button class="billing-list-btn" onclick="exportBillingPdf(\'' + c.client_id + '\')" title="Deviz PDF" style="font-size:1.1rem">&#128196;</button>' +
+        '<button class="billing-list-btn" onclick="sendBillingWhatsApp(\'' + c.client_id + '\')" title="Trimite WhatsApp" style="font-size:1.1rem;color:#25D366">&#128172;</button>' +
+        '<button class="billing-list-btn reset" onclick="resetBillingClient(\'' + c.client_id + '\')" title="Marcheaza facturat" style="font-size:1.1rem">&#8634;</button>' +
       '</div>' +
     '</div>';
   });
@@ -4097,6 +4099,74 @@ async function resetBillingClient(clientId) {
   renderBillingList();
   var elBilling = $('stat-billing-count');
   if (elBilling) elBilling.textContent = _getBillableClients().length;
+}
+
+/** Mark client as billed from client details modal */
+async function markClientBilled() {
+  var clientId = APP._billingClientId;
+  if (!clientId) return;
+  await resetBillingClient(clientId);
+  var billBtn = $('btn-mark-billed');
+  if (billBtn) billBtn.style.display = 'none';
+}
+
+/** Export one client's billing as PDF (print) */
+async function exportBillingPdf(clientId) {
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client) return;
+  var since = client.last_billing_date || '1970-01-01';
+  var billable = APP.interventions.filter(function(i) {
+    return i.client_id === clientId && i.date > since;
+  }).sort(function(a, b) { return a.date.localeCompare(b.date); });
+  if (!billable.length) { showToast('Nicio interventie de exportat.', 'warning'); return; }
+
+  showToast('Generare PDF ' + client.name + '...', 'info');
+  try {
+    var devizType = parseInt(client.deviz_type) || 2;
+    if (devizType === 2) {
+      await exportDevizComplet(client, billable);
+    } else {
+      await exportDevizChimicale(client, billable);
+    }
+    showToast('PDF generat: ' + client.name, 'success');
+  } catch (e) {
+    showToast('Eroare PDF: ' + e.message, 'error');
+  }
+}
+
+/** Send WhatsApp notification for a specific billable client */
+function sendBillingWhatsApp(clientId) {
+  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client) return;
+  var since = client.last_billing_date || '1970-01-01';
+  var count = APP.interventions.filter(function(i) {
+    return i.client_id === clientId && String(i.date || '') > since;
+  }).length;
+
+  Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
+    var phone = vals[0], apikey = vals[1];
+    if (!phone || !apikey) {
+      showToast('WhatsApp neconfigurat! Mergi la Settings.', 'warning');
+      return;
+    }
+    var msg = '*Facturare: ' + client.name + '*\n'
+      + count + ' interventii nefacturate\n'
+      + 'Tel: ' + (client.phone || '-') + '\n'
+      + 'Adresa: ' + (client.address || '-') + '\n'
+      + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n'
+      + '_Generat de Pool Manager_';
+
+    var url = 'https://api.callmebot.com/whatsapp.php'
+      + '?phone=' + encodeURIComponent(phone)
+      + '&text=' + encodeURIComponent(msg)
+      + '&apikey=' + encodeURIComponent(apikey);
+
+    fetch(url, { mode: 'no-cors' }).then(function() {
+      showToast('WhatsApp trimis pentru ' + client.name + '!', 'success');
+    }).catch(function(e) {
+      showToast('WhatsApp nereusit: ' + e.message, 'warning');
+    });
+  });
 }
 
 /** Export all billing clients */
@@ -4183,12 +4253,8 @@ function checkBillingAlert(client) {
   }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   if (billable.length >= interval) {
-    // Send WhatsApp notification via CallMeBot (works for all roles)
+    // Send WhatsApp notification via CallMeBot (works for all roles, no modal)
     _sendBillingWhatsApp(client, billable.length);
-    // Show modal only for admin
-    if (isAdmin()) {
-      setTimeout(function() { showBillingModal(client, billable); }, 600);
-    }
   }
 }
 

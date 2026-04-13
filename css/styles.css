@@ -827,6 +827,26 @@ body.role-technician #client-list {
   background: var(--slate-50);
 }
 
+/* Operations checklist grid */
+.ops-checklist-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 14px;
+}
+.ops-check-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.88rem;
+  padding: 6px 0;
+}
+.ops-check-item .ops-checkbox {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
 /* Measurement grid */
 .measure-grid {
   display: grid;
