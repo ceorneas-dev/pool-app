@@ -1262,13 +1262,13 @@ async function _buildV2(wb, client, sorted, prices) {
   var r27 = ws.getRow(ROW_FOOTER); r27.height = 15.75;
   var cA27 = r27.getCell(1);
   cA27.value = 'Document generat de S.C. Aquatis Engineering S.R.L.';
-  cA27.font = { name: 'Arial', size: 8, italic: true, color: { argb: MTXT } };
+  cA27.font = { name: 'Arial', size: 9, italic: true, color: { argb: MTXT } };
   cA27.fill = fillWhite;
   cA27.alignment = leftMiddle1;
   cA27.border = { left: medBDRK, bottom: medBDRK };
   var cF27 = r27.getCell(6);
   cF27.value = 'www.aquatis.ro  |  0721.137.178';
-  cF27.font = { name: 'Arial', size: 8, italic: true, color: { argb: MTXT } };
+  cF27.font = { name: 'Arial', size: 9, italic: true, color: { argb: MTXT } };
   cF27.fill = fillWhite;
   cF27.alignment = { horizontal: 'right', vertical: 'middle' };
   cF27.border = { bottom: medBDRK, right: medBDRK };
@@ -1668,6 +1668,9 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
+  // B21: fill + border (standalone cell, no formula)
+  r21.getCell(2).fill = fillPaleblue;
+  r21.getCell(2).border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   r21.getCell(11).fill = fillPaleblue;
   r21.getCell(11).border = { right: medBdr };
   r21.commit();
@@ -1681,6 +1684,11 @@ async function _buildV1(wb, client, sorted, prices) {
   cA22.fill = fillDkblue;
   cA22.alignment = centerMiddle;
   cA22.border = { left: medBdr, right: thin1E };
+  // B22: fill + border (standalone cell, same style as A22)
+  r22.getCell(2).fill = fillDkblue;
+  r22.getCell(2).font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
+  r22.getCell(2).alignment = centerMiddle;
+  r22.getCell(2).border = { left: thin1E, right: thin1E };
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cl = _excelCol(cc.col);
     var cell = r22.getCell(cc.col);
@@ -1707,13 +1715,13 @@ async function _buildV1(wb, client, sorted, prices) {
   var r23 = ws.getRow(23); r23.height = 20.25;
   var cA23 = r23.getCell(1);
   cA23.value = 'Toate preturile sunt exprimate in RON';
-  cA23.font = { name: 'Arial', size: 7, italic: true, color: { theme: 1 } };
+  cA23.font = { name: 'Arial', size: 9, italic: true, color: { theme: 1 } };
   cA23.fill = fillWhiteTheme;
   cA23.alignment = leftMiddle;
   cA23.border = { left: medBdr, bottom: medBdr };
   var cH23 = r23.getCell(8);
   cH23.value = 'S.C. Aquatis Engineering S.R.L.';
-  cH23.font = { name: 'Arial', size: 7, italic: true, color: { theme: 1 } };
+  cH23.font = { name: 'Arial', size: 9, italic: true, color: { theme: 1 } };
   cH23.fill = fillWhiteTheme;
   cH23.alignment = rightMiddle;
   // K23 right+bottom border
