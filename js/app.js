@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 199;
+const APP_VERSION = 200;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -928,11 +928,11 @@ function renderDashboard() {
         APP.gpsEnd   = newEnd;
         updateGpsToggleBtn(); // reflectă noile ore imediat
       }
-      // Notification email
-      const emailEl = $('settings-notif-email');
-      if (emailEl && emailEl.value.trim()) {
-        await setSetting('notification_email', emailEl.value.trim());
-      }
+      // WhatsApp notification (CallMeBot)
+      const waPhoneEl = $('settings-wa-phone');
+      const waKeyEl = $('settings-wa-apikey');
+      if (waPhoneEl) await setSetting('wa_phone', waPhoneEl.value.trim());
+      if (waKeyEl) await setSetting('wa_apikey', waKeyEl.value.trim());
       showToast('Setări salvate.', 'success');
       // Close settings section after saving
       const settingsDetails = $('settings-section');
@@ -949,9 +949,13 @@ function renderDashboard() {
     const thrInput = $('settings-alert-threshold');
     if (thrInput) thrInput.value = thr || APP.alertThreshold;
   });
-  getSetting('notification_email').then(email => {
-    const emailInput = $('settings-notif-email');
-    if (emailInput && email) emailInput.value = email;
+  getSetting('wa_phone').then(val => {
+    const el = $('settings-wa-phone');
+    if (el && val) el.value = val;
+  });
+  getSetting('wa_apikey').then(val => {
+    const el = $('settings-wa-apikey');
+    if (el && val) el.value = val;
   });
   getSetting('gps_interval').then(val => {
     const el = $('settings-gps-interval');
@@ -4179,8 +4183,8 @@ function checkBillingAlert(client) {
   }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   if (billable.length >= interval) {
-    // Send email notification via GAS (works for all roles)
-    _sendBillingEmail(client, billable.length);
+    // Send WhatsApp notification via CallMeBot (works for all roles)
+    _sendBillingWhatsApp(client, billable.length);
     // Show modal only for admin
     if (isAdmin()) {
       setTimeout(function() { showBillingModal(client, billable); }, 600);
@@ -4188,54 +4192,37 @@ function checkBillingAlert(client) {
   }
 }
 
-/** Send billing email notification via GAS — once per billing cycle */
-function _sendBillingEmail(client, count) {
-  if (!isSyncConfigured()) {
-    console.warn('[EMAIL] API nu e configurat — nu se poate trimite email');
-    return;
-  }
-  var sentKey = 'billing_email_sent_' + client.client_id;
-  // Use last_billing_date + count as cycle marker so email re-sends when count changes
+/** Send billing WhatsApp notification via CallMeBot — once per billing cycle */
+function _sendBillingWhatsApp(client, count) {
+  var sentKey = 'billing_wa_sent_' + client.client_id;
   var cycleMarker = (client.last_billing_date || 'initial') + '_' + count;
   getSetting(sentKey).then(function(alreadySent) {
-    if (alreadySent === cycleMarker) {
-      return;
-    }
-    return getSetting('notification_email').then(function(email) {
-      if (!email) {
-        console.warn('[EMAIL] Nu este configurat email-ul de notificare! Mergi la Settings → Email notificare facturare');
-        showToast('⚠ Email notificare nesetat! Mergi la Settings.', 'warning');
+    if (alreadySent === cycleMarker) return;
+    return Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
+      var phone = vals[0], apikey = vals[1];
+      if (!phone || !apikey) {
+        console.warn('[WA] WhatsApp neconfigurat. Mergi la Settings.');
+        showToast('WhatsApp neconfigurat! Mergi la Settings.', 'warning');
         return;
       }
-      var subject = 'Factureaza: ' + client.name + ' (' + count + ' interventii)';
-      var body = 'Clientul ' + client.name + ' are ' + count + ' interventii nefacturate.\n\n';
-      body += 'Detalii:\n';
-      body += '- Client: ' + client.name + '\n';
-      body += '- Telefon: ' + (client.phone || '-') + '\n';
-      body += '- Adresa: ' + (client.address || '-') + '\n';
-      body += '- Interventii: ' + count + '\n';
-      body += '- Data: ' + new Date().toLocaleDateString('ro-RO') + '\n\n';
-      body += 'Generat automat de Pool Manager.';
+      var msg = '*Facturare: ' + client.name + '*\n'
+        + count + ' interventii nefacturate\n'
+        + 'Tel: ' + (client.phone || '-') + '\n'
+        + 'Adresa: ' + (client.address || '-') + '\n'
+        + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n'
+        + '_Generat de Pool Manager_';
 
-      apiFetch(SYNC_CONFIG.API_URL, {
-        method: 'POST',
-        body: JSON.stringify({
-          action: 'sendEmail',
-          to: email,
-          subject: subject,
-          body: body
-        })
-      }).then(function(res) {
-        if (res.success) {
-          showToast('📧 Email trimis la ' + email, 'success');
-          setSetting(sentKey, cycleMarker);
-        } else {
-          console.warn('[EMAIL] Send failed:', res.error);
-          showToast('⚠ Email nereușit. Re-deploy GAS cu permisiuni noi (MailApp).', 'warning');
-        }
+      var url = 'https://api.callmebot.com/whatsapp.php'
+        + '?phone=' + encodeURIComponent(phone)
+        + '&text=' + encodeURIComponent(msg)
+        + '&apikey=' + encodeURIComponent(apikey);
+
+      fetch(url, { mode: 'no-cors' }).then(function() {
+        showToast('WhatsApp trimis!', 'success');
+        setSetting(sentKey, cycleMarker);
       }).catch(function(e) {
-        console.warn('[EMAIL] Error:', e.message);
-        showToast('⚠ Email nereușit. Verifică conexiunea și re-deploy GAS.', 'warning');
+        console.warn('[WA] Error:', e.message);
+        showToast('WhatsApp nereusit: ' + e.message, 'warning');
       });
     });
   });
