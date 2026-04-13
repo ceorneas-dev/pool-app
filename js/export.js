@@ -1130,16 +1130,16 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r10.commit();
 
-  // ── R11-R22: Data rows (12 slots) ──
+  // ── Data rows: only NR rows (no empty rows) ──
   var checkFont = { name: 'Arial', size: 11, bold: true, color: { argb: GREEN } };
   var dataFont  = { name: 'Arial', size: 8, color: { argb: MTXT } };
-  var lastDataRow = NR > 0 ? (FIRST_DATA_ROW + NR - 1) : FIRST_DATA_ROW;
+  var ACTUAL_V2 = Math.max(NR, 1);
+  var lastDataRow = FIRST_DATA_ROW + ACTUAL_V2 - 1;
 
-  for (var dr = 0; dr < DATA_SLOTS; dr++) {
+  for (var dr = 0; dr < ACTUAL_V2; dr++) {
     var rowNum = FIRST_DATA_ROW + dr;
     var row = ws.getRow(rowNum);
     row.height = 19.5;
-    // Alternating fill: odd rows (11,13,15...)=LBG (same as R6), even (12,14,16...)=WHITE
     var rowFill = (rowNum % 2 === 1) ? fillLBG : fillCreamW;
 
     for (var dc = 1; dc <= LAST_COL; dc++) {
@@ -1148,18 +1148,21 @@ async function _buildV2(wb, client, sorted, prices) {
       dCell.fill = rowFill;
       dCell.font = JSON.parse(JSON.stringify(dataFont));
       dCell.alignment = centerMiddle;
-      dCell.border = { top: thinD9, left: dc === 1 ? medBDRK : thinD9, bottom: thinD9, right: dc === LAST_COL ? medBDRK : thinD9 };
+      dCell.border = {
+        top: thinD9,
+        left: dc === 1 ? medBDRK : thinD9,
+        bottom: rowNum === lastDataRow ? medBDRK : thinD9,
+        right: dc === LAST_COL ? medBDRK : thinD9
+      };
     }
 
     if (dr < NR) {
       var entry = sorted[dr];
-      // A: date — force string and explicit center alignment
       var dateCell = row.getCell(1);
       dateCell.value = fmtDateDMY(entry.date);
       dateCell.font = JSON.parse(JSON.stringify(dataFont));
       dateCell.alignment = { horizontal: 'center', vertical: 'middle', wrapText: false };
 
-      // Fill checkmarks
       var ops = _parseOps(entry.operations);
       if (ops.length === 0 && entry._defaultOps) ops = entry._defaultOps;
       for (var oi3 = 0; oi3 < ops.length; oi3++) {
@@ -1171,27 +1174,13 @@ async function _buildV2(wb, client, sorted, prices) {
           chkCell.font = JSON.parse(JSON.stringify(checkFont));
         }
       }
-    } else {
-      // Hide empty rows
-      row.hidden = true;
     }
 
     row.commit();
   }
-  // Fix bottom border on last visible data row (must connect with R23)
-  if (NR > 0) {
-    var lastVisV2 = ws.getRow(FIRST_DATA_ROW + NR - 1);
-    for (var lv = 1; lv <= LAST_COL; lv++) {
-      var lvc = lastVisV2.getCell(lv);
-      var lvb = lvc.border ? JSON.parse(JSON.stringify(lvc.border)) : {};
-      lvb.bottom = medBDRK;
-      lvc.border = lvb;
-    }
-    lastVisV2.commit();
-  }
 
-  // ── R23 (h=24): Total interventii ──
-  var ROW_TOTAL = 23;
+  // ── Footer rows positioned dynamically after data ──
+  var ROW_TOTAL = lastDataRow + 1;
   ws.mergeCells(ROW_TOTAL, 1, ROW_TOTAL, 6); // A23:F23
   ws.mergeCells(ROW_TOTAL, 7, ROW_TOTAL, LAST_COL); // G23:I23
   var r23 = ws.getRow(ROW_TOTAL); r23.height = 24;
@@ -1222,8 +1211,8 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r23.commit();
 
-  // ── R24 (h=3.75): Accent separator ──
-  var ROW_SEP2 = 24;
+  // ── Accent separator (dynamic position) ──
+  var ROW_SEP2 = ROW_TOTAL + 1;
   ws.mergeCells(ROW_SEP2, 1, ROW_SEP2, LAST_COL);
   var r24 = ws.getRow(ROW_SEP2); r24.height = 3.75;
   r24.getCell(1).fill = fillAccent;
@@ -1235,8 +1224,8 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r24.commit();
 
-  // ── R25 (h=25.5): Total de plata (same merge pattern as R23: A:F + G:LAST) ──
-  var ROW_PAY = 25;
+  // ── Total de plata (dynamic position, same merge pattern as ROW_TOTAL) ──
+  var ROW_PAY = ROW_SEP2 + 1;
   ws.mergeCells(ROW_PAY, 1, ROW_PAY, 6); // A25:F25
   ws.mergeCells(ROW_PAY, 7, ROW_PAY, LAST_COL); // G25:I25 (aligned with G23)
   var r25 = ws.getRow(ROW_PAY); r25.height = 25.5;
@@ -1267,8 +1256,8 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r25.commit();
 
-  // ── R26 (h=4.5): Spacer ──
-  var ROW_SPACER = 26;
+  // ── Spacer (dynamic position) ──
+  var ROW_SPACER = ROW_PAY + 1;
   ws.mergeCells(ROW_SPACER, 1, ROW_SPACER, LAST_COL);
   var r26 = ws.getRow(ROW_SPACER); r26.height = 4.5;
   r26.getCell(1).fill = fillLBG;
@@ -1278,8 +1267,8 @@ async function _buildV2(wb, client, sorted, prices) {
   }
   r26.commit();
 
-  // ── R27 (h=15.75): Footer ──
-  var ROW_FOOTER = 27;
+  // ── Footer (dynamic position) ──
+  var ROW_FOOTER = ROW_SPACER + 1;
   ws.mergeCells(ROW_FOOTER, 1, ROW_FOOTER, 5); // A27:E27
   ws.mergeCells(ROW_FOOTER, 6, ROW_FOOTER, LAST_COL); // F27:I27
   var r27 = ws.getRow(ROW_FOOTER); r27.height = 15.75;
@@ -1597,16 +1586,15 @@ async function _buildV1(wb, client, sorted, prices) {
   r9.getCell(11).border = { left: thin1E, right: medBdr, bottom: medBdr };
   r9.commit();
 
-  // ── R10-R19: Data rows (10 slots, alternating zebra) ──
+  // ── Data rows: only NR rows (no empty rows) ──
   var dataFont = { name: 'Arial', size: 9, color: { argb: NAVY } };
-  var lastDataRow = NR > 0 ? (FIRST_DATA_ROW + NR - 1) : FIRST_DATA_ROW;
+  var ACTUAL_ROWS = Math.max(NR, 1); // at least 1 row
+  var lastDataRow = FIRST_DATA_ROW + ACTUAL_ROWS - 1;
 
-  for (var dr = 0; dr < TEMPLATE_SLOTS; dr++) {
+  for (var dr = 0; dr < ACTUAL_ROWS; dr++) {
     var rowNum = FIRST_DATA_ROW + dr;
     var row = ws.getRow(rowNum);
     row.height = 18;
-    // Even rows (10,12,14,16,18): col A=FFE0EEF8, B-K=FFF0F6FB
-    // Odd rows (11,13,15,17,19): col A=white(theme:0), B-K=FFFFFFFF
     var isEven = (rowNum % 2 === 0);
     var fillA = isEven ? { type: 'pattern', pattern: 'solid', fgColor: { argb: EBLUE_A } } : fillWhiteTheme;
     var fillBK = isEven ? { type: 'pattern', pattern: 'solid', fgColor: { argb: EBLUE_BK } } : fillWhite;
@@ -1620,11 +1608,10 @@ async function _buildV1(wb, client, sorted, prices) {
       if (dc === 1) dCell.numFmt = 'dd.mm.yyyy';
       if (dc === 2) dCell.numFmt = '0';
       if (dc >= 3 && dc <= LAST_COL) dCell.numFmt = '#,##0.00';
-      // Borders with colors
       dCell.border = {
         top: rowNum === FIRST_DATA_ROW ? medBdr : thinA8,
         left: dc === 1 ? medBdr : thinA8,
-        bottom: rowNum === (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) ? medBdr : thinA8,
+        bottom: rowNum === lastDataRow ? medBdr : thinA8,
         right: dc === LAST_COL ? medBdr : thinA8
       };
     }
@@ -1642,27 +1629,13 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
-    } else {
-      // Hide empty rows
-      row.hidden = true;
     }
 
     row.commit();
   }
-  // Fix bottom border on last visible data row (must be medBdr to connect with R20)
-  if (NR > 0) {
-    var lastVisRow = ws.getRow(FIRST_DATA_ROW + NR - 1);
-    for (var lc = 1; lc <= LAST_COL; lc++) {
-      var lcell = lastVisRow.getCell(lc);
-      var lb = lcell.border ? JSON.parse(JSON.stringify(lcell.border)) : {};
-      lb.bottom = medBdr;
-      lcell.border = lb;
-    }
-    lastVisRow.commit();
-  }
 
-  // ── R20 (h=20.1): Cantitate totala (NO merge — A20 and B20 are separate cells) ──
-  var totalsRow = 20;
+  // ── Footer rows positioned dynamically after data ──
+  var totalsRow = lastDataRow + 1;
   var r20 = ws.getRow(totalsRow); r20.height = 20.1;
   var cA20 = r20.getCell(1);
   cA20.value = 'Cantitate totala';
@@ -1672,7 +1645,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cA20.border = { left: medBdr, right: thin0D, top: medBdr, bottom: thin0D };
   // B20: SUM formula (separate cell, NOT merged with A20)
   var cB20 = r20.getCell(2);
-  cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+  cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')' };
   cB20.font = { name: 'Arial', size: 9, bold: true, color: { theme: 0 } };
   cB20.fill = fillAccent;
   cB20.alignment = centerMiddle;
@@ -1681,16 +1654,16 @@ async function _buildV1(wb, client, sorted, prices) {
   // C-J: SUM formulas
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cell = r20.getCell(cc.col);
-    cell.value = { formula: 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+    cell.value = { formula: 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + lastDataRow + ')' };
     cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
     cell.fill = fillAccent;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
     cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
-  // K20: SUM of K data rows (total plata sum)
+  // K20: empty (K data rows have no values)
   var cK20 = r20.getCell(11);
-  cK20.value = { formula: 'SUM(K' + FIRST_DATA_ROW + ':K' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+  cK20.value = '';
   cK20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
   cK20.fill = fillAccent;
   cK20.alignment = centerMiddle;
@@ -1698,8 +1671,8 @@ async function _buildV1(wb, client, sorted, prices) {
   cK20.border = { left: thinA8, right: medBdr, top: thinA8, bottom: thinA8 };
   r20.commit();
 
-  // ── R21 (h=17.1): Pret unitar (RON) (NO merge — A21 standalone) ──
-  var pretRow = 21;
+  // ── Pret unitar row (dynamic position) ──
+  var pretRow = totalsRow + 1;
   var r21 = ws.getRow(pretRow); r21.height = 17.1;
   var cA21 = r21.getCell(1);
   cA21.value = 'Pret unitar';
@@ -1740,8 +1713,8 @@ async function _buildV1(wb, client, sorted, prices) {
   cK21.border = { top: thinA8, left: thinA8, bottom: thinA8, right: medBdr };
   r21.commit();
 
-  // ── R22 (h=21.95): Total general (NO merge — A22 standalone) ──
-  var genRow = 22;
+  // ── Total general row (dynamic position) ──
+  var genRow = pretRow + 1;
   var r22 = ws.getRow(genRow); r22.height = 21.95;
   var cA22 = r22.getCell(1);
   cA22.value = 'TOTAL GENERAL';
@@ -1764,9 +1737,9 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { left: thin1E, right: thin1E, top: thin1E, bottom: medBdr };
   });
-  // K22: SUM of K data rows (total plata)
+  // K22: empty (total plata not used on K column)
   var cK22 = r22.getCell(11);
-  cK22.value = { formula: 'SUM(K' + FIRST_DATA_ROW + ':K' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+  cK22.value = '';
   cK22.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
@@ -1774,10 +1747,11 @@ async function _buildV1(wb, client, sorted, prices) {
   cK22.border = { left: thin0D, right: medBdr, top: thin0D, bottom: medBdr };
   r22.commit();
 
-  // ── R23 (h=20.25): Footer ──
-  ws.mergeCells('A23:G23');
-  ws.mergeCells('H23:K23');
-  var r23 = ws.getRow(23); r23.height = 20.25;
+  // ── Footer row (dynamic position) ──
+  var footerRow = genRow + 1;
+  ws.mergeCells('A' + footerRow + ':G' + footerRow);
+  ws.mergeCells('H' + footerRow + ':K' + footerRow);
+  var r23 = ws.getRow(footerRow); r23.height = 20.25;
   var cA23 = r23.getCell(1);
   cA23.value = 'Toate preturile sunt exprimate in RON';
   cA23.font = { name: 'Arial', size: 9, italic: true, color: { theme: 1 } };
