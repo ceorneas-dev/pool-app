@@ -1043,35 +1043,16 @@ async function _fillV2Template(wb, client, sorted, prices) {
   var footerTextRow = 33; // R33: footer text
   var lastContentRow = 33;
 
-  _setCellValue(ws, totalRow, 1, 'Total interventii efectuate');
+  // R29: Keep template text "Total intervenții efectuate", only update formula
+  // Template has formula in G29 (col 7) within merge G29:I29 — update range only
   _setCellFormula(ws, totalRow, 7, 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')');
-  // Style: centered, white, bold (matches template R29 C7)
-  var countCell = ws.getRow(totalRow).getCell(7);
-  countCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  countCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
-  ws.getRow(totalRow).commit();
 
-  _setCellValue(ws, payRow, 1, 'TOTAL DE PLATA');
-  // Align pay value with count value: both in col 7 (G), merge G:LAST_COL
-  // Remove old merges on R31 and re-create to match R29 pattern
-  try { ws.unMergeCells(payRow, 1, payRow, 5); } catch(e) {}
-  try { ws.unMergeCells(payRow, 6, payRow, LAST_COL); } catch(e) {}
-  ws.mergeCells(payRow, 1, payRow, 6);  // A31:F31 text (like R29 A29:F29)
-  ws.mergeCells(payRow, 7, payRow, LAST_COL);  // G31:LAST_COL value (like R29)
-  _setCellFormula(ws, payRow, 7, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
-  // Style: centered, white, bold (matches R29 count cell)
-  var payCell = ws.getRow(payRow).getCell(7);
-  payCell.alignment = { horizontal: 'center', vertical: 'middle' };
-  payCell.font = { bold: true, size: 11, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
-  payCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF3B6FA0' } };
-  // Copy border from R29 G29 to match exactly
-  var countBorder = ws.getRow(totalRow).getCell(7).border;
-  if (countBorder) payCell.border = JSON.parse(JSON.stringify(countBorder));
-  ws.getRow(payRow).commit();
+  // R31: Keep template text "TOTAL DE PLATĂ" and original merge layout
+  // Template: A31:E31 (text) + F31:I31 (value) — DON'T change merge ranges
+  // Formula goes in F31 (col 6) matching template layout
+  _setCellFormula(ws, payRow, 6, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
 
-  // Footer text
-  _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
-  _setCellValue(ws, footerTextRow, 6, 'www.aquatis.ro  |  0721.137.178');
+  // R33: Keep template footer text as-is (don't overwrite)
 
   // ── 7. Outer frame: left:medium on A, right:medium on LAST_COL ──
   var medB = { style: 'medium' };
@@ -1088,8 +1069,8 @@ async function _fillV2Template(wb, client, sorted, prices) {
     oRow2.commit();
   }
 
-  // ── 8. Strip diacritics (only data + footer rows, preserve header) ──
-  _stripAllDiacritics(ws, FIRST_DATA_ROW, lastContentRow, LAST_COL);
+  // ── 8. Strip diacritics (ONLY data rows, preserve header + summary + footer) ──
+  if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
 
   return wb;
 }
@@ -1235,16 +1216,14 @@ async function _fillV1Template(wb, client, sorted, prices) {
   var genRow = 22;
   var footerTextRow = 23;
 
-  // Totals row (R20): SUM formulas
-  _setCellValue(ws, totalsRow, 1, 'Cantitate totala');
-  _setCellFormula(ws, totalsRow, 2, 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')');
+  // Totals row (R20): SUM formulas — keep template text, only update formulas for C-J
+  // Template already has "Cantitate totală" in A20 and B20 is empty — don't overwrite
   V1_CHEM_COLUMNS.forEach(function(cc) {
     _setCellFormula(ws, totalsRow, cc.col, 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + lastDataRow + ')');
   });
 
-  // Price row (R21)
-  _setCellValue(ws, pretRow, 1, 'Pret unitar (RON)');
-  _setCellValue(ws, pretRow, 2, Math.round(pretIntv));
+  // Price row (R21) — keep template text "Preț unitar (RON)", only update price values for C-J
+  // Template already has correct label in A21 and B21 is empty — don't overwrite
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var price = 0;
     var priceKeys = V1_COL_PRICE_KEYS[cc.col] || [];
@@ -1252,43 +1231,27 @@ async function _fillV1Template(wb, client, sorted, prices) {
       if (prices[priceKeys[pk]] && prices[priceKeys[pk]] > 0) { price = prices[priceKeys[pk]]; break; }
     }
     if (!price) price = V1_DEFAULT_PRICES[cc.col] || 0;
-    if (price > 0) _setCellValue(ws, pretRow, cc.col, Math.round(price));
+    // Keep decimal precision (e.g. 56.4 stays 56.4, not rounded to 56)
+    if (price > 0) _setCellValue(ws, pretRow, cc.col, price);
   });
 
-  // Total general row (R22)
-  _setCellValue(ws, genRow, 1, 'TOTAL GENERAL (RON)');
-  _setCellFormula(ws, genRow, 2, 'B' + totalsRow + '*B' + pretRow);
+  // Total general row (R22) — keep template text, only update formulas for C-J + K
+  // Template already has "TOTAL GENERAL (RON)" in A22 and B22 is empty — don't overwrite
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cl = _excelCol(cc.col);
     _setCellFormula(ws, genRow, cc.col, cl + totalsRow + '*' + cl + pretRow);
   });
-  _setCellFormula(ws, genRow, 11, 'SUM(B' + genRow + ':J' + genRow + ')');
+  // K22: SUM of C-J only (matches template, B column is not included)
+  _setCellFormula(ws, genRow, 11, 'SUM(C' + genRow + ':J' + genRow + ')');
 
-  // Footer text (R23)
-  _setCellValue(ws, footerTextRow, 1, 'Document generat de S.C. Aquatis Engineering S.R.L.');
-  _setCellValue(ws, footerTextRow, 8, 'www.aquatis.ro  |  0721.137.178');
+  // Footer text (R23) — keep template original text, don't overwrite
+  // Template has "Toate prețurile sunt exprimate în RON" (A23:G23)
+  // and "S.C. Aquatis Engineering S.R.L." (H23:K23)
 
-  // ── 7. Style fixes for B column in footer rows ──
-  // R20 (Cantitate totala): B centered, white, bold
-  var cellB20 = ws.getRow(totalsRow).getCell(2);
-  cellB20.alignment = { horizontal: 'center', vertical: 'middle' };
-  cellB20.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
-  ws.getRow(totalsRow).commit();
+  // ── 7. (removed — B column footer styles not needed, template already has them) ──
 
-  // R21 (Pret unitar): B centered
-  var cellB21 = ws.getRow(pretRow).getCell(2);
-  cellB21.alignment = { horizontal: 'center', vertical: 'middle' };
-  cellB21.font = { italic: true, size: 8, color: { argb: 'FF0D2D5A' }, name: 'Arial' };
-  ws.getRow(pretRow).commit();
-
-  // R22 (Total general): B centered, white, bold
-  var cellB22 = ws.getRow(genRow).getCell(2);
-  cellB22.alignment = { horizontal: 'center', vertical: 'middle' };
-  cellB22.font = { bold: true, size: 9, color: { argb: 'FFFFFFFF' }, name: 'Arial' };
-  ws.getRow(genRow).commit();
-
-  // ── 8. Strip diacritics (only data + footer rows, preserve header) ──
-  _stripAllDiacritics(ws, FIRST_DATA_ROW, footerTextRow, LAST_COL);
+  // ── 8. Strip diacritics (ONLY data rows, preserve header + summary + footer) ──
+  if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
 
   return wb;
 }
