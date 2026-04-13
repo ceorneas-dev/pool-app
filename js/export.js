@@ -1656,7 +1656,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cA20.fill = fillAccent;
   cA20.alignment = centerMiddle;
-  cA20.border = { left: medBdr, right: thin0D, top: medBdr, bottom: thin0D };
+  cA20.border = { left: medBdr, right: thinA8, top: thinA8, bottom: thinA8 };
   // B20: SUM formula (separate cell, NOT merged with A20)
   var cB20 = r20.getCell(2);
   cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + lastDataRow + ')' };
