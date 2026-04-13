@@ -1585,7 +1585,7 @@ function _clearRow(ws, rowNum, numCols) {
 }
 
 async function _fillV2Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V2] v162 fill-in-place, targeted merge extension');
+  console.log('[EXPORT V2] v172 fill-in-place, targeted merge extension');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V2 template: sheet not found'); }
 
@@ -1811,12 +1811,12 @@ async function _fillV2Template(wb, client, sorted, prices) {
   ws.getRow(totalRow).commit();
 
   _setCellValue(ws, payRow, 1, 'TOTAL DE PLATA');
-  // Align pay value with count value: both in col 7 (G), merge G:I
+  // Align pay value with count value: both in col 7 (G), merge G:LAST_COL
   // Remove old merges on R31 and re-create to match R29 pattern
   try { ws.unMergeCells(payRow, 1, payRow, 5); } catch(e) {}
-  try { ws.unMergeCells(payRow, 6, payRow, 9); } catch(e) {}
+  try { ws.unMergeCells(payRow, 6, payRow, LAST_COL); } catch(e) {}
   ws.mergeCells(payRow, 1, payRow, 6);  // A31:F31 text (like R29 A29:F29)
-  ws.mergeCells(payRow, 7, payRow, 9);  // G31:I31 value (like R29 G29:I29)
+  ws.mergeCells(payRow, 7, payRow, LAST_COL);  // G31:LAST_COL value (like R29)
   _setCellFormula(ws, payRow, 7, 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)');
   // Style: centered, white, bold (matches R29 count cell)
   var payCell = ws.getRow(payRow).getCell(7);
@@ -1899,7 +1899,7 @@ var V1_COL_PRICE_KEYS = {
 };
 
 async function _fillV1Template(wb, client, sorted, prices) {
-  console.log('[EXPORT V1] v162 fill-in-place, no merge manipulation');
+  console.log('[EXPORT V1] v172 fill-in-place, no merge manipulation');
   var ws = wb.getWorksheet(1);
   if (!ws) { throw new Error('V1 template: sheet not found'); }
 
@@ -2250,21 +2250,53 @@ function _copyWorksheet(sourceWs, targetWb, sheetName) {
     });
   }
 
-  // 5. Re-apply ALL borders via style.border (cell.border doesn't persist for
-  //    merged master cells — ExcelJS clears it during merge serialization).
+  // 5. Re-apply ALL borders+fill+font via full style copy (ExcelJS clears
+  //    slave cell styles during mergeCells). We re-copy ALL styles, not just borders.
   sourceWs.eachRow({ includeEmpty: true }, function(row, rn) {
     var tRow = targetWs.getRow(rn);
     row.eachCell({ includeEmpty: true }, function(cell, cn) {
+      var tCell = tRow.getCell(cn);
       if (cell.border && Object.keys(cell.border).length > 0) {
-        var tCell = tRow.getCell(cn);
-        var st = tCell.style ? JSON.parse(JSON.stringify(tCell.style)) : {};
-        st.border = JSON.parse(JSON.stringify(cell.border));
-        tCell.style = st;
+        tCell.border = JSON.parse(JSON.stringify(cell.border));
+      }
+      if (cell.fill && cell.fill.type) {
+        tCell.fill = JSON.parse(JSON.stringify(cell.fill));
+      }
+      if (cell.font) {
+        tCell.font = JSON.parse(JSON.stringify(cell.font));
+      }
+      if (cell.alignment) {
+        tCell.alignment = JSON.parse(JSON.stringify(cell.alignment));
       }
     });
+    tRow.commit();
   });
 
-  // 5. Page setup
+  // 6. Outer frame fix: ExcelJS mergeCells() can clear master cell borders.
+  //    Re-apply left:medium on col 1 and right:medium on last col by reading from source.
+  var srcLastCol = sourceWs.columnCount || 11;
+  sourceWs.eachRow({ includeEmpty: true }, function(row, rn) {
+    var tRow = targetWs.getRow(rn);
+    // Left border from source col 1
+    var srcA = row.getCell(1);
+    if (srcA.border && srcA.border.left && srcA.border.left.style === 'medium') {
+      var tA = tRow.getCell(1);
+      var bA = tA.border ? JSON.parse(JSON.stringify(tA.border)) : {};
+      bA.left = { style: 'medium' };
+      tA.border = bA;
+    }
+    // Right border from source last col
+    var srcL = row.getCell(srcLastCol);
+    if (srcL.border && srcL.border.right && srcL.border.right.style === 'medium') {
+      var tL = tRow.getCell(srcLastCol);
+      var bL = tL.border ? JSON.parse(JSON.stringify(tL.border)) : {};
+      bL.right = { style: 'medium' };
+      tL.border = bL;
+    }
+    tRow.commit();
+  });
+
+  // 7. Page setup
   if (sourceWs.pageSetup) {
     try { targetWs.pageSetup = JSON.parse(JSON.stringify(sourceWs.pageSetup)); } catch(e) {}
   }
