@@ -834,29 +834,33 @@ function _cellRef(col, row) {
 // ══════════════════════════════════════════════════════════════════
 // BUILD FROM SCRATCH — V2 (Servicii Abonament)
 // 27 rows, 9 cols (A-I), 12 data slots (R11-R22)
+// Exact match to "Template_V2 final.xlsx"
 // ══════════════════════════════════════════════════════════════════
 async function _buildV2(wb, client, sorted, prices) {
 
-  // ── Colors ──
+  // ── Colors (exact from template) ──
   var BLUE = 'FF3B6FA0', BDRK = 'FF1A3A5C', LTXT = 'FFD0DEF0', LBG = 'FFE8F1F8';
   var DTXT = 'FF1A1A2E', MTXT = 'FF4A4A5A', GBDR = 'FFD9D9D9', CREAM = 'FFFAF8F3';
-  var GREEN = 'FF1A6B2A', GOLD_BDR = 'FF9A7020', GOLD_FILL = 'FFF5E6C8', WHITE = 'FFFFFFFF';
+  var GREEN = 'FF1A6B2A', GOLD_BDR = 'FF9A7020', WHITE = 'FFFFFFFF';
+  var BG_BLUE = 'FF4A7A99', BG_CREAM = 'FFFAF8F3';
+  var BDR_LIGHT = 'FFA8C8E8', BDR_HDR = 'FF5A8AB0', BDR_INNER = 'FF1E5FA8';
+  var DOT_BDR = 'FF4A7A99';
 
   // ── Constants ──
   var FIRST_DATA_ROW = 11, DATA_SLOTS = 12, ORIG_LAST_COL = 9;
   var FIRST_OP_COL = 2, LAST_OP_COL_DEFAULT = 9, HEADER_SUB_ROW = 10;
   var NR = Math.min(sorted.length, DATA_SLOTS);
 
-  // ── Default V2 operation headers (B-I in R10) ──
+  // ── Default V2 operation headers (B-I in R10, exact from template) ──
   var DEFAULT_OPS = [
-    'Verificare\nparametri\napa',
-    'Curatare\npereti si\nvana',
-    'Aspirare\nfund\npiscina',
-    'Curatare\nlinie apa\nsi skimmer',
-    'Tratament\nchimic\napa',
-    'Spalare\nfiltru si\npompa',
-    'Verificare\nechipamente\ntehnice',
-    'Curatare\nzona\npiscina'
+    'Aspirare\npiscina',
+    'Curatare\nlinie apa',
+    'Curatare\nskimmere',
+    'Spalare\nfiltru',
+    'Curatare\nprefiltru',
+    'Periere\npiscina',
+    'Analiza\napei',
+    'Tratament\nchimic'
   ];
 
   // ── Build templateHeaders from DEFAULT_OPS ──
@@ -908,84 +912,86 @@ async function _buildV2(wb, client, sorted, prices) {
 
   // ── 2. Create worksheet ──
   var ws = wb.addWorksheet('Servicii Abonament', {
-    views: [{ state: 'frozen', ySplit: 10, zoomScale: 100 }],
-    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    views: [{ state: 'frozen', ySplit: 9, zoomScale: 100, showGridLines: false }],
+    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1 }
   });
 
-  // Column widths
-  var colWidths = [{ width: 14 }];
-  for (var cw = 2; cw <= LAST_COL; cw++) colWidths.push({ width: 12 });
+  // Column widths (exact from template: A=24.43, B-I=13)
+  var colWidths = [{ width: 24.43 }];
+  for (var cw = 2; cw <= LAST_COL; cw++) colWidths.push({ width: 13 });
   ws.columns = colWidths;
 
-  // ── Reusable styles ──
-  var thinBdr = { style: 'thin', color: { argb: GBDR } };
-  var medBdr  = { style: 'medium', color: { argb: BLUE } };
-  var goldThinBdr = { style: 'thin', color: { argb: GOLD_BDR } };
-  var allThinBorders = { top: thinBdr, left: thinBdr, bottom: thinBdr, right: thinBdr };
-  var fillLBG  = { type: 'pattern', pattern: 'solid', fgColor: { argb: LBG } };
-  var fillWhite = { type: 'pattern', pattern: 'solid', fgColor: { argb: WHITE } };
-  var fillGold = { type: 'pattern', pattern: 'solid', fgColor: { argb: GOLD_FILL } };
-  var fillBlue = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE } };
-  var fillCream = { type: 'pattern', pattern: 'solid', fgColor: { argb: CREAM } };
+  // ── Reusable styles (exact from template) ──
+  var thinD9 = { style: 'thin', color: { argb: GBDR } };
+  var thinA8 = { style: 'thin', color: { argb: BDR_LIGHT } };
+  var thin0D = { style: 'thin', color: { argb: 'FF0D2D5A' } };
+  var thin5A = { style: 'thin', color: { argb: BDR_HDR } };
+  var thin1E = { style: 'thin', color: { argb: BDR_INNER } };
+  var thin1A = { style: 'thin', color: { argb: BDRK } };
+  var thinGold = { style: 'thin', color: { argb: GOLD_BDR } };
+  var medBDRK = { style: 'medium', color: { argb: BDRK } };
+  var medIdx = { style: 'medium' }; // indexed:64 (auto)
+  var dotBdr = { style: 'dotted', color: { argb: DOT_BDR } };
+  var fillBlue = { type: 'pattern', pattern: 'solid', fgColor: { argb: BLUE }, bgColor: { argb: BG_BLUE } };
+  var fillLBG  = { type: 'pattern', pattern: 'solid', fgColor: { argb: LBG }, bgColor: { argb: BG_CREAM } };
+  var fillWhite = { type: 'pattern', pattern: 'solid', fgColor: { argb: WHITE }, bgColor: { argb: BG_CREAM } };
+  var fillAccent = { type: 'pattern', pattern: 'solid', fgColor: { theme: 5, tint: 0.3999755851924192 }, bgColor: { indexed: 64 } };
+  var fillCream = { type: 'pattern', pattern: 'solid', fgColor: { argb: CREAM }, bgColor: { argb: WHITE } };
+  var fillCreamW = { type: 'pattern', pattern: 'solid', fgColor: { argb: WHITE }, bgColor: { argb: BG_CREAM } };
   var centerMiddle = { horizontal: 'center', vertical: 'middle' };
   var centerMiddleWrap = { horizontal: 'center', vertical: 'middle', wrapText: true };
-
-  // Helper: apply thin borders + outer frame border to all cells in a row
-  function _applyRowBorders(rowNum, firstCol, lastCol) {
-    var row = ws.getRow(rowNum);
-    for (var c = firstCol; c <= lastCol; c++) {
-      var cell = row.getCell(c);
-      var b = JSON.parse(JSON.stringify(allThinBorders));
-      if (rowNum === 1) b.top = medBdr;
-      if (rowNum === 27) b.bottom = medBdr;
-      if (c === 1) b.left = medBdr;
-      if (c === lastCol) b.right = medBdr;
-      cell.border = b;
-    }
-  }
+  var leftMiddle1 = { horizontal: 'left', vertical: 'middle', indent: 1 };
 
   // ── R1 (h=27.75): Company name ──
   ws.mergeCells(1, 1, 1, LAST_COL);
   var r1 = ws.getRow(1); r1.height = 27.75;
   var c1 = r1.getCell(1);
   c1.value = 'AQUATIS ENGINEERING';
-  c1.font = { name: 'Arial', size: 16, bold: true, color: { argb: BDRK } };
-  c1.fill = fillLBG;
-  c1.alignment = centerMiddle;
-  _applyRowBorders(1, 1, LAST_COL);
+  c1.font = { name: 'Arial', size: 18, bold: true, color: { argb: WHITE } };
+  c1.fill = fillBlue;
+  c1.alignment = leftMiddle1;
+  // Borders R1: top/left/right = medium BDRK
+  for (var c1c = 1; c1c <= LAST_COL; c1c++) {
+    var c1cell = r1.getCell(c1c);
+    c1cell.border = { top: medBDRK, left: c1c === 1 ? medBDRK : undefined, right: c1c === LAST_COL ? medBDRK : undefined };
+  }
   r1.commit();
 
-  // ── R2 (h=18): CUI ──
+  // ── R2 (h=18): Company details ──
   ws.mergeCells(2, 1, 2, LAST_COL);
   var r2 = ws.getRow(2); r2.height = 18;
   var c2 = r2.getCell(1);
-  c2.value = 'CUI: RO12345678 | J40/1234/2020';
-  c2.font = { name: 'Arial', size: 9, color: { argb: MTXT } };
-  c2.fill = fillLBG;
-  c2.alignment = centerMiddle;
-  _applyRowBorders(2, 1, LAST_COL);
+  c2.value = 'CUI RO22479681  |  J40/18144/2007  |  Str. Eufrosina Popescu 50, Sector 5, Bucuresti  |  RO77RNCB0074092331280001';
+  c2.font = { name: 'Arial', size: 8, color: { argb: LTXT } };
+  c2.fill = fillBlue;
+  c2.alignment = leftMiddle1;
+  for (var c2c = 1; c2c <= LAST_COL; c2c++) {
+    r2.getCell(c2c).border = { left: c2c === 1 ? medBDRK : undefined, right: c2c === LAST_COL ? medBDRK : undefined };
+  }
   r2.commit();
 
   // ── R3 (h=15.75): Contact ──
   ws.mergeCells(3, 1, 3, LAST_COL);
   var r3 = ws.getRow(3); r3.height = 15.75;
   var c3 = r3.getCell(1);
-  c3.value = 'Tel: 0700 000 000 | Email: office@aquatis.ro';
-  c3.font = { name: 'Arial', size: 9, color: { argb: MTXT } };
-  c3.fill = fillLBG;
-  c3.alignment = centerMiddle;
-  _applyRowBorders(3, 1, LAST_COL);
+  c3.value = 'Tel: 0721.137.178  |  office@aquatis.ro  |  www.aquatis.ro';
+  c3.font = { name: 'Arial', size: 8, color: { argb: LTXT } };
+  c3.fill = fillBlue;
+  c3.alignment = leftMiddle1;
+  for (var c3c = 1; c3c <= LAST_COL; c3c++) {
+    r3.getCell(c3c).border = { left: c3c === 1 ? medBDRK : undefined, right: c3c === LAST_COL ? medBDRK : undefined };
+  }
   r3.commit();
 
-  // ── R4 (h=3.75): Gold separator ──
+  // ── R4 (h=3.75): Accent separator (theme:5 tint:0.4) ──
   ws.mergeCells(4, 1, 4, LAST_COL);
   var r4 = ws.getRow(4); r4.height = 3.75;
-  var c4 = r4.getCell(1);
-  c4.value = '';
-  c4.fill = fillGold;
+  r4.getCell(1).fill = fillAccent;
+  r4.getCell(1).numFmt = '#,##0.00';
   for (var c4c = 1; c4c <= LAST_COL; c4c++) {
-    var c4cell = ws.getRow(4).getCell(c4c);
-    c4cell.border = { top: goldThinBdr, bottom: goldThinBdr, left: c4c === 1 ? medBdr : thinBdr, right: c4c === LAST_COL ? medBdr : thinBdr };
+    var c4cell = r4.getCell(c4c);
+    c4cell.fill = fillAccent;
+    c4cell.border = { top: medIdx, left: c4c === 1 ? thin0D : undefined, bottom: thin0D, right: c4c === LAST_COL ? medBDRK : undefined };
   }
   r4.commit();
 
@@ -993,11 +999,13 @@ async function _buildV2(wb, client, sorted, prices) {
   ws.mergeCells(5, 1, 5, LAST_COL);
   var r5 = ws.getRow(5); r5.height = 21.75;
   var c5 = r5.getCell(1);
-  c5.value = 'FISA SERVICII ABONAMENT INTRETINERE PISCINA';
-  c5.font = { name: 'Arial', size: 11, bold: true, color: { argb: BDRK } };
-  c5.fill = fillWhite;
+  c5.value = 'RAPORT SERVICII -- ABONAMENT INTRETINERE PISCINA';
+  c5.font = { name: 'Arial', size: 12, bold: true, color: { argb: WHITE } };
+  c5.fill = fillBlue;
   c5.alignment = centerMiddle;
-  _applyRowBorders(5, 1, LAST_COL);
+  for (var c5c = 1; c5c <= LAST_COL; c5c++) {
+    r5.getCell(c5c).border = { left: c5c === 1 ? medBDRK : undefined, right: (c5c === LAST_COL ? medBDRK : thinA8) };
+  }
   r5.commit();
 
   // ── R6 (h=15.75): Labels row ──
@@ -1006,32 +1014,24 @@ async function _buildV2(wb, client, sorted, prices) {
   ws.mergeCells(6, 6, 6, 7); // F6:G6
   ws.mergeCells(6, 8, 6, Math.min(9, LAST_COL)); // H6:I6
   var r6 = ws.getRow(6); r6.height = 15.75;
-  var labelFont = { name: 'Arial', size: 9, bold: true, color: { argb: BLUE } };
+  var labelFont6 = { name: 'Arial', size: 9, bold: true, color: { argb: DTXT } };
   var labels6 = [
-    { col: 1, text: 'Client:' },
-    { col: 3, text: 'Perioada:' },
-    { col: 6, text: 'Nr. Document:' },
-    { col: 8, text: 'Data:' }
+    { col: 1, text: 'Client' },
+    { col: 3, text: 'Perioada raportare' },
+    { col: 6, text: 'Nr. Document' },
+    { col: 8, text: 'Data Emiterii' }
   ];
   labels6.forEach(function(l) {
     var cell = r6.getCell(l.col);
     cell.value = l.text;
-    cell.font = JSON.parse(JSON.stringify(labelFont));
+    cell.font = JSON.parse(JSON.stringify(labelFont6));
     cell.fill = fillLBG;
-    cell.alignment = centerMiddle;
+    cell.alignment = leftMiddle1;
   });
-  // Fill remaining cells in R6 with style
   for (var c6 = 1; c6 <= LAST_COL; c6++) {
     var cell6 = r6.getCell(c6);
     if (!cell6.fill || !cell6.fill.fgColor) cell6.fill = fillLBG;
-  }
-  _applyRowBorders(6, 1, LAST_COL);
-  // Extra cols beyond I for labels row
-  if (LAST_COL > 9) {
-    for (var ec6 = 10; ec6 <= LAST_COL; ec6++) {
-      var eCell6 = r6.getCell(ec6);
-      eCell6.fill = fillLBG;
-    }
+    cell6.border = { left: c6 === 1 ? medBDRK : thinA8, right: c6 === LAST_COL ? medBDRK : thinA8, bottom: dotBdr };
   }
   r6.commit();
 
@@ -1041,7 +1041,7 @@ async function _buildV2(wb, client, sorted, prices) {
   ws.mergeCells(7, 6, 7, 7); // F7:G7
   ws.mergeCells(7, 8, 7, Math.min(9, LAST_COL)); // H7:I7
   var r7 = ws.getRow(7); r7.height = 16.5;
-  var valFont = { name: 'Arial', size: 9, color: { argb: DTXT } };
+  var valFont7 = { name: 'Arial', size: 9, color: { argb: MTXT } };
   var vals7 = [
     { col: 1, text: client.name || '' },
     { col: 3, text: period },
@@ -1051,25 +1051,26 @@ async function _buildV2(wb, client, sorted, prices) {
   vals7.forEach(function(v) {
     var cell = r7.getCell(v.col);
     cell.value = v.text;
-    cell.font = JSON.parse(JSON.stringify(valFont));
+    cell.font = JSON.parse(JSON.stringify(valFont7));
     cell.fill = fillWhite;
-    cell.alignment = centerMiddle;
+    cell.alignment = leftMiddle1;
   });
   for (var c7 = 1; c7 <= LAST_COL; c7++) {
     var cell7 = r7.getCell(c7);
     if (!cell7.fill || !cell7.fill.fgColor) cell7.fill = fillWhite;
+    cell7.border = { top: thinD9, left: c7 === 1 ? medBDRK : thinD9, bottom: thinD9, right: c7 === LAST_COL ? medBDRK : thinD9 };
   }
-  _applyRowBorders(7, 1, LAST_COL);
   r7.commit();
 
-  // ── R8 (h=3.75): Gold separator ──
+  // ── R8 (h=3.95): Accent separator (theme:5 tint:0.4) ──
   ws.mergeCells(8, 1, 8, LAST_COL);
-  var r8 = ws.getRow(8); r8.height = 3.75;
-  var c8 = r8.getCell(1);
-  c8.value = '';
-  c8.fill = fillGold;
+  var r8 = ws.getRow(8); r8.height = 3.95;
+  r8.getCell(1).fill = fillAccent;
+  r8.getCell(1).numFmt = '#,##0.00';
   for (var c8c = 1; c8c <= LAST_COL; c8c++) {
-    ws.getRow(8).getCell(c8c).border = { top: goldThinBdr, bottom: goldThinBdr, left: c8c === 1 ? medBdr : thinBdr, right: c8c === LAST_COL ? medBdr : thinBdr };
+    var c8cell = r8.getCell(c8c);
+    c8cell.fill = fillAccent;
+    c8cell.border = { left: c8c === 1 ? thin0D : undefined, right: c8c === LAST_COL ? medBDRK : undefined };
   }
   r8.commit();
 
@@ -1077,40 +1078,43 @@ async function _buildV2(wb, client, sorted, prices) {
   ws.mergeCells(9, 1, 10, 1); // A9:A10
   ws.mergeCells(9, 2, 9, LAST_COL); // B9:I9 (or extended)
   var r9 = ws.getRow(9); r9.height = 21.75;
-  var hdrWhiteFont = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
   var cA9 = r9.getCell(1);
-  cA9.value = 'Data\nInterventie';
-  cA9.font = JSON.parse(JSON.stringify(hdrWhiteFont));
+  cA9.value = 'Data\ninterventie';
+  cA9.font = { name: 'Arial', size: 8, bold: true, color: { argb: WHITE } };
   cA9.fill = fillBlue;
   cA9.alignment = centerMiddleWrap;
+  cA9.border = { top: thin5A, left: medBDRK };
   var cB9 = r9.getCell(2);
-  cB9.value = 'Operatiuni efectuate';
-  cB9.font = JSON.parse(JSON.stringify(hdrWhiteFont));
+  cB9.value = 'SERVICII INCLUSE IN ABONAMENT';
+  cB9.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   cB9.fill = fillBlue;
-  cB9.alignment = centerMiddleWrap;
-  _applyRowBorders(9, 1, LAST_COL);
-  // Override fill for all cells in R9
+  cB9.alignment = centerMiddle;
+  // Fill all R9 cells with blue
   for (var c9 = 1; c9 <= LAST_COL; c9++) {
-    r9.getCell(c9).fill = fillBlue;
+    var c9cell = r9.getCell(c9);
+    c9cell.fill = fillBlue;
+    c9cell.border = { top: thin5A, left: thin5A, bottom: thin5A, right: c9 === LAST_COL ? thin1A : thin5A };
   }
+  r9.getCell(1).border = { top: thin5A, left: medBDRK };
   r9.commit();
 
   // ── R10 (h=45.75): Sub-headers ──
   var r10 = ws.getRow(10); r10.height = 45.75;
   var subFont = { name: 'Arial', size: 7, bold: true, color: { argb: WHITE } };
-  // A10 is merged with A9
+  // A10 is merged with A9 — fill blue, border
   var cA10 = r10.getCell(1);
   cA10.fill = fillBlue;
   cA10.alignment = centerMiddleWrap;
+  cA10.border = { bottom: thinA8, left: medBDRK };
   // Write default ops in B10-I10
   for (var oi2 = 0; oi2 < DEFAULT_OPS.length; oi2++) {
     var opCol = FIRST_OP_COL + oi2;
     var opCell = r10.getCell(opCol);
     opCell.value = DEFAULT_OPS[oi2];
     opCell.font = JSON.parse(JSON.stringify(subFont));
-    opCell.fill = fillGold;
+    opCell.fill = fillAccent;
     opCell.alignment = centerMiddleWrap;
-    opCell.border = { top: goldThinBdr, bottom: goldThinBdr, left: goldThinBdr, right: goldThinBdr };
+    opCell.border = { top: thinGold, bottom: thinGold, left: thinGold, right: opCol === LAST_OP_COL_DEFAULT ? medBDRK : thinGold };
   }
   // Write extra ops headers beyond I
   for (var exi = 0; exi < extraOps.length; exi++) {
@@ -1118,13 +1122,10 @@ async function _buildV2(wb, client, sorted, prices) {
     var exCell = r10.getCell(exCol);
     exCell.value = extraOps[exi].replace(/ /g, '\n');
     exCell.font = JSON.parse(JSON.stringify(subFont));
-    exCell.fill = fillGold;
+    exCell.fill = fillAccent;
     exCell.alignment = centerMiddleWrap;
-    exCell.border = { top: goldThinBdr, bottom: goldThinBdr, left: goldThinBdr, right: goldThinBdr };
+    exCell.border = { top: thinGold, bottom: thinGold, left: thinGold, right: exCol === LAST_COL ? medBDRK : thinGold };
   }
-  _applyRowBorders(10, 1, LAST_COL);
-  // Ensure A10 has blue fill (part of A9:A10 merge)
-  cA10.fill = fillBlue;
   r10.commit();
 
   // ── R11-R22: Data rows (12 slots) ──
@@ -1136,8 +1137,8 @@ async function _buildV2(wb, client, sorted, prices) {
     var rowNum = FIRST_DATA_ROW + dr;
     var row = ws.getRow(rowNum);
     row.height = 19.5;
-    // Alternating fill: odd (11,13,15...)=CREAM, even (12,14,16...)=WHITE
-    var rowFill = (rowNum % 2 === 1) ? fillCream : fillWhite;
+    // Alternating fill: odd rows (11,13,15...)=CREAM, even (12,14,16...)=WHITE
+    var rowFill = (rowNum % 2 === 1) ? fillCream : fillCreamW;
 
     for (var dc = 1; dc <= LAST_COL; dc++) {
       var dCell = row.getCell(dc);
@@ -1145,6 +1146,7 @@ async function _buildV2(wb, client, sorted, prices) {
       dCell.fill = rowFill;
       dCell.font = JSON.parse(JSON.stringify(dataFont));
       dCell.alignment = centerMiddle;
+      dCell.border = { top: thinD9, left: dc === 1 ? medBDRK : thinD9, bottom: thinD9, right: dc === LAST_COL ? medBDRK : thinD9 };
     }
 
     if (dr < NR) {
@@ -1168,74 +1170,77 @@ async function _buildV2(wb, client, sorted, prices) {
       }
     }
 
-    _applyRowBorders(rowNum, 1, LAST_COL);
     row.commit();
   }
 
   // ── R23 (h=24): Total interventii ──
   var ROW_TOTAL = 23;
   ws.mergeCells(ROW_TOTAL, 1, ROW_TOTAL, 6); // A23:F23
-  ws.mergeCells(ROW_TOTAL, 7, ROW_TOTAL, LAST_COL); // G23:I23 (or extended)
+  ws.mergeCells(ROW_TOTAL, 7, ROW_TOTAL, LAST_COL); // G23:I23
   var r23 = ws.getRow(ROW_TOTAL); r23.height = 24;
-  var totalFont = { name: 'Arial', size: 10, bold: true, color: { argb: BDRK } };
   var cA23 = r23.getCell(1);
   cA23.value = 'Total interventii efectuate';
-  cA23.font = JSON.parse(JSON.stringify(totalFont));
-  cA23.fill = fillLBG;
-  cA23.alignment = centerMiddle;
+  cA23.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
+  cA23.fill = fillBlue;
+  cA23.alignment = leftMiddle1;
+  cA23.border = { top: thin1E, left: medBDRK, bottom: thin1E, right: thin1E };
   var cG23 = r23.getCell(7);
-  cG23.font = JSON.parse(JSON.stringify(totalFont));
-  cG23.fill = fillLBG;
+  cG23.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
+  cG23.fill = fillBlue;
   cG23.alignment = centerMiddle;
   cG23.numFmt = '0';
+  cG23.border = { top: medIdx, left: medIdx, bottom: medIdx, right: thin0D };
   if (NR > 0) {
-    cG23.value = { formula: 'COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')' };
+    cG23.value = { formula: 'COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')' };
   } else {
     cG23.value = 0;
   }
-  _applyRowBorders(ROW_TOTAL, 1, LAST_COL);
+  // Fill all R23 cells with blue
   for (var c23 = 1; c23 <= LAST_COL; c23++) {
     var cell23 = r23.getCell(c23);
-    if (!cell23.fill || !cell23.fill.fgColor) cell23.fill = fillLBG;
+    if (!cell23.fill || !cell23.fill.fgColor) cell23.fill = fillBlue;
   }
   r23.commit();
 
-  // ── R24 (h=3.75): Gold separator ──
+  // ── R24 (h=3.75): Accent separator ──
   var ROW_SEP2 = 24;
   ws.mergeCells(ROW_SEP2, 1, ROW_SEP2, LAST_COL);
   var r24 = ws.getRow(ROW_SEP2); r24.height = 3.75;
-  r24.getCell(1).value = '';
-  r24.getCell(1).fill = fillGold;
+  r24.getCell(1).fill = fillAccent;
+  r24.getCell(1).numFmt = '#,##0.00';
   for (var c24 = 1; c24 <= LAST_COL; c24++) {
-    ws.getRow(ROW_SEP2).getCell(c24).border = { top: goldThinBdr, bottom: goldThinBdr, left: c24 === 1 ? medBdr : thinBdr, right: c24 === LAST_COL ? medBdr : thinBdr };
+    var c24cell = r24.getCell(c24);
+    c24cell.fill = fillAccent;
+    c24cell.border = { top: medIdx, left: c24 === 1 ? thin0D : undefined, bottom: thin0D, right: c24 === LAST_COL ? thin0D : undefined };
   }
   r24.commit();
 
   // ── R25 (h=25.5): Total de plata ──
   var ROW_PAY = 25;
   ws.mergeCells(ROW_PAY, 1, ROW_PAY, 5); // A25:E25
-  ws.mergeCells(ROW_PAY, 6, ROW_PAY, LAST_COL); // F25:I25 (or extended)
+  ws.mergeCells(ROW_PAY, 6, ROW_PAY, LAST_COL); // F25:I25
   var r25 = ws.getRow(ROW_PAY); r25.height = 25.5;
-  var payFont = { name: 'Arial', size: 12, bold: true, color: { argb: BDRK } };
   var cA25 = r25.getCell(1);
   cA25.value = 'TOTAL DE PLATA';
-  cA25.font = JSON.parse(JSON.stringify(payFont));
-  cA25.fill = fillLBG;
-  cA25.alignment = centerMiddle;
+  cA25.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
+  cA25.fill = fillBlue;
+  cA25.alignment = leftMiddle1;
+  cA25.border = { left: medBDRK, bottom: medBDRK };
   var cF25 = r25.getCell(6);
-  cF25.font = JSON.parse(JSON.stringify(payFont));
-  cF25.fill = fillLBG;
+  cF25.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
+  cF25.fill = fillBlue;
   cF25.alignment = centerMiddle;
   cF25.numFmt = '#,##0 "Lei"';
+  cF25.border = { bottom: medBDRK, right: medBDRK };
   if (NR > 0) {
-    cF25.value = { formula: 'IFERROR(COUNTA(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
+    cF25.value = { formula: 'IFERROR(COUNT(A' + FIRST_DATA_ROW + ':A' + lastDataRow + ')*' + pretIntv + ',0)' };
   } else {
     cF25.value = 0;
   }
-  _applyRowBorders(ROW_PAY, 1, LAST_COL);
+  // Fill remaining R25 cells
   for (var c25 = 1; c25 <= LAST_COL; c25++) {
     var cell25 = r25.getCell(c25);
-    if (!cell25.fill || !cell25.fill.fgColor) cell25.fill = fillLBG;
+    if (!cell25.fill || !cell25.fill.fgColor) cell25.fill = fillBlue;
   }
   r25.commit();
 
@@ -1243,27 +1248,30 @@ async function _buildV2(wb, client, sorted, prices) {
   var ROW_SPACER = 26;
   ws.mergeCells(ROW_SPACER, 1, ROW_SPACER, LAST_COL);
   var r26 = ws.getRow(ROW_SPACER); r26.height = 4.5;
-  r26.getCell(1).value = '';
-  r26.getCell(1).fill = fillWhite;
-  _applyRowBorders(ROW_SPACER, 1, LAST_COL);
+  r26.getCell(1).fill = fillLBG;
+  for (var c26 = 1; c26 <= LAST_COL; c26++) {
+    r26.getCell(c26).fill = fillLBG;
+    r26.getCell(c26).border = { left: c26 === 1 ? medBDRK : undefined, right: c26 === LAST_COL ? medBDRK : undefined };
+  }
   r26.commit();
 
   // ── R27 (h=15.75): Footer ──
   var ROW_FOOTER = 27;
   ws.mergeCells(ROW_FOOTER, 1, ROW_FOOTER, 5); // A27:E27
-  ws.mergeCells(ROW_FOOTER, 6, ROW_FOOTER, LAST_COL); // F27:I27 (or extended)
+  ws.mergeCells(ROW_FOOTER, 6, ROW_FOOTER, LAST_COL); // F27:I27
   var r27 = ws.getRow(ROW_FOOTER); r27.height = 15.75;
   var cA27 = r27.getCell(1);
-  cA27.value = 'Toate preturile sunt exprimate in RON, inclusiv TVA.';
+  cA27.value = 'Document generat de S.C. Aquatis Engineering S.R.L.';
   cA27.font = { name: 'Arial', size: 8, italic: true, color: { argb: MTXT } };
   cA27.fill = fillWhite;
-  cA27.alignment = { horizontal: 'left', vertical: 'middle' };
+  cA27.alignment = leftMiddle1;
+  cA27.border = { left: medBDRK, bottom: medBDRK };
   var cF27 = r27.getCell(6);
-  cF27.value = 'S.C. Aquatis Engineering S.R.L.';
-  cF27.font = { name: 'Arial', size: 8, bold: true, color: { argb: BDRK } };
+  cF27.value = 'www.aquatis.ro  |  0721.137.178';
+  cF27.font = { name: 'Arial', size: 8, italic: true, color: { argb: MTXT } };
   cF27.fill = fillWhite;
   cF27.alignment = { horizontal: 'right', vertical: 'middle' };
-  _applyRowBorders(ROW_FOOTER, 1, LAST_COL);
+  cF27.border = { bottom: medBDRK, right: medBDRK };
   r27.commit();
 
   // ── Strip diacritics on data rows only ──
@@ -1319,9 +1327,11 @@ var V1_COL_PRICE_KEYS = {
 
 async function _buildV1(wb, client, sorted, prices) {
 
-  // ── Colors ──
-  var NAVY = 'FF0D2D5A', DKBLUE = 'FF1D507F', LTBLUE = 'FFE8F3FB', EBLUE = 'FFE0EEF8';
-  var VLTBLUE = 'FFF0F6FB', PALEBLUE = 'FFEDF4FB', WHITE = 'FFFFFFFF';
+  // ── Colors (exact from template analysis) ──
+  var NAVY = 'FF0D2D5A', DKBLUE = 'FF1D507F', LTBLUE = 'FFE8F3FB';
+  var EBLUE_A = 'FFE0EEF8', EBLUE_BK = 'FFF0F6FB', PALEBLUE = 'FFEDF4FB';
+  var WHITE = 'FFFFFFFF';
+  var BDR_LIGHT = 'FFA8C8E8', BDR_HDR = 'FF1E5FA8', DOT_BDR = 'FF4A7A99';
 
   // ── Constants ──
   var FIRST_DATA_ROW = 10, TEMPLATE_SLOTS = 10, LAST_COL = 11;
@@ -1338,121 +1348,143 @@ async function _buildV1(wb, client, sorted, prices) {
 
   // ── Create worksheet ──
   var ws = wb.addWorksheet('Raport Interventii', {
-    views: [{ state: 'frozen', ySplit: 9, zoomScale: 115 }],
-    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 0 }
+    views: [{ state: 'frozen', ySplit: 9, zoomScale: 115, zoomScaleNormal: 115, showGridLines: false }],
+    pageSetup: { orientation: 'landscape', paperSize: 9, fitToPage: true, fitToWidth: 1, fitToHeight: 1 }
   });
 
-  // Column widths: A=12, B=8, C-J=11, K=14
+  // Column widths (exact from template: A=16, B=8, C=10, D=10, E=8, F=10, G=10, H=11, I=10, J=10, K=13)
   ws.columns = [
-    { width: 12 }, { width: 8 },
-    { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 },
-    { width: 11 }, { width: 11 }, { width: 11 }, { width: 11 },
-    { width: 14 }
+    { width: 16 }, { width: 8 },
+    { width: 10 }, { width: 10 }, { width: 8 }, { width: 10 },
+    { width: 10 }, { width: 11 }, { width: 10 }, { width: 10 },
+    { width: 13 }
   ];
 
-  // ── Reusable styles ──
-  var thinBdr = { style: 'thin' };
-  var medBdr  = { style: 'medium' };
-  var allThinBorders = { top: thinBdr, left: thinBdr, bottom: thinBdr, right: thinBdr };
+  // ── Reusable styles (exact border colors from template) ──
+  var thinA8 = { style: 'thin', color: { argb: BDR_LIGHT } };
+  var thin1E = { style: 'thin', color: { argb: BDR_HDR } };
+  var thin0D = { style: 'thin', color: { argb: NAVY } };
+  var medBdr = { style: 'medium' }; // indexed:64 (auto)
+  var medIdx = { style: 'medium', color: { indexed: 64 } };
+  var dotBdr = { style: 'dotted', color: { argb: DOT_BDR } };
   var fillNavy   = { type: 'pattern', pattern: 'solid', fgColor: { argb: NAVY } };
   var fillWhite  = { type: 'pattern', pattern: 'solid', fgColor: { argb: WHITE } };
   var fillLtblue = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
-  var fillEblue  = { type: 'pattern', pattern: 'solid', fgColor: { argb: EBLUE } };
-  var fillVltblue = { type: 'pattern', pattern: 'solid', fgColor: { argb: VLTBLUE } };
-  var fillPaleblue = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALEBLUE } };
+  var fillAccent = { type: 'pattern', pattern: 'solid', fgColor: { theme: 5, tint: 0.3999755851924192 }, bgColor: { indexed: 64 } };
+  var fillHdrBlue = { type: 'pattern', pattern: 'solid', fgColor: { theme: 3 } };
+  var fillCompany = { type: 'pattern', pattern: 'solid', fgColor: { theme: 4, tint: 0.3999755851924192 }, bgColor: { indexed: 64 } };
   var fillDkblue = { type: 'pattern', pattern: 'solid', fgColor: { argb: DKBLUE } };
+  var fillPaleblue = { type: 'pattern', pattern: 'solid', fgColor: { argb: PALEBLUE } };
+  var fillWhiteTheme = { type: 'pattern', pattern: 'solid', fgColor: { theme: 0 } };
   var centerMiddle = { horizontal: 'center', vertical: 'middle' };
   var centerMiddleWrap = { horizontal: 'center', vertical: 'middle', wrapText: true };
-  var fontDkblue9 = { name: 'Arial', size: 9, color: { argb: DKBLUE } };
-  var fontDkblue9b = { name: 'Arial', size: 9, bold: true, color: { argb: DKBLUE } };
+  var leftMiddle = { horizontal: 'left', vertical: 'middle' };
+  var leftMiddle1 = { horizontal: 'left', vertical: 'middle', indent: 1 };
+  var rightMiddle = { horizontal: 'right', vertical: 'middle' };
 
-  // Helper: apply thin borders + outer frame (medium) for a row
-  function _applyV1Borders(rowNum, fc, lc, extraBottom) {
-    var row = ws.getRow(rowNum);
-    for (var c = fc; c <= lc; c++) {
-      var cell = row.getCell(c);
-      var b = JSON.parse(JSON.stringify(allThinBorders));
-      if (rowNum === 1) b.top = medBdr;
-      if (rowNum === 23) b.bottom = medBdr;
-      if (extraBottom) b.bottom = medBdr;
-      if (c === 1) b.left = medBdr;
-      if (c === lc) b.right = medBdr;
-      cell.border = b;
-    }
-  }
-
-  // ── R1 (h=6): Navy bar ──
+  // ── R1 (h=3.95): Dark navy strip ──
   ws.mergeCells('A1:K1');
-  var r1 = ws.getRow(1); r1.height = 6;
+  var r1 = ws.getRow(1); r1.height = 3.95;
   r1.getCell(1).fill = fillNavy;
-  _applyV1Borders(1, 1, LAST_COL);
+  for (var c1i = 1; c1i <= LAST_COL; c1i++) {
+    r1.getCell(c1i).border = { top: medBdr, left: c1i === 1 ? medBdr : undefined, right: c1i === LAST_COL ? medBdr : undefined };
+  }
   r1.commit();
 
-  // ── R2 (h=42): Company info (richText) ──
-  ws.mergeCells('A2:K2');
-  var r2 = ws.getRow(2); r2.height = 42;
-  var c2 = r2.getCell(1);
-  c2.value = { richText: [
-    { font: { name: 'Arial', size: 12, bold: true, color: { argb: DKBLUE } }, text: 'AQUATIS ENGINEERING S.R.L.' },
-    { text: '\n' },
-    { font: { name: 'Arial', size: 10, bold: true, color: { argb: DKBLUE } }, text: 'Str. Exemplu Nr. 10, Bucuresti | CUI: RO12345678' }
+  // ── R2 (h=48): Company header — 3 merged groups (exact from template) ──
+  ws.mergeCells('A2:D2');
+  ws.mergeCells('E2:G2');
+  ws.mergeCells('H2:K2');
+  var r2 = ws.getRow(2); r2.height = 48;
+  // A2:D2 — Company name + address (richText)
+  var cA2 = r2.getCell(1);
+  cA2.value = { richText: [
+    { font: { name: 'Arial', size: 12, bold: true, color: { theme: 1 } }, text: 'S.C. AQUATIS ENGINEERING S.R.L.' },
+    { font: { name: 'Arial', size: 11, bold: true }, text: '\n' },
+    { font: { name: 'Arial', size: 10, bold: true }, text: 'Str. Eufrosina Popescu 50, Sector 3' }
   ]};
-  c2.fill = fillWhite;
-  c2.alignment = centerMiddleWrap;
-  _applyV1Borders(2, 1, LAST_COL);
+  cA2.fill = fillCompany;
+  cA2.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+  cA2.border = { left: medBdr, right: thinA8, top: medBdr, bottom: medBdr };
+  // E2:G2 — Contact
+  var cE2 = r2.getCell(5);
+  cE2.value = 'office@aquatis.ro\nwww.aquatis.ro\n0721.137.178';
+  cE2.font = { name: 'Arial', size: 9, color: { theme: 1 } };
+  cE2.fill = fillCompany;
+  cE2.alignment = { horizontal: 'left', vertical: 'middle', wrapText: true, indent: 1 };
+  cE2.border = { left: thinA8, right: thinA8, top: medBdr, bottom: medBdr };
+  // H2:K2 — Registration details
+  var cH2 = r2.getCell(8);
+  cH2.value = 'J40/18144/2007  CUI:RO22479681  RO77RNCB0074092331280001';
+  cH2.font = { name: 'Arial', size: 8, color: { theme: 1 } };
+  cH2.fill = fillCompany;
+  cH2.alignment = { horizontal: 'right', vertical: 'middle', wrapText: true };
+  cH2.border = { left: thinA8, top: medBdr, bottom: medBdr };
+  // K2 right border
+  r2.getCell(11).border = { right: medBdr, top: medBdr, bottom: medBdr };
+  // Fill all R2 cells with company fill
+  for (var c2i = 1; c2i <= LAST_COL; c2i++) {
+    var c2c = r2.getCell(c2i);
+    if (!c2c.fill || (!c2c.fill.fgColor && !c2c.fill.theme)) c2c.fill = fillCompany;
+  }
   r2.commit();
 
-  // ── R3 (h=4): Cyan separator ──
+  // ── R3 (h=3): Accent separator (theme:5 tint:0.4 — same as V2) ──
   ws.mergeCells('A3:K3');
-  var r3 = ws.getRow(3); r3.height = 4;
-  r3.getCell(1).fill = fillLtblue;
-  _applyV1Borders(3, 1, LAST_COL);
+  var r3 = ws.getRow(3); r3.height = 3;
+  for (var c3i = 1; c3i <= LAST_COL; c3i++) {
+    r3.getCell(c3i).fill = fillAccent;
+    r3.getCell(c3i).border = { left: c3i === 1 ? medBdr : undefined, right: c3i === LAST_COL ? medBdr : undefined };
+  }
   r3.commit();
 
-  // ── R4 (h=24): Title ──
+  // ── R4 (h=20.1): Title bar ──
   ws.mergeCells('A4:K4');
-  var r4 = ws.getRow(4); r4.height = 24;
+  var r4 = ws.getRow(4); r4.height = 20.1;
   var c4 = r4.getCell(1);
-  c4.value = 'RAPORT INTERVENTII PISCINA';
-  c4.font = { name: 'Arial', size: 13, bold: true, color: { argb: DKBLUE } };
-  c4.fill = fillWhite;
+  c4.value = 'RAPORT INTERVENTII -- CHIMICALE PISCINA';
+  c4.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
+  c4.fill = fillDkblue;
   c4.alignment = centerMiddle;
-  _applyV1Borders(4, 1, LAST_COL);
+  for (var c4i = 1; c4i <= LAST_COL; c4i++) {
+    r4.getCell(c4i).border = { left: c4i === 1 ? medBdr : undefined, right: c4i === LAST_COL ? medBdr : undefined };
+  }
   r4.commit();
 
-  // ── R5 (h=15): Labels ──
+  // ── R5 (h=18): Field labels ──
   ws.mergeCells('A5:C5');
   ws.mergeCells('D5:F5');
   ws.mergeCells('G5:I5');
   ws.mergeCells('J5:K5');
-  var r5 = ws.getRow(5); r5.height = 15;
+  var r5 = ws.getRow(5); r5.height = 18;
+  var labelFont5 = { name: 'Arial', size: 8, bold: true, color: { theme: 3 } };
   var labels5 = [
     { col: 1, text: 'Client' },
-    { col: 4, text: 'Perioada' },
+    { col: 4, text: 'Perioada raportata' },
     { col: 7, text: 'Nr. Document' },
-    { col: 10, text: 'Data' }
+    { col: 10, text: 'Data emiterii' }
   ];
   labels5.forEach(function(l) {
     var cell = r5.getCell(l.col);
     cell.value = l.text;
-    cell.font = JSON.parse(JSON.stringify(fontDkblue9b));
-    cell.fill = fillEblue;
-    cell.alignment = centerMiddle;
+    cell.font = JSON.parse(JSON.stringify(labelFont5));
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
+    cell.alignment = leftMiddle1;
   });
-  // Fill remaining cells with EBLUE
   for (var c5i = 1; c5i <= LAST_COL; c5i++) {
     var c5c = r5.getCell(c5i);
-    if (!c5c.fill || !c5c.fill.fgColor) c5c.fill = fillEblue;
+    if (!c5c.fill || !c5c.fill.fgColor) c5c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
+    c5c.border = { left: c5i === 1 ? medBdr : thinA8, right: c5i === LAST_COL ? medBdr : thinA8 };
   }
-  _applyV1Borders(5, 1, LAST_COL);
   r5.commit();
 
-  // ── R6 (h=18): Values ──
+  // ── R6 (h=15.95): Field values ──
   ws.mergeCells('A6:C6');
   ws.mergeCells('D6:F6');
   ws.mergeCells('G6:I6');
   ws.mergeCells('J6:K6');
-  var r6 = ws.getRow(6); r6.height = 18;
+  var r6 = ws.getRow(6); r6.height = 15.95;
+  var valFont6 = { name: 'Arial', size: 10, bold: true, color: { argb: NAVY } };
   var vals6 = [
     { col: 1, text: client.name || '' },
     { col: 4, text: period },
@@ -1462,96 +1494,112 @@ async function _buildV1(wb, client, sorted, prices) {
   vals6.forEach(function(v) {
     var cell = r6.getCell(v.col);
     cell.value = v.text;
-    cell.font = JSON.parse(JSON.stringify(fontDkblue9));
-    cell.fill = fillVltblue;
-    cell.alignment = centerMiddle;
+    cell.font = JSON.parse(JSON.stringify(valFont6));
+    cell.fill = fillWhite;
+    cell.alignment = leftMiddle1;
   });
   for (var c6i = 1; c6i <= LAST_COL; c6i++) {
     var c6c = r6.getCell(c6i);
-    if (!c6c.fill || !c6c.fill.fgColor) c6c.fill = fillVltblue;
+    if (!c6c.fill || !c6c.fill.fgColor) c6c.fill = fillWhite;
+    c6c.border = { left: c6i === 1 ? medBdr : undefined, right: c6i === LAST_COL ? medBdr : undefined, bottom: dotBdr };
   }
-  _applyV1Borders(6, 1, LAST_COL);
   r6.commit();
 
-  // ── R7 (h=4): Separator ──
+  // ── R7 (h=3.95): Spacer ──
   ws.mergeCells('A7:K7');
-  var r7 = ws.getRow(7); r7.height = 4;
-  r7.getCell(1).fill = fillLtblue;
-  _applyV1Borders(7, 1, LAST_COL, true); // bottom=medium
+  var r7 = ws.getRow(7); r7.height = 3.95;
+  r7.getCell(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: LTBLUE } };
+  for (var c7i = 1; c7i <= LAST_COL; c7i++) {
+    r7.getCell(c7i).border = { left: c7i === 1 ? medBdr : undefined, right: c7i === LAST_COL ? medBdr : undefined };
+  }
   r7.commit();
 
-  // ── R8 (h=18): Header top ──
+  // ── R8 (h=26.1): Header top ──
   ws.mergeCells('A8:A9');
   ws.mergeCells('B8:B9');
   ws.mergeCells('C8:J8');
   ws.mergeCells('K8:K9');
-  var r8 = ws.getRow(8); r8.height = 18;
+  var r8 = ws.getRow(8); r8.height = 26.1;
   var hdrWhiteFont = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
   var hdrCells8 = [
-    { col: 1, text: 'Data' },
-    { col: 2, text: 'Nr.\nIntv.' },
-    { col: 3, text: 'Produse chimice utilizate' },
-    { col: 11, text: 'Total\nPlata\n(RON)' }
+    { col: 1, text: 'Data\ninterventie' },
+    { col: 2, text: 'Cant.\n' },
+    { col: 3, text: 'CHIMICALE FOLOSITE' },
+    { col: 11, text: 'Total plata\n(RON)' }
   ];
   hdrCells8.forEach(function(h) {
     var cell = r8.getCell(h.col);
     cell.value = h.text;
     cell.font = JSON.parse(JSON.stringify(hdrWhiteFont));
-    cell.fill = fillDkblue;
+    cell.fill = fillHdrBlue;
     cell.alignment = centerMiddleWrap;
   });
+  // R8 header for "CHIMICALE FOLOSITE": font Arial bold 10
+  r8.getCell(3).font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
+  // Fill all R8 cells with header blue
   for (var c8i = 1; c8i <= LAST_COL; c8i++) {
     var c8c = r8.getCell(c8i);
-    if (!c8c.fill || !c8c.fill.fgColor) c8c.fill = fillDkblue;
+    if (!c8c.fill || (!c8c.fill.fgColor && c8c.fill.fgColor !== undefined)) c8c.fill = fillHdrBlue;
+    c8c.border = { top: medBdr, left: c8i === 1 ? medBdr : thin1E, bottom: medBdr, right: c8i === LAST_COL ? medBdr : thin1E };
   }
-  _applyV1Borders(8, 1, LAST_COL);
   r8.commit();
 
-  // ── R9 (h=30): Header sub (chemical column names) ──
-  var r9 = ws.getRow(9); r9.height = 30;
+  // ── R9 (h=32.1): Chemical column names ──
+  var r9 = ws.getRow(9); r9.height = 32.1;
   var subFont = { name: 'Arial', size: 8, bold: true, color: { argb: WHITE } };
-  var chemHeaders = ['Clor\nRapid', 'Clor\nLent', 'pH\u2212', 'Antialgic', 'Floculant', 'Dedurizant', 'pH\nLichid', 'Cl\nLichid'];
+  var chemHeaders = ['Clor\nRapid', 'Clor\nLent', 'pH-', 'Antialgic', 'Floculant', 'Dedurizant', 'pH\nLichid', 'Cl\nLichid'];
   for (var ch = 0; ch < chemHeaders.length; ch++) {
     var chCell = r9.getCell(3 + ch);
     chCell.value = chemHeaders[ch];
     chCell.font = JSON.parse(JSON.stringify(subFont));
-    chCell.fill = fillDkblue;
+    chCell.fill = fillAccent; // theme:5 tint:0.4
     chCell.alignment = centerMiddleWrap;
+    chCell.border = { right: thin1E, bottom: medBdr };
   }
-  // A9, B9 are merged with R8; fill them with dkblue
-  r9.getCell(1).fill = fillDkblue;
-  r9.getCell(2).fill = fillDkblue;
-  r9.getCell(11).fill = fillDkblue;
-  _applyV1Borders(9, 1, LAST_COL, true); // bottom=medium
+  // A9, B9 merged with R8 — fill header blue
+  r9.getCell(1).fill = fillHdrBlue;
+  r9.getCell(1).border = { left: medBdr, bottom: thin0D };
+  r9.getCell(2).fill = fillHdrBlue;
+  r9.getCell(2).border = { bottom: thin0D };
+  r9.getCell(11).fill = fillHdrBlue;
+  r9.getCell(11).border = { right: medBdr, bottom: medBdr };
   r9.commit();
 
-  // ── R10-R19: Data rows (10 slots) ──
-  var dataFont = { name: 'Arial', size: 9, color: { argb: DKBLUE } };
+  // ── R10-R19: Data rows (10 slots, alternating zebra) ──
+  var dataFont = { name: 'Arial', size: 9, color: { argb: NAVY } };
   var lastDataRow = NR > 0 ? (FIRST_DATA_ROW + NR - 1) : FIRST_DATA_ROW;
 
   for (var dr = 0; dr < TEMPLATE_SLOTS; dr++) {
     var rowNum = FIRST_DATA_ROW + dr;
     var row = ws.getRow(rowNum);
     row.height = 18;
-    // Alternating: even rows (10,12,14,16,18)=PALEBLUE, odd (11,13,15,17,19)=WHITE
-    var rowFill = (rowNum % 2 === 0) ? fillPaleblue : fillWhite;
+    // Even rows (10,12,14,16,18): col A=FFE0EEF8, B-K=FFF0F6FB
+    // Odd rows (11,13,15,17,19): col A=white(theme:0), B-K=FFFFFFFF
+    var isEven = (rowNum % 2 === 0);
+    var fillA = isEven ? { type: 'pattern', pattern: 'solid', fgColor: { argb: EBLUE_A } } : fillWhiteTheme;
+    var fillBK = isEven ? { type: 'pattern', pattern: 'solid', fgColor: { argb: EBLUE_BK } } : fillWhite;
 
     for (var dc = 1; dc <= LAST_COL; dc++) {
       var dCell = row.getCell(dc);
       dCell.value = '';
-      dCell.fill = rowFill;
+      dCell.fill = dc === 1 ? fillA : fillBK;
       dCell.font = JSON.parse(JSON.stringify(dataFont));
-      dCell.alignment = (dc === 1) ? { horizontal: 'left', vertical: 'middle' } : centerMiddle;
+      dCell.alignment = (dc === 1) ? leftMiddle : centerMiddle;
+      if (dc === 1) dCell.numFmt = 'dd.mm.yyyy';
       if (dc >= 2 && dc <= LAST_COL) dCell.numFmt = '#,##0.00';
+      // Borders with colors
+      dCell.border = {
+        top: rowNum === FIRST_DATA_ROW ? medBdr : thinA8,
+        left: dc === 1 ? medBdr : thinA8,
+        bottom: rowNum === (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) ? medBdr : thinA8,
+        right: dc === LAST_COL ? medBdr : thinA8
+      };
     }
 
     if (dr < NR) {
       var entry = sorted[dr];
-      // A: date
       row.getCell(1).value = fmtDateDMY(entry.date);
-      // B: count = 1
       row.getCell(2).value = 1;
-      // C-J: chemical values
       V1_CHEM_COLUMNS.forEach(function(cc) {
         var val = _getChemValue(entry, cc.keys);
         var cell = row.getCell(cc.col);
@@ -1561,56 +1609,52 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
-      // K: empty
     }
 
-    _applyV1Borders(rowNum, 1, LAST_COL);
     row.commit();
   }
 
-  // Fix last data row bottom border = medium (if data exists)
-  if (NR > 0) {
-    var ldr = ws.getRow(lastDataRow);
-    for (var bc = 1; bc <= LAST_COL; bc++) {
-      var bCell = ldr.getCell(bc);
-      var bb = bCell.border ? JSON.parse(JSON.stringify(bCell.border)) : {};
-      bb.bottom = medBdr;
-      bCell.border = bb;
-    }
-    ldr.commit();
-  }
-
-  // ── R20 (h=18): Cantitate totala ──
+  // ── R20 (h=20.1): Cantitate totala ──
   var totalsRow = 20;
   ws.mergeCells('A20:B20');
-  var r20 = ws.getRow(totalsRow); r20.height = 18;
+  var r20 = ws.getRow(totalsRow); r20.height = 20.1;
   var cA20 = r20.getCell(1);
   cA20.value = 'Cantitate totala';
-  cA20.font = JSON.parse(JSON.stringify(fontDkblue9b));
-  cA20.fill = fillEblue;
+  cA20.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
+  cA20.fill = fillAccent;
   cA20.alignment = centerMiddle;
+  cA20.border = { left: medBdr, right: thin0D, top: medBdr, bottom: thin0D };
+  // B20: SUM formula
+  var cB20 = r20.getCell(2);
+  cB20.value = { formula: 'SUM(B' + FIRST_DATA_ROW + ':B' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+  cB20.font = { name: 'Arial', size: 9, bold: true, color: { theme: 0 } };
+  cB20.fill = fillAccent;
+  cB20.alignment = centerMiddle;
+  cB20.numFmt = '#,##0.00';
+  // C-J: SUM formulas
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cell = r20.getCell(cc.col);
-    cell.value = { formula: 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + lastDataRow + ')' };
-    cell.font = JSON.parse(JSON.stringify(fontDkblue9b));
-    cell.fill = fillEblue;
+    cell.value = { formula: 'SUM(' + _excelCol(cc.col) + FIRST_DATA_ROW + ':' + _excelCol(cc.col) + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+    cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+    cell.fill = fillAccent;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
+    cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
-  r20.getCell(11).fill = fillEblue;
-  r20.getCell(11).font = JSON.parse(JSON.stringify(fontDkblue9b));
-  _applyV1Borders(totalsRow, 1, LAST_COL);
+  r20.getCell(11).fill = fillAccent;
+  r20.getCell(11).border = { right: medBdr, top: thinA8, bottom: thinA8 };
   r20.commit();
 
-  // ── R21 (h=18): Pret unitar ──
+  // ── R21 (h=17.1): Pret unitar (RON) ──
   var pretRow = 21;
   ws.mergeCells('A21:B21');
-  var r21 = ws.getRow(pretRow); r21.height = 18;
+  var r21 = ws.getRow(pretRow); r21.height = 17.1;
   var cA21 = r21.getCell(1);
   cA21.value = 'Pret unitar (RON)';
-  cA21.font = JSON.parse(JSON.stringify(fontDkblue9));
-  cA21.fill = fillVltblue;
+  cA21.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
+  cA21.fill = fillPaleblue;
   cA21.alignment = centerMiddle;
+  cA21.border = { left: medBdr };
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var price = 0;
     var priceKeys = V1_COL_PRICE_KEYS[cc.col] || [];
@@ -1620,60 +1664,71 @@ async function _buildV1(wb, client, sorted, prices) {
     if (!price) price = V1_DEFAULT_PRICES[cc.col] || 0;
     var cell = r21.getCell(cc.col);
     cell.value = price > 0 ? price : '';
-    cell.font = JSON.parse(JSON.stringify(fontDkblue9));
-    cell.fill = fillVltblue;
+    cell.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
+    cell.fill = fillPaleblue;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
+    cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
-  r21.getCell(11).fill = fillVltblue;
-  r21.getCell(11).font = JSON.parse(JSON.stringify(fontDkblue9));
-  _applyV1Borders(pretRow, 1, LAST_COL);
+  r21.getCell(11).fill = fillPaleblue;
+  r21.getCell(11).border = { right: medBdr };
   r21.commit();
 
-  // ── R22 (h=20): Total general ──
+  // ── R22 (h=21.95): Total general ──
   var genRow = 22;
   ws.mergeCells('A22:B22');
-  var r22 = ws.getRow(genRow); r22.height = 20;
-  var fontGen = { name: 'Arial', size: 10, bold: true, color: { argb: DKBLUE } };
+  var r22 = ws.getRow(genRow); r22.height = 21.95;
   var cA22 = r22.getCell(1);
   cA22.value = 'TOTAL GENERAL (RON)';
-  cA22.font = JSON.parse(JSON.stringify(fontGen));
-  cA22.fill = fillEblue;
+  cA22.font = { name: 'Arial', size: 10, bold: true, color: { argb: WHITE } };
+  cA22.fill = fillDkblue;
   cA22.alignment = centerMiddle;
+  cA22.border = { left: medBdr, right: thin1E };
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cl = _excelCol(cc.col);
     var cell = r22.getCell(cc.col);
     cell.value = { formula: cl + totalsRow + '*' + cl + pretRow };
-    cell.font = JSON.parse(JSON.stringify(fontGen));
-    cell.fill = fillEblue;
+    cell.font = { name: 'Arial', size: 9, bold: true, color: { argb: WHITE } };
+    cell.fill = fillDkblue;
     cell.alignment = centerMiddle;
     cell.numFmt = '#,##0.00';
+    cell.border = { left: thin1E, right: thin1E };
   });
-  // K22: SUM(C22:J22)
+  // K22: SUM(C22,D22,E22,F22,G22,H22,I22,J22)
   var cK22 = r22.getCell(11);
-  cK22.value = { formula: 'SUM(C' + genRow + ':J' + genRow + ')' };
-  cK22.font = JSON.parse(JSON.stringify(fontGen));
-  cK22.fill = fillEblue;
+  cK22.value = { formula: 'SUM(C' + genRow + ',D' + genRow + ',E' + genRow + ',F' + genRow + ',G' + genRow + ',H' + genRow + ',I' + genRow + ',J' + genRow + ')' };
+  cK22.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
+  cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
   cK22.numFmt = '#,##0.00';
-  _applyV1Borders(genRow, 1, LAST_COL, true); // bottom=medium
+  cK22.border = { left: thin0D, right: medBdr, top: thin0D, bottom: thin0D };
   r22.commit();
 
-  // ── R23 (h=15): Footer ──
+  // ── R23 (h=20.25): Footer ──
   ws.mergeCells('A23:G23');
   ws.mergeCells('H23:K23');
-  var r23 = ws.getRow(23); r23.height = 15;
+  var r23 = ws.getRow(23); r23.height = 20.25;
   var cA23 = r23.getCell(1);
   cA23.value = 'Toate preturile sunt exprimate in RON';
-  cA23.font = { name: 'Arial', size: 8, italic: true, color: { argb: DKBLUE } };
-  cA23.fill = fillWhite;
-  cA23.alignment = { horizontal: 'left', vertical: 'middle' };
+  cA23.font = { name: 'Arial', size: 7, italic: true, color: { theme: 1 } };
+  cA23.fill = fillWhiteTheme;
+  cA23.alignment = leftMiddle;
+  cA23.border = { left: medBdr, bottom: medBdr };
   var cH23 = r23.getCell(8);
   cH23.value = 'S.C. Aquatis Engineering S.R.L.';
-  cH23.font = { name: 'Arial', size: 8, bold: true, color: { argb: DKBLUE } };
-  cH23.fill = fillWhite;
-  cH23.alignment = { horizontal: 'right', vertical: 'middle' };
-  _applyV1Borders(23, 1, LAST_COL);
+  cH23.font = { name: 'Arial', size: 7, italic: true, color: { theme: 1 } };
+  cH23.fill = fillWhiteTheme;
+  cH23.alignment = rightMiddle;
+  // K23 right+bottom border
+  r23.getCell(11).border = { right: medBdr, bottom: medBdr };
+  for (var c23i = 1; c23i <= LAST_COL; c23i++) {
+    var c23c = r23.getCell(c23i);
+    if (!c23c.fill || (!c23c.fill.fgColor && !c23c.fill.theme)) c23c.fill = fillWhiteTheme;
+    if (!c23c.border) c23c.border = {};
+    var b23 = c23c.border ? JSON.parse(JSON.stringify(c23c.border)) : {};
+    b23.bottom = medBdr;
+    c23c.border = b23;
+  }
   r23.commit();
 
   // ── Strip diacritics on data rows only ──
