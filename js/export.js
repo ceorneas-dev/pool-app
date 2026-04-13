@@ -1345,6 +1345,7 @@ async function _buildV1(wb, client, sorted, prices) {
   var lastDate  = NR ? fmtDateDMY(sorted[NR - 1].date) : '';
   var period = firstDate + ' - ' + lastDate;
   var docNr  = 'AQS - ' + todayYMD;
+  var pretIntv = parseFloat(client.pret_interventie) || prices.pret_interventie || 250;
 
   // ── Create worksheet ──
   var ws = wb.addWorksheet('Raport Interventii', {
@@ -1609,6 +1610,8 @@ async function _buildV1(wb, client, sorted, prices) {
           cell.value = '';
         }
       });
+      // K: intervention price per visit
+      row.getCell(11).value = pretIntv;
     }
 
     row.commit();
@@ -1630,6 +1633,7 @@ async function _buildV1(wb, client, sorted, prices) {
   cB20.fill = fillAccent;
   cB20.alignment = centerMiddle;
   cB20.numFmt = '#,##0.00';
+  cB20.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   // C-J: SUM formulas
   V1_CHEM_COLUMNS.forEach(function(cc) {
     var cell = r20.getCell(cc.col);
@@ -1640,8 +1644,14 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
   });
-  r20.getCell(11).fill = fillAccent;
-  r20.getCell(11).border = { right: medBdr, top: thinA8, bottom: thinA8 };
+  // K20: SUM of K data rows (total plata sum)
+  var cK20 = r20.getCell(11);
+  cK20.value = { formula: 'SUM(K' + FIRST_DATA_ROW + ':K' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
+  cK20.font = { name: 'Arial', size: 9, bold: true, color: { argb: NAVY } };
+  cK20.fill = fillAccent;
+  cK20.alignment = centerMiddle;
+  cK20.numFmt = '#,##0.00';
+  cK20.border = { right: medBdr, top: thinA8, bottom: thinA8 };
   r20.commit();
 
   // ── R21 (h=17.1): Pret unitar (RON) (NO merge — A21 standalone) ──
@@ -1670,9 +1680,16 @@ async function _buildV1(wb, client, sorted, prices) {
   });
   // B21: fill + border (standalone cell, no formula)
   r21.getCell(2).fill = fillPaleblue;
+  r21.getCell(2).font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
   r21.getCell(2).border = { top: thinA8, left: thinA8, bottom: thinA8, right: thinA8 };
-  r21.getCell(11).fill = fillPaleblue;
-  r21.getCell(11).border = { right: medBdr };
+  // K21: intervention unit price (from client or default 250)
+  var cK21 = r21.getCell(11);
+  cK21.value = pretIntv;
+  cK21.font = { name: 'Arial', size: 8, italic: true, color: { argb: NAVY } };
+  cK21.fill = fillPaleblue;
+  cK21.alignment = centerMiddle;
+  cK21.numFmt = '#,##0.00';
+  cK21.border = { top: thinA8, left: thinA8, bottom: thinA8, right: medBdr };
   r21.commit();
 
   // ── R22 (h=21.95): Total general (NO merge — A22 standalone) ──
@@ -1699,9 +1716,9 @@ async function _buildV1(wb, client, sorted, prices) {
     cell.numFmt = '#,##0.00';
     cell.border = { left: thin1E, right: thin1E };
   });
-  // K22: SUM(C22,D22,E22,F22,G22,H22,I22,J22)
+  // K22: SUM of K data rows (total plata)
   var cK22 = r22.getCell(11);
-  cK22.value = { formula: 'SUM(C' + genRow + ',D' + genRow + ',E' + genRow + ',F' + genRow + ',G' + genRow + ',H' + genRow + ',I' + genRow + ',J' + genRow + ')' };
+  cK22.value = { formula: 'SUM(K' + FIRST_DATA_ROW + ':K' + (FIRST_DATA_ROW + TEMPLATE_SLOTS - 1) + ')' };
   cK22.font = { name: 'Arial', size: 11, bold: true, color: { argb: WHITE } };
   cK22.fill = fillDkblue;
   cK22.alignment = centerMiddle;
