@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 209;
+const APP_VERSION = 210;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -279,6 +279,9 @@ async function initApp() {
     var lastVer = await getSetting('app_version');
     if (parseInt(lastVer) !== APP_VERSION) {
       await setSetting('app_version', APP_VERSION);
+      // v209: cleanup old flags that blocked technician sync
+      await setSetting('techs_local_auth', null);
+      await setSetting('techs_pending_push', false);
     }
   } catch(e) { console.warn('[INIT] Version check error:', e.message); }
 
