@@ -543,7 +543,7 @@ function handleGetCalendar(params) {
   // PROGRAM_COLS: [id, date, time, technician_id, technician_name, client_name, address, notes]
   const entries = [];
   for (let i = 1; i < data.length; i++) {
-    const row = data[i].map(v => String(v || '').trim());
+    const row = data[i].map(v => _cellToString(v).trim());
     const [id, date, time, tid, tname, cname, addr, notes] = row;
     if (!id) continue;
     if (dateFrom && date < dateFrom) continue;

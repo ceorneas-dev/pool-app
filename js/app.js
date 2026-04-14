@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 214;
+const APP_VERSION = 215;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -487,9 +487,15 @@ function setupConnectivityIndicator() {
   // Sync callbacks
   window.onSyncComplete = () => {
     updateSyncBadge();
+    // Refresh whichever screen is active
     if (APP.currentScreen === 'dashboard') loadData().then(renderDashboard);
+    else if (APP.currentScreen === 'calendar') loadCalendarScreen();
+    else if (APP.currentScreen === 'map') { if (typeof refreshMapLocations === 'function') refreshMapLocations(); }
+    else if (APP.currentScreen === 'checklist') { if (typeof loadChecklistScreen === 'function') loadChecklistScreen(); }
   };
-  window.onSyncError = () => {};
+  window.onSyncError = (err) => {
+    showToast('Eroare sincronizare: ' + (err && err.message || 'necunoscută'), 'error');
+  };
 }
 
 function setupInstallPrompt() {

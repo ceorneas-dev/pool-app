@@ -99,25 +99,16 @@ function doSync() {
     .catch(err => {
       console.error('[SYNC] Sync error:', err.message);
       if (typeof window.onSyncError === 'function') window.onSyncError(err);
+      throw err; // re-throw so manualSync can catch and show error
     })
     .finally(() => {
       _syncActive = false;
     });
 }
 
-// Push all local clients to server (syncs deviz_type, pret_interventie, etc.)
+// Clients are pushed immediately on edit (in app.js). No bulk push needed in sync cycle.
 function pushClients() {
-  return getAll('clients').then(function(clients) {
-    if (!clients || !clients.length) return;
-    return apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'clients', data: clients })
-    }).then(function() {
-      console.log('[SYNC] Pushed', clients.length, 'clients');
-    }).catch(function(err) {
-      console.warn('[SYNC] Client push failed:', err.message);
-    });
-  });
+  return Promise.resolve();
 }
 
 // Push pending technician deletions to server (edits are pushed immediately in doSaveTech)
@@ -300,7 +291,7 @@ function pullData() {
           username:      t.username,
           password:      t.password,
           role:          t.role || 'technician',
-          active:        t.active === true || t.active === 'true',
+          active:        t.active === true || String(t.active).toLowerCase() === 'true',
           last_sync:     t.last_sync || null
         }));
         // Clear local techs and replace with server data
