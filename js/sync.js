@@ -294,58 +294,42 @@ function pullData() {
     }
 
     if (data.technicians && data.technicians.length) {
-      const parsed = data.technicians.map(t => ({
-        technician_id: t.technician_id,
-        name:          t.name,
-        username:      t.username,
-        password:      t.password,
-        role:          t.role || 'technician',
-        active:        t.active === true || t.active === 'true',
-        last_sync:     t.last_sync || null
-      }));
-      // Merge: upsert remote technicians one-by-one (avoids unique-index abort)
-      // Fix empty/duplicate usernames before inserting
-      // Skip locally-deleted technicians (pending GAS deletion)
+      // Technicians are managed locally by admin (add/edit/delete) and pushed to GAS.
+      // Pull only applies on FIRST sync (when local DB has no technicians yet).
+      // After that, local data is authoritative — push only, no overwrite from server.
       const techMerge = (async function() {
-        const deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
+        var localTechs = [];
+        try { localTechs = await getAll('technicians'); } catch(_) {}
+        if (localTechs.length > 0) {
+          console.log('[SYNC] Technicians: local has', localTechs.length, '— skipping pull (local is authoritative)');
+          return;
+        }
+        // First sync — no local technicians, seed from server
+        console.log('[SYNC] Technicians: local empty, seeding from server...');
+        const parsed = data.technicians.map(t => ({
+          technician_id: t.technician_id,
+          name:          t.name,
+          username:      t.username,
+          password:      t.password,
+          role:          t.role || 'technician',
+          active:        t.active === true || t.active === 'true',
+          last_sync:     t.last_sync || null
+        }));
         const usedUsernames = new Set();
-        // Pre-collect existing usernames from local DB
-        try {
-          const existing = await getAll('technicians');
-          existing.forEach(t => usedUsernames.add(t.username));
-        } catch(_) {}
-        let ok = 0, skipped = 0;
+        let ok = 0;
         for (const t of parsed) {
-          // Skip technicians that were deleted locally
-          if (deletedTechIds.indexOf(t.technician_id) !== -1) {
-            skipped++;
-            continue;
-          }
-          // Fix empty username: generate from technician_id
           if (!t.username || !String(t.username).trim()) {
             t.username = 'user_' + t.technician_id;
           }
-          // Fix duplicate username: append technician_id suffix
           if (usedUsernames.has(t.username)) {
-            // Check if it's the same technician (update case) — allow it
-            try {
-              const existingTech = await getByKey('technicians', t.technician_id);
-              if (!existingTech || existingTech.username !== t.username) {
-                // Different technician with same username — make unique
-                t.username = t.username + '_' + t.technician_id;
-              }
-            } catch(_) {
-              t.username = t.username + '_' + t.technician_id;
-            }
+            t.username = t.username + '_' + t.technician_id;
           }
           usedUsernames.add(t.username);
           try { await put('technicians', t); ok++; } catch(e) {
             console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
           }
         }
-        if (skipped) console.log('[SYNC] Skipped', skipped, 'locally-deleted technicians');
-        console.log('[SYNC] Pulled', ok, '/', parsed.length, 'technicians (merged)');
-        // Update backup
+        console.log('[SYNC] Seeded', ok, '/', parsed.length, 'technicians from server');
         try {
           const all = await getAll('technicians');
           await setSetting('technicians_backup', JSON.stringify(all));
