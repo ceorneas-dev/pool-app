@@ -136,7 +136,8 @@ function pushTechnicians() {
       body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
     }).then(function() {
       console.log('[SYNC] Pushed', techs.length, 'technicians +', deletedIds.length, 'deletions');
-      // Clear deletion tracking after successful push
+      // Clear pending flags after successful push — allow pull to update on next cycle
+      setSetting('techs_pending_push', false);
       if (deletedIds.length) setSetting('deleted_technician_ids', []);
     }).catch(function(err) {
       console.warn('[SYNC] Technician push failed:', err.message);
@@ -295,13 +296,13 @@ function pullData() {
 
     if (data.technicians && data.technicians.length) {
       // Technicians sync strategy:
-      // - If admin edited techs locally (flag 'techs_local_auth'), skip pull (local is authoritative)
-      // - Otherwise, replace local techs with server data (new device / technician device)
+      // - If there are pending local changes (techs_pending_push), skip pull to avoid overwrite
+      // - Otherwise, pull from server (GAS is source of truth after push completes)
       const techMerge = (async function() {
-        var isLocalAuth = await getSetting('techs_local_auth');
+        var pendingPush = await getSetting('techs_pending_push');
         var deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
-        if (isLocalAuth) {
-          console.log('[SYNC] Technicians: local is authoritative — skipping pull');
+        if (pendingPush) {
+          console.log('[SYNC] Technicians: pending local changes — skipping pull');
           return;
         }
         // Replace local technicians with server data
