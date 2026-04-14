@@ -386,15 +386,35 @@ function handlePushTechnicians(body) {
     if (row[idCol]) existingRows[row[idCol]] = i + 2;
   });
 
-  let saved = 0, updated = 0;
+  let saved = 0, updated = 0, deleted = 0;
+
+  // Process deletions first (reverse order to keep row indices valid)
+  const toDelete = [];
+  data.forEach(tech => {
+    if (tech._deleted && existingRows[tech.technician_id]) {
+      toDelete.push(existingRows[tech.technician_id]);
+    }
+  });
+  toDelete.sort((a, b) => b - a).forEach(rowNum => {
+    sheet.deleteRow(rowNum);
+    deleted++;
+  });
+
+  // Re-read rows after deletions
+  const rows2 = sheet.getDataRange().getValues();
+  const existingRows2 = {};
+  rows2.slice(1).forEach((row, i) => {
+    if (row[idCol]) existingRows2[row[idCol]] = i + 2;
+  });
 
   data.forEach(tech => {
+    if (tech._deleted) return; // already handled above
     const row = TECHNICIANS_COLS.map(col => {
       const val = tech[col];
       return val !== undefined && val !== null ? String(val) : '';
     });
 
-    const rowNum = existingRows[tech.technician_id];
+    const rowNum = existingRows2[tech.technician_id];
     if (rowNum) {
       sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
       updated++;
@@ -404,7 +424,7 @@ function handlePushTechnicians(body) {
     }
   });
 
-  return { success: true, saved, updated };
+  return { success: true, saved, updated, deleted };
 }
 
 // ── POST: saveLocation ────────────────────────────────────────

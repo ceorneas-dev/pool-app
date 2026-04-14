@@ -2886,6 +2886,10 @@ async function deleteTech(techId, techName) {
   if (!confirm('Sigur vrei să ștergi tehnicianul "' + techName + '"?\n\nAceastă acțiune este ireversibilă.')) return;
   try {
     await deleteRecord('technicians', techId);
+    // Track deleted tech IDs so sync pull doesn't re-insert them
+    var deletedIds = (await getSetting('deleted_technician_ids')) || [];
+    if (deletedIds.indexOf(techId) === -1) deletedIds.push(techId);
+    await setSetting('deleted_technician_ids', deletedIds);
     // Push deletion to GAS if configured
     if (isSyncConfigured()) {
       try {
@@ -2893,6 +2897,9 @@ async function deleteTech(techId, techName) {
           method: 'POST',
           body: JSON.stringify({ action: 'push', type: 'technicians', data: [{ technician_id: techId, _deleted: true }] })
         });
+        // GAS deletion successful — remove from local tracking list
+        deletedIds = deletedIds.filter(function(id) { return id !== techId; });
+        await setSetting('deleted_technician_ids', deletedIds);
       } catch (e) { console.warn('[SYNC] Tech delete push failed:', e.message); }
     }
     try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}

@@ -120,15 +120,24 @@ function pushClients() {
   });
 }
 
-// Push all local technicians to server on each sync cycle
+// Push all local technicians to server on each sync cycle (including pending deletions)
 function pushTechnicians() {
-  return getAll('technicians').then(function(techs) {
-    if (!techs || !techs.length) return;
+  return Promise.all([getAll('technicians'), getSetting('deleted_technician_ids')]).then(function(results) {
+    var techs = results[0] || [];
+    var deletedIds = results[1] || [];
+    // Build payload: active techs + deletion markers
+    var payload = techs.slice();
+    deletedIds.forEach(function(id) {
+      payload.push({ technician_id: id, _deleted: true });
+    });
+    if (!payload.length) return;
     return apiFetch(SYNC_CONFIG.API_URL, {
       method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'technicians', data: techs })
+      body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
     }).then(function() {
-      console.log('[SYNC] Pushed', techs.length, 'technicians');
+      console.log('[SYNC] Pushed', techs.length, 'technicians +', deletedIds.length, 'deletions');
+      // Clear deletion tracking after successful push
+      if (deletedIds.length) setSetting('deleted_technician_ids', []);
     }).catch(function(err) {
       console.warn('[SYNC] Technician push failed:', err.message);
     });
@@ -296,15 +305,22 @@ function pullData() {
       }));
       // Merge: upsert remote technicians one-by-one (avoids unique-index abort)
       // Fix empty/duplicate usernames before inserting
+      // Skip locally-deleted technicians (pending GAS deletion)
       const techMerge = (async function() {
+        const deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
         const usedUsernames = new Set();
         // Pre-collect existing usernames from local DB
         try {
           const existing = await getAll('technicians');
           existing.forEach(t => usedUsernames.add(t.username));
         } catch(_) {}
-        let ok = 0;
+        let ok = 0, skipped = 0;
         for (const t of parsed) {
+          // Skip technicians that were deleted locally
+          if (deletedTechIds.indexOf(t.technician_id) !== -1) {
+            skipped++;
+            continue;
+          }
           // Fix empty username: generate from technician_id
           if (!t.username || !String(t.username).trim()) {
             t.username = 'user_' + t.technician_id;
@@ -327,6 +343,7 @@ function pullData() {
             console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
           }
         }
+        if (skipped) console.log('[SYNC] Skipped', skipped, 'locally-deleted technicians');
         console.log('[SYNC] Pulled', ok, '/', parsed.length, 'technicians (merged)');
         // Update backup
         try {
