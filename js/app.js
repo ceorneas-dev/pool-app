@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 204;
+const APP_VERSION = 205;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
