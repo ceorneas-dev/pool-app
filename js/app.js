@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 205;
+const APP_VERSION = 206;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -889,8 +889,12 @@ function renderDashboard() {
     settingsBtn.onclick = async () => {
       const url = $('settings-api-url');
       if (url) {
-        SYNC_CONFIG.API_URL = url.value.trim();
-        await setSetting('api_url', SYNC_CONFIG.API_URL);
+        var urlVal = url.value.trim();
+        // If empty, keep the hardcoded default from SYNC_CONFIG
+        if (urlVal) {
+          SYNC_CONFIG.API_URL = urlVal;
+          await setSetting('api_url', urlVal);
+        }
         initSync();
       }
       // PIN setting
@@ -943,7 +947,7 @@ function renderDashboard() {
   // Load settings into UI
   getSetting('api_url').then(url => {
     const urlInput = $('settings-api-url');
-    if (urlInput && url) urlInput.value = url;
+    if (urlInput) urlInput.value = url || SYNC_CONFIG.API_URL || '';
   });
   getSetting('alert_threshold').then(thr => {
     const thrInput = $('settings-alert-threshold');
