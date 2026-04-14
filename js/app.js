@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 212;
+const APP_VERSION = 213;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -2853,8 +2853,6 @@ async function doSaveTech() {
   try {
     await put('technicians', data);
     showToast('Salvat local: ' + data.username, 'success');
-    // Flag pending push so sync pull doesn't overwrite before push completes
-    await setSetting('techs_pending_push', true);
     // Backup all techs to settings for persistence
     try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
     // Refresh list immediately (before GAS push)
@@ -2886,7 +2884,6 @@ async function toggleTechActive(techId) {
     if (!tech) return;
     tech.active = tech.active === false ? true : false;
     await put('technicians', tech);
-    await setSetting('techs_pending_push', true);
     try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
     showTechManager();
   } catch (e) {
@@ -2898,8 +2895,6 @@ async function deleteTech(techId, techName) {
   if (!confirm('Sigur vrei să ștergi tehnicianul "' + techName + '"?\n\nAceastă acțiune este ireversibilă.')) return;
   try {
     await deleteRecord('technicians', techId);
-    // Flag pending push so sync pull doesn't overwrite before push completes
-    await setSetting('techs_pending_push', true);
     // Track deleted tech IDs so sync pull doesn't re-insert them
     var deletedIds = (await getSetting('deleted_technician_ids')) || [];
     if (deletedIds.indexOf(techId) === -1) deletedIds.push(techId);

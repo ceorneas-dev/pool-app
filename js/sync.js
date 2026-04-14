@@ -120,32 +120,21 @@ function pushClients() {
   });
 }
 
-// Push technicians to server ONLY if there are pending local changes
+// Push pending technician deletions to server (edits are pushed immediately in doSaveTech)
 function pushTechnicians() {
-  return Promise.all([getSetting('techs_pending_push'), getSetting('deleted_technician_ids')]).then(function(results) {
-    var pending = results[0];
-    var deletedIds = results[1] || [];
-    // Only push if admin edited/deleted techs on THIS device
-    if (!pending && !deletedIds.length) {
-      console.log('[SYNC] Technicians: no local changes — skipping push');
-      return;
-    }
-    return getAll('technicians').then(function(techs) {
-      var payload = (techs || []).slice();
-      deletedIds.forEach(function(id) {
-        payload.push({ technician_id: id, _deleted: true });
-      });
-      if (!payload.length) return;
-      return apiFetch(SYNC_CONFIG.API_URL, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
-      }).then(function() {
-        console.log('[SYNC] Pushed', techs.length, 'technicians +', deletedIds.length, 'deletions');
-        setSetting('techs_pending_push', false);
-        if (deletedIds.length) setSetting('deleted_technician_ids', []);
-      }).catch(function(err) {
-        console.warn('[SYNC] Technician push failed:', err.message);
-      });
+  return getSetting('deleted_technician_ids').then(function(deletedIds) {
+    if (!deletedIds || !deletedIds.length) return;
+    var payload = deletedIds.map(function(id) {
+      return { technician_id: id, _deleted: true };
+    });
+    return apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
+    }).then(function() {
+      console.log('[SYNC] Pushed', deletedIds.length, 'technician deletions');
+      setSetting('deleted_technician_ids', []);
+    }).catch(function(err) {
+      console.warn('[SYNC] Technician delete push failed:', err.message);
     });
   });
 }
@@ -300,17 +289,10 @@ function pullData() {
     }
 
     if (data.technicians && data.technicians.length) {
-      // Technicians sync strategy:
-      // - If there are pending local changes (techs_pending_push), skip pull to avoid overwrite
-      // - Otherwise, pull from server (GAS is source of truth after push completes)
+      // GAS is source of truth for technicians. Always pull.
+      // Edits are pushed immediately in doSaveTech, deletions via pushTechnicians.
       const techMerge = (async function() {
-        var pendingPush = await getSetting('techs_pending_push');
         var deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
-        if (pendingPush) {
-          console.log('[SYNC] Technicians: pending local changes — skipping pull');
-          return;
-        }
-        // Replace local technicians with server data
         console.log('[SYNC] Technicians: pulling from server...');
         const parsed = data.technicians.map(t => ({
           technician_id: t.technician_id,
