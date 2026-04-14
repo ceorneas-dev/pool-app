@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 211;
+const APP_VERSION = 212;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -2852,30 +2852,31 @@ async function doSaveTech() {
 
   try {
     await put('technicians', data);
+    showToast('Salvat local: ' + data.username, 'success');
     // Flag pending push so sync pull doesn't overwrite before push completes
     await setSetting('techs_pending_push', true);
-    // Push to GAS immediately if configured
+    // Backup all techs to settings for persistence
+    try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
+    // Refresh list immediately (before GAS push)
+    showTechManager();
+    // Push to GAS in background (don't block UI)
     if (isSyncConfigured()) {
-      try {
-        const resp = await apiFetch(SYNC_CONFIG.API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
-        });
+      apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'technicians', data: [data] })
+      }).then(function(resp) {
         if (resp && resp.success) {
+          showToast('Sincronizat cu serverul ✓', 'success');
         } else {
           console.warn('[SYNC] Technician push response:', resp);
         }
-      } catch (pushErr) {
+      }).catch(function(pushErr) {
         console.warn('[SYNC] Technician push failed:', pushErr.message);
-        showToast('Tehnicianul a fost salvat local. Sincronizarea va reîncerca automat.', 'warning', 4000);
-      }
+        showToast('Push la server eșuat. Se va reîncerca automat.', 'warning', 4000);
+      });
     }
-    // Backup all techs to settings for persistence
-    try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
-    showToast(existingId ? 'Tehnician actualizat.' : 'Tehnician adăugat și salvat.', 'success');
-    showTechManager();
   } catch (e) {
-    showToast('Eroare: ' + e.message, 'error');
+    showToast('Eroare salvare: ' + e.message, 'error');
   }
 }
 
