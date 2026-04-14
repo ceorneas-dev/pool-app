@@ -120,27 +120,32 @@ function pushClients() {
   });
 }
 
-// Push all local technicians to server on each sync cycle (including pending deletions)
+// Push technicians to server ONLY if there are pending local changes
 function pushTechnicians() {
-  return Promise.all([getAll('technicians'), getSetting('deleted_technician_ids')]).then(function(results) {
-    var techs = results[0] || [];
+  return Promise.all([getSetting('techs_pending_push'), getSetting('deleted_technician_ids')]).then(function(results) {
+    var pending = results[0];
     var deletedIds = results[1] || [];
-    // Build payload: active techs + deletion markers
-    var payload = techs.slice();
-    deletedIds.forEach(function(id) {
-      payload.push({ technician_id: id, _deleted: true });
-    });
-    if (!payload.length) return;
-    return apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
-    }).then(function() {
-      console.log('[SYNC] Pushed', techs.length, 'technicians +', deletedIds.length, 'deletions');
-      // Clear pending flags after successful push — allow pull to update on next cycle
-      setSetting('techs_pending_push', false);
-      if (deletedIds.length) setSetting('deleted_technician_ids', []);
-    }).catch(function(err) {
-      console.warn('[SYNC] Technician push failed:', err.message);
+    // Only push if admin edited/deleted techs on THIS device
+    if (!pending && !deletedIds.length) {
+      console.log('[SYNC] Technicians: no local changes — skipping push');
+      return;
+    }
+    return getAll('technicians').then(function(techs) {
+      var payload = (techs || []).slice();
+      deletedIds.forEach(function(id) {
+        payload.push({ technician_id: id, _deleted: true });
+      });
+      if (!payload.length) return;
+      return apiFetch(SYNC_CONFIG.API_URL, {
+        method: 'POST',
+        body: JSON.stringify({ action: 'push', type: 'technicians', data: payload })
+      }).then(function() {
+        console.log('[SYNC] Pushed', techs.length, 'technicians +', deletedIds.length, 'deletions');
+        setSetting('techs_pending_push', false);
+        if (deletedIds.length) setSetting('deleted_technician_ids', []);
+      }).catch(function(err) {
+        console.warn('[SYNC] Technician push failed:', err.message);
+      });
     });
   });
 }
