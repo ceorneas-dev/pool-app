@@ -843,8 +843,11 @@ function _cellToString(val) {
     var m = ('0' + (val.getMonth() + 1)).slice(-2);
     var d = ('0' + val.getDate()).slice(-2);
     var h = val.getHours(), min = val.getMinutes(), sec = val.getSeconds();
-    // If has time component, return full ISO; otherwise just date
+    // Time-only value: Sheets uses base date 1899-12-30 for time fields
+    if (y <= 1900) return ('0'+h).slice(-2) + ':' + ('0'+min).slice(-2);
+    // Date-only (no time component)
     if (h === 0 && min === 0 && sec === 0) return y + '-' + m + '-' + d;
+    // Date + time
     return y + '-' + m + '-' + d + 'T' + ('0'+h).slice(-2) + ':' + ('0'+min).slice(-2) + ':' + ('0'+sec).slice(-2);
   }
   return String(val);
