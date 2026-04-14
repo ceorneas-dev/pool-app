@@ -294,18 +294,18 @@ function pullData() {
     }
 
     if (data.technicians && data.technicians.length) {
-      // Technicians are managed locally by admin (add/edit/delete) and pushed to GAS.
-      // Pull only applies on FIRST sync (when local DB has no technicians yet).
-      // After that, local data is authoritative — push only, no overwrite from server.
+      // Technicians sync strategy:
+      // - If admin edited techs locally (flag 'techs_local_auth'), skip pull (local is authoritative)
+      // - Otherwise, replace local techs with server data (new device / technician device)
       const techMerge = (async function() {
-        var localTechs = [];
-        try { localTechs = await getAll('technicians'); } catch(_) {}
-        if (localTechs.length > 0) {
-          console.log('[SYNC] Technicians: local has', localTechs.length, '— skipping pull (local is authoritative)');
+        var isLocalAuth = await getSetting('techs_local_auth');
+        var deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
+        if (isLocalAuth) {
+          console.log('[SYNC] Technicians: local is authoritative — skipping pull');
           return;
         }
-        // First sync — no local technicians, seed from server
-        console.log('[SYNC] Technicians: local empty, seeding from server...');
+        // Replace local technicians with server data
+        console.log('[SYNC] Technicians: pulling from server...');
         const parsed = data.technicians.map(t => ({
           technician_id: t.technician_id,
           name:          t.name,
@@ -315,9 +315,13 @@ function pullData() {
           active:        t.active === true || t.active === 'true',
           last_sync:     t.last_sync || null
         }));
+        // Clear local techs and replace with server data
+        try { await clearStore('technicians'); } catch(_) {}
         const usedUsernames = new Set();
         let ok = 0;
         for (const t of parsed) {
+          // Skip locally-deleted technicians
+          if (deletedTechIds.indexOf(t.technician_id) !== -1) continue;
           if (!t.username || !String(t.username).trim()) {
             t.username = 'user_' + t.technician_id;
           }
@@ -329,7 +333,7 @@ function pullData() {
             console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
           }
         }
-        console.log('[SYNC] Seeded', ok, '/', parsed.length, 'technicians from server');
+        console.log('[SYNC] Pulled', ok, '/', parsed.length, 'technicians from server');
         try {
           const all = await getAll('technicians');
           await setSetting('technicians_backup', JSON.stringify(all));

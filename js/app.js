@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 207;
+const APP_VERSION = 208;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -573,12 +573,13 @@ async function doLogin(username, password, silent = false) {
     if (!user) {
       let tech = null;
       try {
-        // Try index lookup (fastest)
+        // Try index lookup (fastest) — case-insensitive fallback below
         tech = await getByIndexFirst('technicians', 'username', username);
+        if (!tech) tech = await getByIndexFirst('technicians', 'username', username.toLowerCase());
       } catch {
         // Index might not exist in old DB — scan all technicians
         const all = await getAll('technicians');
-        tech = all.find(t => t.username === username) || null;
+        tech = all.find(t => (t.username || '').toLowerCase() === username.toLowerCase()) || null;
       }
       if (tech && tech.password === password && tech.active !== false) {
         user = { technician_id: tech.technician_id, name: tech.name, role: tech.role, username: tech.username };
@@ -2825,7 +2826,7 @@ function hideTechForm() {
 
 async function doSaveTech() {
   const name     = $('tf-name')     ? $('tf-name').value.trim()     : '';
-  const username = $('tf-username') ? $('tf-username').value.trim().toLowerCase() : '';
+  const username = $('tf-username') ? $('tf-username').value.trim() : '';
   const password = $('tf-password') ? $('tf-password').value        : '';
   const role     = $('tf-role')     ? $('tf-role').value            : 'technician';
   const existingId = $('tf-id')     ? $('tf-id').value              : '';
@@ -2848,6 +2849,8 @@ async function doSaveTech() {
 
   try {
     await put('technicians', data);
+    // Mark this device as authoritative for technicians (admin edited)
+    await setSetting('techs_local_auth', true);
     // Push to GAS immediately if configured
     if (isSyncConfigured()) {
       try {
@@ -2879,6 +2882,7 @@ async function toggleTechActive(techId) {
     if (!tech) return;
     tech.active = tech.active === false ? true : false;
     await put('technicians', tech);
+    await setSetting('techs_local_auth', true);
     try { const all = await getAll('technicians'); await setSetting('technicians_backup', JSON.stringify(all)); } catch(_) {}
     showTechManager();
   } catch (e) {
@@ -2890,6 +2894,8 @@ async function deleteTech(techId, techName) {
   if (!confirm('Sigur vrei să ștergi tehnicianul "' + techName + '"?\n\nAceastă acțiune este ireversibilă.')) return;
   try {
     await deleteRecord('technicians', techId);
+    // Mark this device as authoritative for technicians
+    await setSetting('techs_local_auth', true);
     // Track deleted tech IDs so sync pull doesn't re-insert them
     var deletedIds = (await getSetting('deleted_technician_ids')) || [];
     if (deletedIds.indexOf(techId) === -1) deletedIds.push(techId);
