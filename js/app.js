@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 213;
+const APP_VERSION = 214;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -5222,8 +5222,7 @@ async function loadCalendarScreen() {
     try {
       let url = SYNC_CONFIG.API_URL + '?action=getCalendar&date_from=' + bounds.start + '&date_to=' + bounds.end;
       if (techId) url += '&tech_id=' + encodeURIComponent(techId);
-      const resp = await fetch(url, { cache: 'no-store' });
-      const data = await resp.json();
+      const data = await apiFetch(url);
       const entries = data.entries || [];
       if (entries.length) _mergeCalendarLocal(entries);
       if (loading) loading.style.display = 'none';
@@ -5316,22 +5315,23 @@ async function saveNewCalendarEntry() {
   // Save locally
   await _mergeCalendarLocal([entry]);
 
-  // Push to GAS if configured
-  if (isSyncConfigured()) {
-    try {
-      await fetch(SYNC_CONFIG.API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain' },
-        redirect: 'follow',
-        body: JSON.stringify({ action: 'saveCalendarEntries', entries: [entry] })
-      });
-    } catch (e) { console.warn('[CAL] GAS push failed:', e.message); }
-  }
-
-  // Close modal and refresh
+  // Close modal and refresh immediately
   const modal = $('modal-cal-add');
   if (modal) modal.classList.remove('open');
-  showToast('Intrare adaugata in calendar.', 'success');
+  showToast('Salvat local.', 'success');
+
+  // Push to GAS in background
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveCalendarEntries', entries: [entry] })
+    }).then(function(resp) {
+      showToast('Calendar sincronizat cu serverul ✓', 'success');
+    }).catch(function(e) {
+      console.warn('[CAL] GAS push failed:', e.message);
+      showToast('Eroare sincronizare calendar: ' + e.message, 'error');
+    });
+  }
   loadCalendarScreen();
 }
 
@@ -5684,16 +5684,15 @@ async function onCalendarFileImport(file) {
 
     if (isSyncConfigured()) {
       try {
-        const resp = await fetch(SYNC_CONFIG.API_URL, {
-          method:  'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          redirect: 'follow',
-          body:    JSON.stringify({ action: 'saveCalendarEntries', entries })
+        const data = await apiFetch(SYNC_CONFIG.API_URL, {
+          method: 'POST',
+          body:   JSON.stringify({ action: 'saveCalendarEntries', entries })
         });
-        const data = await resp.json();
         if (!data.success) console.warn('[CAL] GAS save error:', data.error);
+        else showToast('Calendar sincronizat cu serverul ✓', 'success');
       } catch (gasErr) {
         console.warn('[CAL] GAS push failed (local data saved):', gasErr.message);
+        showToast('Eroare sync calendar: ' + gasErr.message, 'error');
       }
     }
 
