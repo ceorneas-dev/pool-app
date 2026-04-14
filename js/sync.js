@@ -4,7 +4,7 @@
 'use strict';
 
 const SYNC_CONFIG = {
-  API_URL:          'https://script.google.com/macros/s/AKfycbyy1CBcnbfHBPLNTGDArCRc3VSfi99GZzAV05NGsQP1IQ0cytTNyto4UenW1NtqaN9ANg/exec',
+  API_URL:          'https://script.google.com/macros/s/AKfycbxwwISj_GwwvyhSfWbVKnrTbjzuBhoRHbwlW5FOLxxXChaISEbR1Nsxbx8Kj-hKcXX7BA/exec',
   SYNC_INTERVAL_MS: 900000   // 15 minute
 };
 
