@@ -903,8 +903,8 @@
   </div>
 </div>
 
-<!-- Intervention details -->
-<div id="modal-intv-details" class="modal-overlay" onclick="if(event.target===this) closeInterventionDetails()">
+<!-- Intervention details (z-index mai mare ca modal-client pentru a se afișa deasupra) -->
+<div id="modal-intv-details" class="modal-overlay" style="z-index:300" onclick="if(event.target===this) closeInterventionDetails()">
   <div class="modal-sheet" role="dialog" aria-modal="true">
     <div class="modal-handle"></div>
     <div class="modal-title" id="modal-intv-details-title">Detalii intervenție</div>

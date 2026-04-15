@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 220;
+const APP_VERSION = 221;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -1960,7 +1960,7 @@ function renderPreviousInterventions(client) {
 
   container.innerHTML = ci.map(i => {
     const dur = i.duration_minutes != null ? `<span class="prev-int-duration">⏱ ${Math.round(i.duration_minutes)} min</span>` : '';
-    return `<div class="prev-intervention">
+    return `<div class="prev-intervention" style="cursor:pointer" onclick="showInterventionDetails('${i.intervention_id}')">
       <div class="prev-int-header">
         <span class="prev-int-date">${fmtDate(i.date)}</span>
         ${dur}
