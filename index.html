@@ -903,6 +903,18 @@
   </div>
 </div>
 
+<!-- Intervention details -->
+<div id="modal-intv-details" class="modal-overlay" onclick="if(event.target===this) closeInterventionDetails()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-intv-details-title">Detalii intervenție</div>
+    <div class="modal-body" id="modal-intv-details-body"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeInterventionDetails()">Închide</button>
+    </div>
+  </div>
+</div>
+
 <!-- Today's interventions -->
 <div id="modal-today" class="modal-overlay" onclick="if(event.target===this) closeTodayModal()">
   <div class="modal-sheet" role="dialog" aria-modal="true">

@@ -418,6 +418,10 @@ function pullData() {
           };
 
           var local = localMap[parsed.intervention_id];
+          // Preserve local-only fields (photos not sent to GAS)
+          if (local && Array.isArray(local.photos) && local.photos.length) {
+            parsed.photos = local.photos;
+          }
           if (!local) {
             // New from server
             try { await put('interventions', parsed); added++; } catch(e) {
@@ -426,7 +430,7 @@ function pullData() {
           } else if (local.synced === false) {
             // Local has unsynced changes — keep local version (will be pushed next cycle)
           } else {
-            // Both synced — update with server version (server is truth)
+            // Both synced — update with server version (server is truth), preserving local photos
             try { await put('interventions', parsed); updated++; } catch(e) {
               console.warn('[SYNC] Intervention update failed:', parsed.intervention_id, e.message);
             }

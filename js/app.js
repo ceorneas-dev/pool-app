@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 219;
+const APP_VERSION = 220;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -3891,14 +3891,14 @@ function _renderHistoryList(clientId, allInterventions) {
     var opsArr = Array.isArray(i.operations) ? i.operations : (typeof i.operations === 'string' && i.operations.length > 0 ? (function() { try { return JSON.parse(i.operations); } catch(e) { return []; } })() : []);
     var ops = opsArr.join(', ');
 
-    html += '<div class="prev-intervention" style="position:relative">';
+    html += '<div class="prev-intervention" style="position:relative;cursor:pointer" onclick="showInterventionDetails(\'' + i.intervention_id + '\')">';
     html += '<div class="prev-int-header">';
     html += '<span class="prev-int-date">' + fmtDate(i.date) + '</span>';
     if (i.duration_minutes != null) {
       html += '<span class="prev-int-duration">⏱ ' + Math.round(i.duration_minutes) + ' min</span>';
     }
-    // Edit: all users; Delete: admin only
-    html += '<span style="display:flex;gap:4px;margin-left:auto">';
+    // Edit: all users; Delete: admin only (stopPropagation to avoid opening details)
+    html += '<span style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">';
     html += '<button onclick="editIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--blue-100);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--blue-700);cursor:pointer">✏️</button>';
     if (isAdmin()) {
       html += '<button onclick="deleteIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--red-100,#fee2e2);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--danger);cursor:pointer">🗑️</button>';
@@ -3921,7 +3921,7 @@ function _renderHistoryList(clientId, allInterventions) {
     }
     // Show photos if available
     if (i.photos && i.photos.length > 0) {
-      html += '<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap">';
+      html += '<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap" onclick="event.stopPropagation()">';
       i.photos.forEach(function(photoUrl, pi) {
         html += '<img src="' + photoUrl + '" alt="Foto ' + (pi+1) + '" style="width:48px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer;border:1px solid var(--slate-300)" onclick="window.open(this.src)">';
       });
@@ -4134,6 +4134,127 @@ function closeTodayModal() {
 
 function openClientModalById(clientId) {
   if (typeof showClientDetails === 'function') showClientDetails(clientId);
+}
+
+// ── Detalii intervenție (modal) ───────────────────────────────
+function showInterventionDetails(interventionId) {
+  const i = APP.interventions.find(x => x.intervention_id === interventionId);
+  if (!i) { showToast('Intervenția nu a fost găsită.', 'error'); return; }
+
+  const body  = $('modal-intv-details-body');
+  const title = $('modal-intv-details-title');
+  if (!body) return;
+
+  const client = APP.clients.find(c => c.client_id === i.client_id);
+  const cname  = client ? client.name : (i.client_name || 'Client șters');
+  if (title) title.textContent = cname + ' — ' + fmtDate(i.date);
+
+  const row = (lbl, val) =>
+    '<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--slate-200);font-size:.88rem">' +
+    '<span style="color:var(--text-secondary)">' + lbl + '</span>' +
+    '<span style="font-weight:600;text-align:right">' + val + '</span>' +
+    '</div>';
+
+  const num = v => (v != null && v !== '' ? v : '—');
+  const sect = (ttl, inner) =>
+    '<div style="margin-bottom:14px">' +
+    '<div style="font-size:.78rem;font-weight:700;color:var(--blue-700);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px;padding-bottom:4px;border-bottom:2px solid var(--blue-200)">' + ttl + '</div>' +
+    inner + '</div>';
+
+  let html = '';
+
+  // Info general
+  let general = '';
+  general += row('👤 Tehnician', escHtml(i.technician_name || '—'));
+  general += row('📅 Data', fmtDate(i.date));
+  if (i.created_at) {
+    const t = new Date(i.created_at);
+    general += row('🕒 Ora', t.toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }));
+  }
+  if (i.duration_minutes != null) general += row('⏱ Durata', Math.round(i.duration_minutes) + ' min');
+  if (i.arrival_time)   general += row('➡ Sosire',  new Date(i.arrival_time).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }));
+  if (i.departure_time) general += row('⬅ Plecare', new Date(i.departure_time).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }));
+  if (i.geo_lat && i.geo_lng) {
+    general += row('📍 GPS',
+      '<a href="https://www.google.com/maps?q=' + i.geo_lat + ',' + i.geo_lng + '" target="_blank" style="color:var(--blue-600)">' +
+      Number(i.geo_lat).toFixed(5) + ', ' + Number(i.geo_lng).toFixed(5) + '</a>');
+  }
+  html += sect('Informații generale', general);
+
+  // Valori măsurate
+  let meas = '';
+  meas += row('Clor liber (Cl)',    num(i.measured_chlorine) + (i.measured_chlorine != null ? ' mg/L' : ''));
+  meas += row('pH',                 num(i.measured_ph));
+  if (i.measured_tc != null)         meas += row('Clor total (TC)', i.measured_tc + ' mg/L');
+  if (i.measured_cya != null)        meas += row('CYA (acid cianuric)', i.measured_cya + ' mg/L');
+  if (i.measured_temp != null)       meas += row('Temperatură', i.measured_temp + ' °C');
+  if (i.measured_hardness != null)   meas += row('Duritate', i.measured_hardness);
+  if (i.measured_alkalinity != null) meas += row('Alcalinitate', i.measured_alkalinity);
+  if (i.measured_salinity != null)   meas += row('Salinitate', i.measured_salinity);
+  html += sect('Valori măsurate', meas);
+
+  // Operațiuni efectuate
+  const opsArr = Array.isArray(i.operations) ? i.operations :
+    (typeof i.operations === 'string' && i.operations ? (function(){ try { return JSON.parse(i.operations); } catch { return []; } })() : []);
+  if (opsArr.length) {
+    let opsHtml = '<div style="display:flex;flex-wrap:wrap;gap:6px;padding:4px 0">';
+    opsArr.forEach(op => {
+      opsHtml += '<span style="background:var(--emerald-100);color:var(--emerald-700);padding:4px 10px;border-radius:12px;font-size:.82rem;font-weight:600">✓ ' + escHtml(op) + '</span>';
+    });
+    opsHtml += '</div>';
+    html += sect('Operațiuni efectuate', opsHtml);
+  }
+
+  // Tratament efectuat
+  const treatments = [];
+  if (i.treat_cl_granule_gr > 0)     treatments.push(['Clor granule',        i.treat_cl_granule_gr + ' g']);
+  if (i.treat_cl_tablete > 0)        treatments.push(['Clor tablete',        i.treat_cl_tablete + ' buc']);
+  if (i.treat_cl_lichid_bidoane > 0) treatments.push(['Clor lichid',         i.treat_cl_lichid_bidoane + ' bid']);
+  if (i.treat_ph_granule > 0)        treatments.push(['pH minus granule',    i.treat_ph_granule + ' kg']);
+  if (i.treat_ph_lichid_bidoane > 0) treatments.push(['pH minus lichid',     i.treat_ph_lichid_bidoane + ' bid']);
+  if (i.treat_antialgic > 0)         treatments.push(['Antialgic',           i.treat_antialgic + ' L']);
+  if (i.treat_anticalcar > 0)        treatments.push(['Anticalcar',          i.treat_anticalcar + ' L']);
+  if (i.treat_floculant > 0)         treatments.push(['Floculant',           i.treat_floculant + ' L']);
+  if (i.treat_bicarbonat > 0)        treatments.push(['Bicarbonat',          i.treat_bicarbonat + ' kg']);
+  if (i.treat_sare_saci > 0)         treatments.push(['Sare',                i.treat_sare_saci + ' saci']);
+
+  if (treatments.length) {
+    let tHtml = '';
+    treatments.forEach(t => { tHtml += row(t[0], t[1]); });
+    html += sect('Tratament efectuat', tHtml);
+  }
+
+  // Observații
+  if (i.observations && i.observations.trim()) {
+    html += sect('Observații',
+      '<div style="background:var(--slate-50);padding:10px 12px;border-radius:8px;font-size:.88rem;font-style:italic;color:var(--slate-700);white-space:pre-wrap">' +
+      escHtml(i.observations) + '</div>');
+  }
+
+  // Poze
+  if (Array.isArray(i.photos) && i.photos.length) {
+    let pHtml = '<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:4px 0">';
+    i.photos.forEach((p, idx) => {
+      pHtml += '<img src="' + p + '" alt="Foto ' + (idx+1) + '" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;cursor:pointer;border:1px solid var(--slate-300)" onclick="window.open(this.src)">';
+    });
+    pHtml += '</div>';
+    html += sect('Fotografii (' + i.photos.length + ')', pHtml);
+  }
+
+  // Status sync
+  if (i.synced === false) {
+    html += '<div style="margin-top:8px;padding:8px 12px;background:var(--amber-100);color:var(--amber-700);border-radius:8px;font-size:.82rem">⚠ Nesincronizat — va fi trimis la următoarea sincronizare.</div>';
+  }
+
+  body.innerHTML = html;
+
+  const modal = $('modal-intv-details');
+  if (modal) modal.classList.add('open');
+}
+
+function closeInterventionDetails() {
+  const modal = $('modal-intv-details');
+  if (modal) modal.classList.remove('open');
 }
 
 /** Render the billing list */
