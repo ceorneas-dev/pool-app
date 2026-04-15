@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 218;
+const APP_VERSION = 219;
 
 // ── Arrival Timer with Geofencing ────────────────────────────
 // GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
@@ -776,6 +776,9 @@ function renderDashboard() {
   document.body.classList.toggle('role-admin',      isAdmin());
   document.body.classList.toggle('role-technician', !isAdmin());
 
+  // Aplica permisiuni granulare pentru tehnicieni (poate unhide admin-only)
+  applyTechPermissions();
+
   // Actualizează butonul GPS din footer
   updateGpsToggleBtn();
 
@@ -991,6 +994,47 @@ function renderDashboard() {
     const el = $('settings-gps-end');
     if (el) el.value = val ?? '18';
   });
+  // Permisiuni tehnicieni
+  getSetting('perm_tech_gps').then(val => {
+    const el = $('settings-perm-tech-gps');
+    if (el) el.checked = val === 'true' || val === true;
+  });
+  getSetting('perm_tech_add_client').then(val => {
+    const el = $('settings-perm-tech-add-client');
+    if (el) el.checked = val === 'true' || val === true;
+  });
+}
+
+// Salveaza permisiuni tehnicieni si aplica imediat pe pagina
+async function savePermSettings() {
+  const gpsEl = $('settings-perm-tech-gps');
+  const addEl = $('settings-perm-tech-add-client');
+  const permGps = !!(gpsEl && gpsEl.checked);
+  const permAdd = !!(addEl && addEl.checked);
+  await setSetting('perm_tech_gps', permGps ? 'true' : 'false');
+  await setSetting('perm_tech_add_client', permAdd ? 'true' : 'false');
+  await applyTechPermissions();
+  showToast('Permisiuni salvate.', 'success');
+}
+
+// Aplica (pentru utilizatorul curent) permisiunile acordate tehnicienilor.
+// Admin: toate butoanele raman vizibile (.admin-only + role-admin).
+// Tehnician: daca permisiunea e activa, scoatem clasa .admin-only de pe butonul specific.
+async function applyTechPermissions() {
+  // Butoane controlate: GPS toggle, Add Client tab
+  const gpsBtn = $('btn-gps-status');
+  const addBtn = document.querySelector('.tab-btn[onclick*="showAddClientModal"]');
+
+  // Reset (re-adauga admin-only inainte de a evalua)
+  if (gpsBtn) gpsBtn.classList.add('admin-only');
+  if (addBtn) addBtn.classList.add('admin-only');
+
+  if (isAdmin()) return; // admin vede tot oricum
+
+  const permGps = await getSetting('perm_tech_gps');
+  const permAdd = await getSetting('perm_tech_add_client');
+  if ((permGps === 'true' || permGps === true) && gpsBtn) gpsBtn.classList.remove('admin-only');
+  if ((permAdd === 'true' || permAdd === true) && addBtn) addBtn.classList.remove('admin-only');
 }
 
 async function renderClientList(searchTerm) {
@@ -4034,6 +4078,64 @@ function showBillingListScreen() {
   renderBillingList();
 }
 
+// ── Azi card: arata interventiile din ziua curenta ─────────────
+function showTodayInterventions() {
+  const today = new Date().toISOString().split('T')[0];
+  const items = APP.interventions
+    .filter(i => i.date === today)
+    .sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+
+  const title = $('modal-today-title');
+  const body  = $('modal-today-body');
+  if (!body) return;
+
+  if (title) title.textContent = `Intervenții astăzi (${items.length})`;
+
+  if (!items.length) {
+    body.innerHTML = '<div style="text-align:center;padding:30px 16px;color:var(--text-secondary)">' +
+      '<div style="font-size:2.5rem;margin-bottom:10px">📋</div>' +
+      '<p style="font-size:.95rem;font-weight:600">Nicio intervenție astăzi</p>' +
+      '<p style="font-size:.8rem">Intervențiile salvate azi vor apărea aici.</p></div>';
+  } else {
+    let html = '';
+    items.forEach(i => {
+      const client = APP.clients.find(c => c.client_id === i.client_id);
+      const cname  = client ? client.name : 'Client șters';
+      const tname  = i.technician_name || '';
+      const time   = i.created_at ? new Date(i.created_at).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : '';
+      const ops    = Array.isArray(i.operations) ? i.operations.filter(Boolean).join(', ') : '';
+      const obs    = i.observations || '';
+      const fac    = (i.chlorine != null ? 'Cl:' + i.chlorine : '');
+      const ph     = (i.ph != null ? ' pH:' + i.ph : '');
+
+      html += '<div class="billing-list-card" style="cursor:pointer" onclick="closeTodayModal();openClientModalById(\'' + i.client_id + '\')">' +
+        '<div class="billing-list-info" style="flex:1">' +
+          '<div style="font-weight:700;font-size:.95rem">' + escHtml(cname) + '</div>' +
+          '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:2px">' +
+            (time ? '🕒 ' + time + ' · ' : '') + escHtml(tname) +
+          '</div>' +
+          (fac || ph ? '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:2px">' + escHtml(fac + ph) + '</div>' : '') +
+          (ops   ? '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:2px">⚙ ' + escHtml(ops) + '</div>' : '') +
+          (obs   ? '<div style="font-size:.78rem;color:var(--text-secondary);margin-top:2px;font-style:italic">💬 ' + escHtml(obs) + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    });
+    body.innerHTML = html;
+  }
+
+  const modal = $('modal-today');
+  if (modal) modal.classList.add('open');
+}
+
+function closeTodayModal() {
+  const modal = $('modal-today');
+  if (modal) modal.classList.remove('open');
+}
+
+function openClientModalById(clientId) {
+  if (typeof showClientDetails === 'function') showClientDetails(clientId);
+}
+
 /** Render the billing list */
 function renderBillingList() {
   var container = $('billing-list-content');
@@ -4847,34 +4949,44 @@ async function updateGpsToggleBtn() {
   const ov     = await getSetting('gps_manual_override');
   const active = ov === 'on' || (ov !== 'off' && isWithinGpsHours());
 
+  let baseTitle;
   if (ov === 'off') {
     btn.textContent = '🔴 GPS';
-    btn.title = 'GPS oprit manual — apasă pentru reactivare';
+    baseTitle = 'GPS oprit manual — apasă pentru reactivare';
     btn.dataset.state = 'off';
   } else if (ov === 'on') {
     btn.textContent = '🟡 GPS';
-    btn.title = `GPS pornit manual (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
+    baseTitle = `GPS pornit manual (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
     btn.dataset.state = 'manual';
   } else if (active) {
     btn.textContent = '🟢 GPS';
-    btn.title = `GPS activ conform programului (${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
+    baseTitle = `GPS activ conform programului (${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
     btn.dataset.state = 'on';
   } else {
     btn.textContent = '⭕ GPS';
-    btn.title = `GPS inactiv (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00) — apasă pentru pornire manuală`;
+    baseTitle = `GPS inactiv (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00) — apasă pentru pornire manuală`;
     btn.dataset.state = 'idle';
+  }
+  // Adauga ultima stare transmitere pentru diagnostic (vizibil la long-press / hover)
+  const s = APP._gpsLastStatus;
+  if (s) {
+    const timeStr = s.ts ? new Date(s.ts).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : '';
+    btn.title = baseTitle + '\n[ultima: ' + s.state + (s.msg ? ' — ' + s.msg : '') + (timeStr ? ' la ' + timeStr : '') + ']';
+  } else {
+    btn.title = baseTitle;
   }
 }
 
 /**
  * Trimite datele GPS la GAS — apelat din ambele căi (nativă și browser).
+ * Logheaza status-ul in APP._gpsLastStatus pentru diagnostic in UI.
  */
 async function _sendLocationData(lat, lng, accuracy) {
-  if (!APP.user || !isSyncConfigured()) return;
-  // Verificare program + override manual
-  if (!await shouldSendGps()) return;
+  if (!APP.user) { _setGpsStatus('fail', 'fara user'); return; }
+  if (!isSyncConfigured()) { _setGpsStatus('fail', 'API neconfigurat'); return; }
+  if (!await shouldSendGps()) { _setGpsStatus('skip', 'in afara programului'); return; }
   try {
-    await fetch(SYNC_CONFIG.API_URL, {
+    const res = await fetch(SYNC_CONFIG.API_URL, {
       method: 'POST', redirect: 'follow',
       body: JSON.stringify({
         action: 'saveLocation',
@@ -4885,16 +4997,76 @@ async function _sendLocationData(lat, lng, accuracy) {
         timestamp: new Date().toISOString()
       })
     });
-  } catch { /* offline — silently skip */ }
+    if (res && res.ok) {
+      _setGpsStatus('ok', 'trimis ' + lat.toFixed(5) + ',' + lng.toFixed(5));
+    } else {
+      _setGpsStatus('fail', 'HTTP ' + (res ? res.status : '?'));
+    }
+  } catch (e) {
+    _setGpsStatus('fail', 'reţea: ' + (e && e.message || 'necunoscut'));
+    console.warn('[GPS] send error:', e);
+  }
+}
+
+// Memoreaza ultima stare GPS pentru diagnostic (afisat in titlul butonului GPS)
+function _setGpsStatus(state, msg) {
+  APP._gpsLastStatus = { state, msg, ts: new Date().toISOString() };
+  console.log('[GPS]', state, '—', msg);
+  try { updateGpsToggleBtn(); } catch {}
 }
 
 /** Browser fallback — obține poziția și apelează _sendLocationData. */
 function sendCurrentLocation() {
-  if (!APP.user || !isSyncConfigured()) return;
+  if (!APP.user) return;
+  if (!isSyncConfigured()) { _setGpsStatus('fail', 'API neconfigurat'); return; }
+  if (!navigator.geolocation) { _setGpsStatus('fail', 'geolocation indisponibil'); return; }
   navigator.geolocation.getCurrentPosition(
     pos => _sendLocationData(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
-    () => { /* GPS indisponibil / permisiune refuzată — ignorăm silențios */ },
-    { timeout: 10000, enableHighAccuracy: false, maximumAge: 120000 }
+    err => {
+      const map = { 1: 'permisiune refuzată', 2: 'GPS indisponibil', 3: 'timeout' };
+      _setGpsStatus('fail', 'geo: ' + (map[err && err.code] || (err && err.message) || 'necunoscut'));
+    },
+    { timeout: 15000, enableHighAccuracy: false, maximumAge: 120000 }
+  );
+}
+
+/** Forţeaza o trimitere GPS imediata (cu feedback vizibil) — accesibil din meniu debug. */
+async function sendLocationNow() {
+  if (!APP.user) { showToast('Autentifica-te intai.', 'error'); return; }
+  if (!isSyncConfigured()) { showToast('API URL nu e configurat.', 'error'); return; }
+  if (!navigator.geolocation) { showToast('Browser-ul nu suporta GPS.', 'error'); return; }
+  showToast('Se cere pozitia...', 'info');
+  navigator.geolocation.getCurrentPosition(
+    async pos => {
+      // Forteaza trimiterea (ignora program + override)
+      try {
+        const res = await fetch(SYNC_CONFIG.API_URL, {
+          method: 'POST', redirect: 'follow',
+          body: JSON.stringify({
+            action: 'saveLocation',
+            technician_id: APP.user.technician_id,
+            name:          APP.user.name,
+            lat: pos.coords.latitude,
+            lng: pos.coords.longitude,
+            accuracy:  Math.round(pos.coords.accuracy || 0),
+            timestamp: new Date().toISOString()
+          })
+        });
+        if (res && res.ok) {
+          _setGpsStatus('ok', 'manual OK');
+          showToast('Poziţie trimisă: ' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5), 'success', 4000);
+        } else {
+          showToast('Eroare server: HTTP ' + (res ? res.status : '?'), 'error');
+        }
+      } catch (e) {
+        showToast('Eroare reţea: ' + (e && e.message || ''), 'error');
+      }
+    },
+    err => {
+      const map = { 1: 'Permisiune GPS refuzată. Permite locaţia din setări browser.', 2: 'GPS indisponibil', 3: 'Timeout — încearcă din nou' };
+      showToast(map[err && err.code] || ('Eroare GPS: ' + (err && err.message || '')), 'error', 6000);
+    },
+    { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }
   );
 }
 

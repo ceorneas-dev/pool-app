@@ -132,7 +132,7 @@
       <div class="stat-value" id="stat-total-clients">0</div>
       <div class="stat-label">Clienți</div>
     </div>
-    <div class="stat-card">
+    <div class="stat-card" onclick="showTodayInterventions()" style="cursor:pointer">
       <div class="stat-value" id="stat-today">0</div>
       <div class="stat-label">Azi</div>
     </div>
@@ -260,6 +260,8 @@
             </div>
           </div>
           <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:4px" onclick="document.getElementById('btn-settings-save').click()">💾 Salveaza GPS</button>
+          <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:6px;background:var(--blue-100);color:var(--blue-700)" onclick="sendLocationNow()">📍 Trimite poziţia acum (test)</button>
+          <p style="font-size:.72rem;color:var(--text-secondary);margin:6px 0 0">Daca apare eroare permisiune, permite locatia din setarile browser-ului pentru site.</p>
         </div>
       </details>
 
@@ -268,6 +270,23 @@
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">👥 Tehnicieni</summary>
         <div style="padding:4px 14px 14px">
           <button class="btn-settings-save" style="width:100%;padding:10px" onclick="showTechManager()">👥 Gestioneaza Tehnicieni</button>
+        </div>
+      </details>
+
+      <!-- Permisiuni Tehnicieni -->
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">🔐 Permisiuni Tehnicieni</summary>
+        <div style="padding:8px 14px 14px">
+          <p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 10px">Acordă tehnicienilor acces la funcții rezervate admin-ului.</p>
+          <div class="settings-row" style="padding:0;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between">
+            <label for="settings-perm-tech-gps" style="font-size:.88rem">📍 Pot porni/opri GPS</label>
+            <input type="checkbox" id="settings-perm-tech-gps" style="width:20px;height:20px">
+          </div>
+          <div class="settings-row" style="padding:0;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between">
+            <label for="settings-perm-tech-add-client" style="font-size:.88rem">➕ Pot adăuga clienți noi</label>
+            <input type="checkbox" id="settings-perm-tech-add-client" style="width:20px;height:20px">
+          </div>
+          <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:6px" onclick="savePermSettings()">💾 Salvează permisiuni</button>
         </div>
       </details>
 
@@ -880,6 +899,18 @@
     </div>
     <div class="modal-actions">
       <button class="btn-modal-cancel" onclick="closeExportModal()">Anulează</button>
+    </div>
+  </div>
+</div>
+
+<!-- Today's interventions -->
+<div id="modal-today" class="modal-overlay" onclick="if(event.target===this) closeTodayModal()">
+  <div class="modal-sheet" role="dialog" aria-modal="true">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="modal-today-title">Intervenții astăzi</div>
+    <div class="modal-body" id="modal-today-body"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-cancel" onclick="closeTodayModal()">Închide</button>
     </div>
   </div>
 </div>
