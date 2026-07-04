@@ -107,14 +107,6 @@
   <!-- Nav Menu Overlay -->
   <div id="nav-menu-overlay" class="nav-menu-overlay" onclick="toggleNavMenu()">
     <nav class="nav-menu" onclick="event.stopPropagation()">
-      <button class="nav-menu-item admin-only" onclick="toggleNavMenu();showScreen('map')">
-        <span class="nav-menu-icon">&#128205;</span>
-        <span>Hart&#259; Tehnicieni</span>
-      </button>
-      <button class="nav-menu-item" onclick="toggleNavMenu();showScreen('calendar')">
-        <span class="nav-menu-icon">&#128197;</span>
-        <span>Calendar Interven&#539;ii</span>
-      </button>
       <button class="nav-menu-item admin-only" onclick="toggleNavMenu();showScreen('checklist')">
         <span class="nav-menu-icon">&#128203;</span>
         <span>Eviden&#539;&#259;</span>
@@ -167,14 +159,6 @@
   <!-- Footer -->
   <div class="dashboard-footer">
     <div class="footer-nav">
-      <button class="footer-nav-btn admin-only" onclick="showScreen('map')" title="Hartă Tehnicieni">
-        <span class="footer-nav-icon">📍</span>
-        <span class="footer-nav-label">Hartă</span>
-      </button>
-      <button class="footer-nav-btn" onclick="showScreen('calendar')" title="Calendar Intervenții">
-        <span class="footer-nav-icon">📅</span>
-        <span class="footer-nav-label">Calend.</span>
-      </button>
       <button class="footer-nav-btn admin-only" onclick="showScreen('checklist')" title="Evidență">
         <span class="footer-nav-icon">📋</span>
         <span class="footer-nav-label">Evidență</span>
@@ -186,10 +170,6 @@
       <button id="btn-export-all" class="footer-nav-btn admin-only" title="Export tot">
         <span class="footer-nav-icon">📥</span>
         <span class="footer-nav-label">Export</span>
-      </button>
-      <button id="btn-gps-status" class="footer-nav-btn admin-only" onclick="toggleGpsOverride()" title="GPS">
-        <span class="footer-nav-icon">⭕</span>
-        <span class="footer-nav-label">GPS</span>
       </button>
       <button class="footer-nav-btn footer-nav-logout" onclick="document.getElementById('btn-logout-hidden').click()" title="Ieșire">
         <span class="footer-nav-icon">🚪</span>
@@ -232,39 +212,6 @@
         </div>
       </details>
 
-      <!-- GPS Tracking -->
-      <details style="margin:4px 0">
-        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📍 GPS Tracking</summary>
-        <div style="padding:4px 14px 8px">
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
-            <label for="settings-gps-interval">Interval trimitere pozitie</label>
-            <select id="settings-gps-interval" style="width:130px">
-              <option value="60">1 minut</option>
-              <option value="120">2 minute</option>
-              <option value="300" selected>5 minute</option>
-              <option value="600">10 minute</option>
-              <option value="900">15 minute</option>
-              <option value="1200">20 minute</option>
-              <option value="1800">30 minute</option>
-            </select>
-          </div>
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
-            <label>Program GPS automat</label>
-            <div style="display:flex;align-items:center;gap:6px">
-              <select id="settings-gps-start" style="width:72px">
-                <!-- Ore 0-23 generate dinamic de JS -->
-              </select>
-              <span style="color:var(--text-secondary);font-size:13px">→</span>
-              <select id="settings-gps-end" style="width:72px">
-              </select>
-            </div>
-          </div>
-          <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:4px" onclick="document.getElementById('btn-settings-save').click()">💾 Salveaza GPS</button>
-          <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:6px;background:var(--blue-100);color:var(--blue-700)" onclick="sendLocationNow()">📍 Trimite poziţia acum (test)</button>
-          <p style="font-size:.72rem;color:var(--text-secondary);margin:6px 0 0">Daca apare eroare permisiune, permite locatia din setarile browser-ului pentru site.</p>
-        </div>
-      </details>
-
       <!-- Tehnicieni -->
       <details class="admin-only" style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">👥 Tehnicieni</summary>
@@ -278,10 +225,6 @@
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">🔐 Permisiuni Tehnicieni</summary>
         <div style="padding:8px 14px 14px">
           <p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 10px">Acordă tehnicienilor acces la funcții rezervate admin-ului.</p>
-          <div class="settings-row" style="padding:0;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between">
-            <label for="settings-perm-tech-gps" style="font-size:.88rem">📍 Pot porni/opri GPS</label>
-            <input type="checkbox" id="settings-perm-tech-gps" style="width:20px;height:20px">
-          </div>
           <div class="settings-row" style="padding:0;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between">
             <label for="settings-perm-tech-add-client" style="font-size:.88rem">➕ Pot adăuga clienți noi</label>
             <input type="checkbox" id="settings-perm-tech-add-client" style="width:20px;height:20px">
@@ -307,6 +250,15 @@
         </div>
       </details>
 
+      <!-- Jurnal Locații GPS (audit) -->
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📋 Jurnal Locații GPS</summary>
+        <div style="padding:4px 14px 14px">
+          <p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 10px">Cine, când și ce a adăugat/șters/schimbat la locația GPS a clienților.</p>
+          <button class="btn-settings-save" style="width:100%;padding:10px" onclick="showAuditLogModal()">📋 Vezi jurnal</button>
+        </div>
+      </details>
+
       <!-- Export Folder -->
       <details style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📂 Folder Export</summary>
@@ -314,7 +266,7 @@
           <button class="btn-settings-save" style="flex:1;padding:10px" onclick="pickExportFolder()">📂 Alege folderul de export</button>
           <span id="export-folder-name" style="font-size:.8rem;color:var(--text-secondary)"></span>
         </div>
-        <p style="padding:0 14px 10px;font-size:.75rem;color:var(--text-secondary);margin:0">La export se creează automat subfolder per client. Funcționează doar pe Chrome/Edge desktop.</p>
+        <p style="padding:0 14px 10px;font-size:.75rem;color:var(--text-secondary);margin:0">Toate exporturile ajung automat și în Google Drive, folderul „Export Interventii" (cu subfolder per client) — nu necesită nicio configurare. Alegerea unui folder local de mai jos e opțională, doar pentru o copie suplimentară pe acest dispozitiv, și funcționează doar pe Chrome/Edge desktop.</p>
       </details>
 
       <!-- Template & Import -->
@@ -387,8 +339,6 @@
       <span id="intervention-date" class="intervention-date" onclick="document.getElementById('intervention-date-picker').showPicker()" title="Click pentru a schimba data" style="cursor:pointer"></span>
       <input type="date" id="intervention-date-picker" style="position:absolute;opacity:0;width:0;height:0;pointer-events:none" onchange="updateInterventionDate(this.value)">
       <span id="gps-indicator" class="gps-indicator locating">📍 Se localizează...</span>
-      <span id="timer-display" class="timer-display" style="display:none">⏱ <span id="timer-value">0 min</span></span>
-      <span id="geo-status" class="geo-status" style="display:none"></span>
       <div class="wizard-progress" id="wizard-progress">
         <span class="wiz-dot active" data-step="1"></span>
         <span class="wiz-dot" data-step="2"></span>
@@ -596,60 +546,6 @@
     <div id="success-share-hint" class="success-share-hint" style="display:none"></div>
 
     <button id="btn-success-back" class="btn-success-back">← Înapoi la clienți</button>
-  </div>
-</div>
-
-<!-- ════════════════════════════════════
-     SCREEN: MAP (Locații Tehnicieni)
-════════════════════════════════════ -->
-<div id="screen-map" class="screen">
-  <div class="map-header">
-    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
-    <span class="map-header-title">📍 Locații Tehnicieni</span>
-    <span id="map-last-update" class="map-last-update"></span>
-  </div>
-  <!-- Mesaj afișat când GAS API nu e configurat -->
-  <div id="map-no-api" class="map-no-api" style="display:none">
-    <div class="map-no-api-icon">🔌</div>
-    <p>Harta necesită configurarea API-ului Google Sheets.</p>
-    <p style="color:var(--text-secondary);font-size:13px">Setări → API URL → introdu URL-ul Google Apps Script</p>
-    <p style="margin-top:16px;font-size:12px;color:var(--text-secondary)">
-      Tehnicienilor li se trimite locația GPS automat la fiecare 5 minute,<br>
-      iar harta se actualizează live din foaia de calcul.
-    </p>
-  </div>
-  <!-- Container hartă Leaflet -->
-  <div id="map-container" class="map-container"></div>
-  <!-- Legendă culori markeri -->
-  <div class="map-legend">
-    <span class="map-legend-item"><span class="map-legend-dot" style="background:#16a34a"></span>Sub 10 min</span>
-    <span class="map-legend-item"><span class="map-legend-dot" style="background:#d97706"></span>Sub 1 oră</span>
-    <span class="map-legend-item"><span class="map-legend-dot" style="background:#94a3b8"></span>Mai vechi</span>
-  </div>
-  <!-- Panou Info Client — admin-only, apare la click pe marker -->
-  <div id="map-client-panel" class="map-history-panel admin-only" style="display:none">
-    <div class="map-hist-title">ℹ️ Info tehnician</div>
-    <div id="map-client-info" style="padding:8px 12px;font-size:.85rem;color:var(--text-primary)"></div>
-    <button onclick="document.getElementById('map-client-panel').style.display='none'" class="map-hist-clear-btn" title="Închide" style="position:absolute;top:8px;right:8px">✕</button>
-  </div>
-  <!-- Panou Istoric GPS — doar admin -->
-  <div id="map-history-panel" class="map-history-panel admin-only">
-    <div class="map-hist-title">📅 Traseu istoric</div>
-    <div class="map-hist-controls">
-      <select id="map-hist-tech" class="map-hist-select">
-        <option value="">Alege tehnician...</option>
-      </select>
-      <input type="date" id="map-hist-date" class="map-hist-date">
-      <button onclick="loadAndShowHistory()" class="map-hist-btn">📍 Afișează</button>
-      <button onclick="clearHistoryTrail()" class="map-hist-clear-btn" title="Șterge traseul">✕</button>
-    </div>
-    <div id="map-hist-info" class="map-hist-info" style="display:none"></div>
-  </div>
-  <!-- Buton exit în partea de jos -->
-  <div style="position:fixed;bottom:16px;left:50%;transform:translateX(-50%);z-index:1100">
-    <button onclick="showScreen('dashboard')" style="background:var(--primary);color:white;border:none;border-radius:50px;padding:12px 28px;font-size:.95rem;font-weight:600;box-shadow:0 4px 12px rgba(0,0,0,.3);cursor:pointer;display:flex;align-items:center;gap:8px">
-      ← Înapoi
-    </button>
   </div>
 </div>
 
@@ -1192,95 +1088,8 @@
 </div>
 
 <!-- ════════════════════════════════════
-     SCREEN: CALENDAR (Program Intervenții)
-════════════════════════════════════ -->
-<div id="screen-calendar" class="screen">
-
-  <!-- Header -->
-  <div class="cal-header">
-    <button class="btn-back" onclick="showScreen('dashboard')">←</button>
-    <span class="cal-header-title">📅 Calendar Intervenții</span>
-    <div class="cal-header-actions">
-      <button class="cal-icon-btn" onclick="exportCalendarPdf()" title="Export PDF">🖨️</button>
-      <label class="cal-icon-btn admin-only" title="Import Excel (.xlsx)">
-        📥
-        <input type="file" id="cal-import-input" accept=".xlsx,.xls" style="display:none" onchange="onCalendarFileImport(this.files[0])">
-      </label>
-      <button class="cal-icon-btn admin-only" onclick="downloadCalendarTemplate()" title="Descarcă template Excel">📋</button>
-      <button class="cal-icon-btn admin-only" onclick="openAddCalendarEntry()" title="Adaugă intrare" style="font-size:1.3rem">➕</button>
-    </div>
-  </div>
-
-  <!-- Week navigation -->
-  <div class="cal-week-nav">
-    <button class="cal-nav-btn" onclick="changeCalendarWeek(-1)" title="Săptămâna anterioară">◀</button>
-    <div class="cal-week-label-wrap">
-      <span id="cal-week-label" class="cal-week-label">—</span>
-      <button class="cal-today-btn" onclick="jumpCalendarToToday()">Azi</button>
-    </div>
-    <button class="cal-nav-btn" onclick="changeCalendarWeek(1)" title="Săptămâna următoare">▶</button>
-  </div>
-
-  <!-- No API configured message -->
-  <div id="cal-no-api" class="cal-state-box" style="display:none">
-    <div style="font-size:2.5rem;margin-bottom:10px">🔌</div>
-    <p style="font-weight:600">Calendarul necesită API-ul Google Sheets</p>
-    <p style="color:var(--text-secondary);font-size:13px;margin-top:4px">Setări → API URL → introdu URL-ul Google Apps Script</p>
-  </div>
-
-  <!-- Loading state -->
-  <div id="cal-loading" class="cal-state-box" style="display:none">
-    <div style="font-size:2rem;margin-bottom:10px">⏳</div>
-    <p>Se încarcă programul...</p>
-  </div>
-
-  <!-- Calendar content — rendered by JS -->
-  <div id="cal-content" class="cal-content"></div>
-
-</div>
-
-<!-- ════════════════════════════════════
      TOAST CONTAINER
 ════════════════════════════════════ -->
-
-<!-- Modal: Add Calendar Entry -->
-<div id="modal-cal-add" class="modal-overlay" onclick="if(event.target===this)this.classList.remove('open')">
-  <div class="modal-content" style="max-width:420px" onclick="event.stopPropagation()">
-    <h3 style="margin:0 0 14px;font-size:1.1rem">📅 Adaugă în calendar</h3>
-    <div style="display:flex;flex-direction:column;gap:10px">
-      <div style="display:flex;gap:8px;align-items:flex-end">
-        <div style="flex:1">
-          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Data</label>
-          <input type="date" id="cal-add-date" class="form-input" style="width:100%">
-        </div>
-        <div style="flex:0 0 100px">
-          <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary);display:flex;align-items:center;gap:4px">
-            <input type="checkbox" id="cal-add-time-chk" onchange="toggleCalTime(this)" style="margin:0;width:14px;height:14px;accent-color:var(--primary)">
-            Ora
-          </label>
-          <input type="time" id="cal-add-time" class="form-input" style="width:100%;opacity:0.4" disabled>
-        </div>
-      </div>
-      <div>
-        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Tehnician</label>
-        <select id="cal-add-tech" class="form-input" style="width:100%"></select>
-      </div>
-      <div>
-        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Client</label>
-        <input type="text" id="cal-add-client" class="form-input" list="cal-add-client-list" placeholder="Nume client" style="width:100%" autocomplete="off">
-        <datalist id="cal-add-client-list"></datalist>
-      </div>
-      <div>
-        <label style="font-size:.75rem;font-weight:600;color:var(--text-secondary)">Observații</label>
-        <input type="text" id="cal-add-notes" class="form-input" placeholder="Opțional" style="width:100%">
-      </div>
-      <div style="display:flex;gap:8px;margin-top:4px">
-        <button class="btn-primary" style="flex:1" onclick="saveNewCalendarEntry()">💾 Salvează</button>
-        <button style="flex:0 0 auto;padding:8px 18px;border-radius:10px;background:var(--slate-200);color:var(--slate-600);font-weight:600" onclick="document.getElementById('modal-cal-add').classList.remove('open')">✕</button>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- ── Billing / Deviz Modal (admin-only) ── -->
 <div id="modal-billing" class="modal-overlay admin-only" onclick="if(event.target===this)closeBillingModal()">
@@ -1290,6 +1099,45 @@
       <button style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);padding:4px" onclick="closeBillingModal()">&#10005;</button>
     </div>
     <div id="billing-modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Audit Log Modal (admin-only) ── -->
+<div id="modal-audit-log" class="modal-overlay admin-only" onclick="if(event.target===this)closeAuditLogModal()">
+  <div class="modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto" onclick="event.stopPropagation()">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <h3 style="margin:0;font-size:1.1rem">📋 Jurnal Locații GPS</h3>
+      <button style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);padding:4px" onclick="closeAuditLogModal()">&#10005;</button>
+    </div>
+    <div id="audit-log-modal-body"></div>
+  </div>
+</div>
+
+<!-- ── Voice-note Quick Intervention Modal ── -->
+<div id="modal-voice-intervention" class="modal-overlay" onclick="if(event.target===this)closeVoiceIntervention()">
+  <div class="modal-content" style="max-width:420px;text-align:center" onclick="event.stopPropagation()">
+    <h3 style="margin:0 0 4px;font-size:1.1rem">🎙️ Intervenție rapidă</h3>
+    <p id="voice-client-name" style="margin:0 0 18px;color:var(--text-secondary);font-size:.9rem"></p>
+
+    <div id="voice-rec-idle">
+      <button id="voice-rec-start-btn" onclick="startVoiceRecording()" style="width:96px;height:96px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:2.2rem;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25)">🎙️</button>
+      <p style="margin:14px 0 0;font-size:.8rem;color:var(--text-secondary)">Apasă și spune, de exemplu:<br>„Clor 2, pH 8, am pus 3 tablete de clor și 4 kg de pH"</p>
+    </div>
+
+    <div id="voice-rec-active" style="display:none">
+      <button onclick="stopVoiceRecording()" style="width:96px;height:96px;border-radius:50%;background:var(--danger);color:#fff;border:none;font-size:2.2rem;cursor:pointer;animation:pulse-timer 1.4s infinite">⏹️</button>
+      <p style="margin:14px 0 0;font-size:1rem;font-weight:600">🔴 Se înregistrează... <span id="voice-rec-timer">0:00</span></p>
+    </div>
+
+    <div id="voice-rec-preview" style="display:none">
+      <audio id="voice-rec-audio" controls style="width:100%;margin-top:4px"></audio>
+      <div style="display:flex;gap:8px;margin-top:16px">
+        <button class="btn-settings-save" style="flex:1;padding:10px" onclick="startVoiceRecording()">🔄 Reînregistrează</button>
+        <button class="btn-primary" style="flex:1;padding:10px" onclick="saveVoiceIntervention()">💾 Salvează</button>
+      </div>
+    </div>
+
+    <button style="margin-top:18px;background:transparent;border:none;color:var(--text-secondary);font-size:.85rem;cursor:pointer" onclick="closeVoiceIntervention()">Anulează</button>
   </div>
 </div>
 

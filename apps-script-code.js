@@ -25,7 +25,8 @@ const INTERVENTIONS_COLS = [
   'treat_antialgic','treat_anticalcar','treat_floculant','treat_sare_saci','treat_bicarbonat',
   'observations','operations',
   'geo_lat','geo_lng','geo_accuracy',
-  'arrival_time','departure_time','duration_minutes'
+  'arrival_time','departure_time','duration_minutes',
+  'audio_file_url'
 ];
 
 const TECHNICIANS_COLS = [
@@ -41,27 +42,13 @@ const SYNC_LOG_COLS = [
   'sync_id','technician_id','timestamp','records_pushed','records_pulled','status','error_message'
 ];
 
-const LOCATIONS_COLS = [
-  'technician_id','name','lat','lng','accuracy','timestamp'
-];
-
-// Istoric GPS — un rând per trimitere (append), păstrat 30 zile
-const LOCATIONS_HIST_COLS = [
-  'timestamp','technician_id','name','lat','lng','accuracy'
-];
-
-// Un rând per pereche (tech+admin) — actualizat la fiecare cerere
-const AUDIO_CALLS_COLS = [
-  'tech_id','admin_id','admin_name','channel','status','updated_at'
-];
-
-// Programul intervențiilor — un rând per intrare planificată
-const PROGRAM_COLS = [
-  'id','date','time','technician_id','technician_name','client_name','address','notes'
-];
-
 // Evidenta Checklist - un singur rand (suprascris la fiecare salvare)
 const CHECKLIST_COLS = ['updated_at','title','items_json'];
+
+// Jurnal audit — un rând per acțiune (append), vizibil doar adminului în UI
+const AUDIT_LOG_COLS = [
+  'timestamp','technician_id','technician_name','log_action','client_id','client_name'
+];
 
 // ── HTTP Handlers ─────────────────────────────────────────────
 function doGet(e) {
@@ -71,21 +58,15 @@ function doGet(e) {
   try {
     let result;
     if (action === 'ping') {
-      result = { status: 'ok', sheets: 5, timestamp: new Date().toISOString() };
+      result = { status: 'ok', sheets: 7, timestamp: new Date().toISOString() };
     } else if (action === 'pull') {
       result = handlePull(params);
     } else if (action === 'stats') {
       result = handleStats();
-    } else if (action === 'getLocations') {
-      result = handleGetLocations();
-    } else if (action === 'getLocationHistory') {
-      result = handleGetLocationHistory(params);
-    } else if (action === 'getCalendar') {
-      result = handleGetCalendar(params);
     } else if (action === 'getChecklist') {
       result = handleGetChecklist();
-    } else if (action === 'getAudioCall') {
-      result = handleGetAudioCall(params);
+    } else if (action === 'getAuditLog') {
+      result = handleGetAuditLog();
     } else {
       result = { error: 'Unknown action: ' + action };
     }
@@ -105,25 +86,14 @@ function doPost(e) {
       result = handleLogin(body);
     } else if (action === 'push') {
       result = handlePush(body);
-    } else if (action === 'saveLocation') {
-      result = handleSaveLocation(body);
-    } else if (action === 'saveCalendarEntries') {
-      result = handleSaveCalendarEntries(body);
-    } else if (action === 'deleteCalendarEntry') {
-      result = handleDeleteCalendarEntry(body);
     } else if (action === 'saveChecklist') {
       result = handleSaveChecklist(body);
-    } else if (action === 'requestAudioCall') {
-      result = handleRequestAudioCall(body);
-    } else if (action === 'updateAudioCall') {
-      result = handleUpdateAudioCall(body);
     } else if (action === 'saveExportToDrive') {
       result = handleSaveExportToDrive(body);
     } else if (action === 'sendEmail') {
       result = handleSendEmail(body);
-    } else if (body._type === 'location') {
-      // OwnTracks HTTP mode — trimite direct fără câmpul "action"
-      result = handleOwnTracksLocation(body);
+    } else if (action === 'logAudit') {
+      result = handleLogAudit(body);
     } else {
       result = { error: 'Unknown action: ' + action };
     }
@@ -427,208 +397,6 @@ function handlePushTechnicians(body) {
   return { success: true, saved, updated, deleted };
 }
 
-// ── POST: saveLocation ────────────────────────────────────────
-// Salvează sau actualizează poziția unui tehnician (un rând per tehnician).
-function handleSaveLocation(body) {
-  const { technician_id, name, lat, lng, accuracy, timestamp } = body;
-  if (!technician_id || lat === undefined || lng === undefined) {
-    return { success: false, error: 'Date GPS incomplete' };
-  }
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = getOrCreateSheet(ss, 'locatii', LOCATIONS_COLS);
-  const data  = sheet.getDataRange().getValues();
-
-  // Caută rândul existent pentru acest tehnician (actualizare, nu append)
-  let found = false;
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(technician_id)) {
-      sheet.getRange(i + 1, 1, 1, LOCATIONS_COLS.length).setValues([
-        [technician_id, name || '', lat, lng, accuracy || 0, timestamp]
-      ]);
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    sheet.appendRow([technician_id, name || '', lat, lng, accuracy || 0, timestamp]);
-  }
-
-  // ── Append în istoricul GPS (un rând per trimitere, 30 zile retenție) ──
-  const histSheet = getOrCreateSheet(ss, 'locatii_istoric', LOCATIONS_HIST_COLS);
-  histSheet.appendRow([timestamp, technician_id, name || '', lat, lng, accuracy || 0]);
-
-  // Curățare o dată pe zi (șterge rânduri mai vechi de 30 zile)
-  _cleanupGpsHistory(ss);
-
-  return { success: true };
-}
-
-// ── GET: getLocationHistory ────────────────────────────────────
-// Returnează pozițiile unui tehnician pentru o dată specifică.
-function handleGetLocationHistory(params) {
-  const techId = params.tech_id;
-  const date   = params.date;   // format YYYY-MM-DD
-  if (!techId || !date) return { error: 'Lipsesc tech_id sau date', positions: [] };
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('locatii_istoric');
-  if (!sheet) return { positions: [], tech_name: '' };
-
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return { positions: [], tech_name: '' };
-
-  // LOCATIONS_HIST_COLS: [timestamp, technician_id, name, lat, lng, accuracy]
-  const positions = [];
-  let techName = '';
-  for (let i = 1; i < data.length; i++) {
-    const [ts, tid, tname, lat, lng, acc] = data[i];
-    if (String(tid) !== String(techId)) continue;
-    const tsStr = String(ts);
-    if (!tsStr.startsWith(date)) continue;    // filtru pe dată
-    if (!techName && tname) techName = String(tname);
-    positions.push({
-      timestamp: tsStr,
-      lat:  parseFloat(lat),
-      lng:  parseFloat(lng),
-      accuracy: parseFloat(acc) || 0,
-      time: new Date(ts).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' })
-    });
-  }
-
-  // Sortare cronologică
-  positions.sort((a, b) => (a.timestamp < b.timestamp ? -1 : 1));
-  return { positions, tech_name: techName };
-}
-
-// ── Helper: curățare istoric GPS mai vechi de 30 zile ─────────
-function _cleanupGpsHistory(ss) {
-  try {
-    const props    = PropertiesService.getScriptProperties();
-    const today    = new Date().toISOString().slice(0, 10);
-    if (props.getProperty('last_gps_cleanup') === today) return; // o dată pe zi
-
-    const sheet  = ss.getSheetByName('locatii_istoric');
-    if (!sheet) return;
-
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 60);
-    const cutoffStr = cutoff.toISOString().slice(0, 10); // YYYY-MM-DD
-
-    const data = sheet.getDataRange().getValues();
-    // Parcurgem de jos în sus ca să nu deranjăm indicii la ștergere
-    for (let i = data.length - 1; i >= 1; i--) {
-      const ts = String(data[i][0]);
-      if (ts && ts.slice(0, 10) < cutoffStr) sheet.deleteRow(i + 1);
-    }
-    props.setProperty('last_gps_cleanup', today);
-  } catch (e) {
-    Logger.log('Cleanup GPS history error: ' + e.message);
-  }
-}
-
-// ── GET: getCalendar ──────────────────────────────────────────
-// Returnează intrările din programul intervențiilor pentru intervalul dat.
-function handleGetCalendar(params) {
-  const dateFrom = params.date_from || '';
-  const dateTo   = params.date_to   || '';
-  const techId   = params.tech_id   || '';
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('program');
-  if (!sheet) return { entries: [] };
-
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return { entries: [] };
-
-  // PROGRAM_COLS: [id, date, time, technician_id, technician_name, client_name, address, notes]
-  const entries = [];
-  for (let i = 1; i < data.length; i++) {
-    const row = data[i].map(v => _cellToString(v).trim());
-    const [id, date, time, tid, tname, cname, addr, notes] = row;
-    if (!id) continue;
-    if (dateFrom && date < dateFrom) continue;
-    if (dateTo   && date > dateTo)   continue;
-    if (techId   && tid !== techId)  continue;
-    entries.push({ id, date, time, technician_id: tid, technician_name: tname, client_name: cname, address: addr, notes });
-  }
-
-  // Sortare cronologică (dată + oră)
-  entries.sort((a, b) => (a.date + a.time < b.date + b.time ? -1 : 1));
-  return { entries };
-}
-
-// ── POST: saveCalendarEntries ─────────────────────────────────
-// Adaugă sau suprascrie intrări în programul intervențiilor.
-function handleSaveCalendarEntries(body) {
-  const { entries } = body;
-  if (!entries || !Array.isArray(entries)) return { success: false, error: 'Lipsesc datele' };
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = getOrCreateSheet(ss, 'program', PROGRAM_COLS);
-  const data  = sheet.getDataRange().getValues();
-
-  // Construiește index id → număr rând (1-based)
-  const existing = {};
-  for (let i = 1; i < data.length; i++) {
-    const id = String(data[i][0] || '').trim();
-    if (id) existing[id] = i + 1;
-  }
-
-  let saved = 0;
-  entries.forEach(entry => {
-    const row = PROGRAM_COLS.map(col => entry[col] !== undefined ? String(entry[col]) : '');
-    const rowNum = existing[entry.id];
-    if (rowNum) {
-      sheet.getRange(rowNum, 1, 1, PROGRAM_COLS.length).setValues([row]);
-    } else {
-      sheet.appendRow(row);
-    }
-    saved++;
-  });
-
-  return { success: true, saved };
-}
-
-// ── POST: deleteCalendarEntry ─────────────────────────────────
-// Șterge o intrare din programul intervențiilor după ID.
-function handleDeleteCalendarEntry(body) {
-  const { id } = body;
-  if (!id) return { success: false, error: 'Lipsește ID-ul' };
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('program');
-  if (!sheet) return { success: false, error: 'Sheet program inexistent' };
-
-  const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]).trim() === String(id)) {
-      sheet.deleteRow(i + 1);
-      return { success: true };
-    }
-  }
-  return { success: false, error: 'Intrare negăsită' };
-}
-
-// ── GET: getLocations ─────────────────────────────────────────
-// Returnează ultima poziție a fiecărui tehnician (rânduri din sheet locatii).
-function handleGetLocations() {
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('locatii');
-  if (!sheet) return [];
-
-  const data = sheet.getDataRange().getValues();
-  if (data.length <= 1) return [];
-
-  return data.slice(1).map(row => ({
-    technician_id: String(row[0]),
-    name:          String(row[1]),
-    lat:           parseFloat(row[2]),
-    lng:           parseFloat(row[3]),
-    accuracy:      parseInt(row[4]) || 0,
-    timestamp:     String(row[5])
-  })).filter(r => r.lat && r.lng); // exclude rânduri goale
-}
-
 // ── GET: getChecklist ────────────────────────────────────────────────
 // Returneaza titlul si itemii listei de evidenta (un singur rand in sheet).
 function handleGetChecklist() {
@@ -663,86 +431,48 @@ function handleSaveChecklist(body) {
   return { success: true };
 }
 
-// ── Audio Call Signaling ──────────────────────────────────────
-// Folosit de Agora.io pentru a coordona cine ascultă pe cine.
-// Foaia audio_calls: un rând per tech_id (suprascris la fiecare cerere).
-
-/** Admin creează o cerere de ascultare pentru un tehnician. */
-function handleRequestAudioCall(body) {
-  const { tech_id, admin_id, admin_name, channel } = body;
-  if (!tech_id || !channel) return { success: false, error: 'Date incomplete' };
+// ── POST: logAudit ─────────────────────────────────────────────
+// Adaugă o intrare în jurnalul de audit (ex: modificare locație GPS client).
+function handleLogAudit(body) {
+  const { technician_id, technician_name, log_action, client_id, client_name, timestamp } = body;
+  if (!log_action) return { success: false, error: 'Lipsește log_action' };
 
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = getOrCreateSheet(ss, 'audio_calls', AUDIO_CALLS_COLS);
-  const data  = sheet.getDataRange().getValues();
-  const now   = new Date().toISOString();
-
-  // Caută rândul existent pentru acest tech_id
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(tech_id)) {
-      sheet.getRange(i + 1, 1, 1, AUDIO_CALLS_COLS.length)
-           .setValues([[tech_id, admin_id || '', admin_name || '', channel, 'pending', now]]);
-      return { success: true };
-    }
-  }
-  sheet.appendRow([tech_id, admin_id || '', admin_name || '', channel, 'pending', now]);
+  const sheet = getOrCreateSheet(ss, 'audit_log', AUDIT_LOG_COLS);
+  sheet.appendRow([
+    timestamp || new Date().toISOString(),
+    technician_id   || '',
+    technician_name || '',
+    log_action,
+    client_id   || '',
+    client_name || ''
+  ]);
   return { success: true };
 }
 
-/** Tehnician verifică dacă există o cerere de ascultare pentru el. */
-function handleGetAudioCall(params) {
-  const tech_id = params.tech_id || '';
-  if (!tech_id) return { status: 'none' };
-
+// ── GET: getAuditLog ───────────────────────────────────────────
+// Returnează ultimele 200 intrări din jurnal, cele mai noi primele.
+function handleGetAuditLog() {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('audio_calls');
-  if (!sheet) return { status: 'none' };
+  const sheet = ss.getSheetByName('audit_log');
+  if (!sheet) return { entries: [] };
 
   const data = sheet.getDataRange().getValues();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(tech_id)) {
-      const status = String(data[i][4] || 'none');
-      // Ignoră cereri mai vechi de 2 minute (evită "cereri fantomă")
-      const updatedAt = new Date(String(data[i][5] || 0)).getTime();
-      if (Date.now() - updatedAt > 2 * 60 * 1000 && status === 'pending') {
-        return { status: 'none' };
-      }
-      return {
-        status,
-        admin_id:   String(data[i][1]),
-        admin_name: String(data[i][2]),
-        channel:    String(data[i][3])
-      };
-    }
-  }
-  return { status: 'none' };
+  if (data.length <= 1) return { entries: [] };
+
+  const entries = data.slice(1).map(row => ({
+    timestamp:        _cellToString(row[0]),
+    technician_id:    String(row[1]),
+    technician_name:  String(row[2]),
+    log_action:       String(row[3]),
+    client_id:        String(row[4]),
+    client_name:      String(row[5])
+  }));
+
+  entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)); // newest first
+  return { entries: entries.slice(0, 200) };
 }
 
-/** Actualizează statusul unui apel (accepted / ended). */
-function handleUpdateAudioCall(body) {
-  const { channel, status } = body;
-  if (!channel) return { success: false };
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  const sheet = ss.getSheetByName('audio_calls');
-  if (!sheet) return { success: false };
-
-  const data = sheet.getDataRange().getValues();
-  const now  = new Date().toISOString();
-  for (let i = 1; i < data.length; i++) {
-    if (String(data[i][3]) === String(channel)) {
-      sheet.getRange(i + 1, 5, 1, 2).setValues([[status, now]]);
-      return { success: true };
-    }
-  }
-  return { success: false, error: 'Canal negăsit' };
-}
-
-// ── POST: OwnTracks HTTP mode ─────────────────────────────────
-// OwnTracks trimite format propriu: { "_type":"location", "lat":45.9, "lon":24.9,
-// "acc":15, "tst":1709123456, "tid":"DAN" }
-// tid = tracker ID configurat în OwnTracks = username-ul tehnicianului (ex: "dan", "admin")
-// Răspuns OwnTracks: { result:[] } (obligatoriu — altfel reîncercă)
 /** Save exported file to Google Drive folder "Export Interventii" */
 function handleSaveExportToDrive(body) {
   var fileName = body.fileName || 'export.xlsx';
@@ -802,34 +532,6 @@ function handleSendEmail(body) {
   } catch (e) {
     return { error: 'Email send failed: ' + e.message };
   }
-}
-
-function handleOwnTracksLocation(body) {
-  const { _type, lat, lon, acc, tst, tid } = body;
-  if (_type !== 'location' || !lat || !lon) return { result: [] };
-
-  const timestamp = tst ? new Date(tst * 1000).toISOString() : new Date().toISOString();
-  const trackerId = (tid || '').toLowerCase();
-
-  // Caută tehnicianul după username (tid = username configurat în OwnTracks)
-  const techs  = sheetToObjects('technicians', TECHNICIANS_COLS);
-  const tech   = techs.find(t =>
-    t.username.toLowerCase() === trackerId ||
-    t.name.toLowerCase().replace(/\s/g, '') === trackerId
-  );
-  const techId   = tech ? tech.technician_id : 'ot_' + trackerId;
-  const techName = tech ? tech.name : (tid || 'OwnTracks_' + trackerId);
-
-  handleSaveLocation({
-    technician_id: techId,
-    name:          techName,
-    lat:           lat,
-    lng:           lon,    // OwnTracks folosește "lon", nu "lng"
-    accuracy:      acc || 0,
-    timestamp:     timestamp
-  });
-
-  return { result: [] }; // Răspuns obligatoriu pentru OwnTracks
 }
 
 // ── Sheet helpers ─────────────────────────────────────────────
@@ -974,11 +676,8 @@ function setupSheetStructure() {
     { name: 'treatment_rules',  cols: RULES_COLS,          color: '#b45309' }, // yellow/amber
     { name: 'technicians',      cols: TECHNICIANS_COLS,    color: '#b91c1c' }, // red
     { name: 'sync_log',         cols: SYNC_LOG_COLS,       color: '#475569' }, // gray
-    { name: 'locatii',          cols: LOCATIONS_COLS,       color: '#7c3aed' }, // violet — GPS current
-    { name: 'locatii_istoric',  cols: LOCATIONS_HIST_COLS,  color: '#a855f7' }, // violet clar — GPS history
-    { name: 'audio_calls',      cols: AUDIO_CALLS_COLS,     color: '#0f766e' }, // teal — audio
-    { name: 'program',          cols: PROGRAM_COLS,          color: '#0369a1' },  // albastru — calendar interventii
-    { name: 'checklist',        cols: CHECKLIST_COLS,        color: '#b45309' }   // amber - evidenta checklist
+    { name: 'checklist',        cols: CHECKLIST_COLS,        color: '#b45309' },  // amber - evidenta checklist
+    { name: 'audit_log',        cols: AUDIT_LOG_COLS,        color: '#374151' }   // gri inchis - jurnal audit
   ];
 
   sheets.forEach(({ name, cols, color }) => {

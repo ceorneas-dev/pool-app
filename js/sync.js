@@ -201,7 +201,9 @@ function pushInterventions() {
           geo_accuracy:        i.geo_accuracy,
           arrival_time:        i.arrival_time,
           departure_time:      i.departure_time,
-          duration_minutes:    i.duration_minutes
+          duration_minutes:    i.duration_minutes,
+          // Voice-note quick intervention
+          audio_file_url:      i.audio_file_url || ''
         }))
       };
 
@@ -414,6 +416,7 @@ function pullData() {
             arrival_time:        ri.arrival_time || null,
             departure_time:      ri.departure_time || null,
             duration_minutes:    ri.duration_minutes !== '' && ri.duration_minutes != null ? Math.round(parseFloat(ri.duration_minutes)) || null : null,
+            audio_file_url:      ri.audio_file_url || null,
             synced:              true
           };
 

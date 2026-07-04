@@ -1,5 +1,5 @@
 ﻿// app.js — Pool Manager PWA — Main application logic
-// Features: Login + PIN, Dashboard, Intervention form, GPS, Toast, Time tracking
+// Features: Login + PIN, Dashboard, Intervention form, Client GPS location, Toast
 
 'use strict';
 
@@ -89,9 +89,7 @@ const APP = {
   pendingSync:     0,
   clGranUnit:      'gr',       // 'gr' or 'kg'
   currentPhotos:   [],
-  currentPosition: null,       // GPS: {lat, lng, accuracy}
-  arrivalTime:     null,       // ISO string when timer started
-  _timerInterval:  null,       // live timer interval ID
+  currentPosition: null,       // GPS: {lat, lng, accuracy} — one-shot fix for distance badge / client location
   pinBuffer:       '',         // PIN input buffer
   installPrompt:   null,       // beforeinstallprompt event
   alertShown:      false,      // toast de alertă intervenții (1x per sesiune)
@@ -100,11 +98,7 @@ const APP = {
   clientFormMode:  'add',      // 'add' | 'edit'
   wizardStep:      1,          // 1 | 2 | 3 — pasul curent al wizard-ului intervenție
   _stockProducts:  [],         // cache produse stoc (actualizat la deschidere formular)
-  _billingClientId: null,      // client_id pentru care se afișează butonul "Marchează facturat"
-  gpsStart:        7,          // ora de start tracking automat (0–23)
-  gpsEnd:          18,         // ora de stop tracking automat (0–23)
-  _geoWatchId:     null,       // geolocation watchPosition ID for geofence timer
-  _geoTimerState:  'idle'      // 'idle' | 'watching' | 'inside' | 'stopped'
+  _billingClientId: null       // client_id pentru care se afișează butonul "Marchează facturat"
 };
 
 // ── Init ─────────────────────────────────────────────────────
@@ -118,158 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 221;
-
-// ── Arrival Timer with Geofencing ────────────────────────────
-// GEOFENCE_RADIUS_M: meters from client location to trigger arrival/departure
-var GEOFENCE_RADIUS_M = 150;
-
-/** Haversine distance in meters between two lat/lng pairs */
-function _haversineMeters(lat1, lon1, lat2, lon2) {
-  var R = 6371000;
-  var dLat = (lat2 - lat1) * Math.PI / 180;
-  var dLon = (lon2 - lon1) * Math.PI / 180;
-  var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-}
-
-/** Start geofence monitoring for the current client */
-function _startGeofenceWatch() {
-  _stopGeofenceWatch(); // cleanup any previous watch
-  var client = APP.selectedClient;
-  if (!client || !client.location_set || !client.latitude || !client.longitude) {
-    // Client has no GPS → auto-start timer (measures form open duration)
-    _autoStartTimer();
-    APP._geoTimerState = 'inside'; // treat as "at client" so save captures duration
-    var statusEl = $('geo-status');
-    if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏱ Timer automat (fără GPS)'; }
-    return;
-  }
-  if (!navigator.geolocation) {
-    _autoStartTimer();
-    APP._geoTimerState = 'inside';
-    var statusEl2 = $('geo-status');
-    if (statusEl2) { statusEl2.style.display = 'inline'; statusEl2.textContent = '⏱ Timer automat (GPS indisponibil)'; }
-    return;
-  }
-  APP._geoTimerState = 'watching';
-  _setTimerUI('searching');
-  APP._geoWatchId = navigator.geolocation.watchPosition(
-    function(pos) {
-      var dist = _haversineMeters(
-        pos.coords.latitude, pos.coords.longitude,
-        parseFloat(client.latitude), parseFloat(client.longitude)
-      );
-      var statusEl = $('geo-status');
-      if (statusEl) statusEl.textContent = Math.round(dist) + 'm de client';
-      if (dist <= GEOFENCE_RADIUS_M) {
-        // Inside geofence
-        if (APP._geoTimerState === 'watching') {
-          // Just arrived — start timer
-          _autoStartTimer();
-          APP._geoTimerState = 'inside';
-        }
-      } else {
-        // Outside geofence
-        if (APP._geoTimerState === 'inside') {
-          // Just left — stop timer
-          _autoStopTimer();
-          APP._geoTimerState = 'stopped';
-          _stopGeofenceWatch();
-        }
-      }
-    },
-    function(err) {
-      console.warn('[GEOFENCE] GPS error:', err.message);
-      // GPS failed — auto-start timer as fallback (measures form duration)
-      if (!APP.arrivalTime) {
-        _autoStartTimer();
-        APP._geoTimerState = 'inside';
-        var statusEl = $('geo-status');
-        if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⏱ Timer automat (eroare GPS)'; }
-      }
-    },
-    { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 }
-  );
-}
-
-/** Stop watching geolocation */
-function _stopGeofenceWatch() {
-  if (APP._geoWatchId != null) {
-    navigator.geolocation.clearWatch(APP._geoWatchId);
-    APP._geoWatchId = null;
-  }
-}
-
-/** Auto-start the timer (geofence triggered) */
-function _autoStartTimer() {
-  if (APP.arrivalTime) return; // already running
-  APP.arrivalTime = new Date().toISOString();
-  _setTimerUI('running');
-  _updateTimerDisplay();
-  APP._timerInterval = setInterval(_updateTimerDisplay, 30000);
-  showToast('📍 Ai ajuns la client — timer pornit automat', 'success');
-}
-
-/** Auto-stop the timer (geofence triggered) */
-function _autoStopTimer() {
-  if (!APP.arrivalTime) return;
-  if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
-  _setTimerUI('stopped');
-  _updateTimerDisplay();
-  showToast('📍 Ai plecat de la client — timer oprit automat', 'info');
-}
-
-/** Update timer display with elapsed minutes */
-function _updateTimerDisplay() {
-  var el = $('timer-value');
-  if (!el || !APP.arrivalTime) return;
-  var min = Math.round((Date.now() - Date.parse(APP.arrivalTime)) / 60000);
-  el.textContent = min + ' min';
-  var display = $('timer-display');
-  if (display) display.style.display = 'inline';
-}
-
-/** Set timer UI elements based on GPS state */
-function _setTimerUI(state) {
-  var display = $('timer-display');
-  var statusEl = $('geo-status');
-
-  switch (state) {
-    case 'searching':
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📡 Caut locatia...'; }
-      if (display) display.style.display = 'none';
-      break;
-    case 'running':
-      if (display) display.style.display = 'inline';
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '📍 La client'; }
-      break;
-    case 'stopped':
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '✓ Oprit'; }
-      break;
-    case 'no-gps':
-      if (statusEl) { statusEl.style.display = 'inline'; statusEl.textContent = '⚠ GPS indisponibil'; }
-      if (display) display.style.display = 'none';
-      break;
-    default:
-      if (display) display.style.display = 'none';
-      if (statusEl) statusEl.style.display = 'none';
-  }
-}
-
-/** Full reset — called when opening a new intervention */
-function _resetArrivalTimer() {
-  if (APP._timerInterval) { clearInterval(APP._timerInterval); APP._timerInterval = null; }
-  _stopGeofenceWatch();
-  APP.arrivalTime = null;
-  APP._geoTimerState = 'idle';
-  var display = $('timer-display');
-  var statusEl = $('geo-status');
-  if (display) display.style.display = 'none';
-  if (statusEl) statusEl.style.display = 'none';
-}
+const APP_VERSION = 222;
 
 async function initApp() {
   await openDB();
@@ -398,30 +241,12 @@ function showScreen(name) {
   if (el) el.classList.add('active');
   APP.currentScreen = name;
 
-  // Stop geofence watch when leaving intervention screen
-  if (name !== 'intervention') {
-    _stopGeofenceWatch();
-  }
-
   // Keyboard: focus search input when going to dashboard (mobile UX)
   if (name === 'dashboard') {
     setTimeout(() => {
       const s = $('search-input');
       if (s && window.innerWidth <= 640) s.focus();
     }, 350);
-  }
-
-  // Map: stop refresh when leaving, start when entering
-  if (APP.currentScreen === 'map' && name !== 'map') {
-    if (_mapRefreshInterval) { clearInterval(_mapRefreshInterval); _mapRefreshInterval = null; }
-  }
-  if (name === 'map') {
-    loadMapScreen(); // async — loads Leaflet lazily, starts 60s refresh
-  }
-
-  // Calendar: load current week
-  if (name === 'calendar') {
-    loadCalendarScreen();
   }
 
   // Checklist: admin-only — redirect technician back to dashboard
@@ -489,8 +314,6 @@ function setupConnectivityIndicator() {
     updateSyncBadge();
     // Refresh whichever screen is active
     if (APP.currentScreen === 'dashboard') loadData().then(renderDashboard);
-    else if (APP.currentScreen === 'calendar') loadCalendarScreen();
-    else if (APP.currentScreen === 'map') { if (typeof refreshMapLocations === 'function') refreshMapLocations(); }
     else if (APP.currentScreen === 'checklist') { if (typeof loadChecklistScreen === 'function') loadChecklistScreen(); }
   };
   window.onSyncError = (err) => {
@@ -628,18 +451,10 @@ async function doLogin(username, password, silent = false) {
 async function postLogin() {
   APP.alertShown = false;  // reset per sesiune
 
-  // Încarcă orele de program GPS în APP (înainte de renderDashboard)
-  const gpsStart = await getSetting('gps_schedule_start');
-  const gpsEnd   = await getSetting('gps_schedule_end');
-  APP.gpsStart = parseInt(gpsStart ?? '7',  10);
-  APP.gpsEnd   = parseInt(gpsEnd   ?? '18', 10);
-
   await loadData();
   renderDashboard();
   showScreen('dashboard');
   updateSyncBadge();
-  // Start GPS tracking (sends position every configured interval to GAS if API configured)
-  startLocationTracking();
   // QR deeplink: ?client=ID
   setTimeout(checkClientDeeplink, 200);
 }
@@ -779,9 +594,6 @@ function renderDashboard() {
   // Aplica permisiuni granulare pentru tehnicieni (poate unhide admin-only)
   applyTechPermissions();
 
-  // Actualizează butonul GPS din footer
-  updateGpsToggleBtn();
-
   // Show export folder name if set
   _updateExportFolderLabel();
 
@@ -849,7 +661,6 @@ function renderDashboard() {
   if (logoutBtn) {
     logoutBtn.onclick = async () => {
       APP.alertShown = false;
-      stopLocationTracking();    // Oprește GPS tracking
       await clearSession();      // Sesiunea curentă = ștearsă
       // Credențialele rămân salvate → la revenire form pre-completat + focus pe buton
       APP.user = null;
@@ -926,25 +737,6 @@ function renderDashboard() {
           APP.alertShown = false; // permite re-evaluarea cu noul prag
         }
       }
-      // GPS interval
-      const gpsIntervalEl = $('settings-gps-interval');
-      if (gpsIntervalEl) {
-        await setSetting('gps_interval', gpsIntervalEl.value);
-        // Repornește tracking-ul cu noul interval (dacă era activ)
-        if (_locationInterval) { stopLocationTracking(); startLocationTracking(); }
-      }
-      // GPS program (ore start / end)
-      const gpsStartEl = $('settings-gps-start');
-      const gpsEndEl   = $('settings-gps-end');
-      if (gpsStartEl && gpsEndEl) {
-        const newStart = parseInt(gpsStartEl.value, 10);
-        const newEnd   = parseInt(gpsEndEl.value,   10);
-        await setSetting('gps_schedule_start', String(newStart));
-        await setSetting('gps_schedule_end',   String(newEnd));
-        APP.gpsStart = newStart;
-        APP.gpsEnd   = newEnd;
-        updateGpsToggleBtn(); // reflectă noile ore imediat
-      }
       // WhatsApp notification (CallMeBot)
       const waPhoneEl = $('settings-wa-phone');
       const waKeyEl = $('settings-wa-apikey');
@@ -974,31 +766,7 @@ function renderDashboard() {
     const el = $('settings-wa-apikey');
     if (el && val) el.value = val;
   });
-  getSetting('gps_interval').then(val => {
-    const el = $('settings-gps-interval');
-    if (el && val) el.value = val;
-  });
-  // Populare selects ore GPS (0–23) și setare valori salvate
-  ['settings-gps-start', 'settings-gps-end'].forEach(id => {
-    const el = $(id);
-    if (!el) return;
-    el.innerHTML = Array.from({ length: 24 }, (_, h) =>
-      `<option value="${h}">${String(h).padStart(2,'0')}:00</option>`
-    ).join('');
-  });
-  getSetting('gps_schedule_start').then(val => {
-    const el = $('settings-gps-start');
-    if (el) el.value = val ?? '7';
-  });
-  getSetting('gps_schedule_end').then(val => {
-    const el = $('settings-gps-end');
-    if (el) el.value = val ?? '18';
-  });
   // Permisiuni tehnicieni
-  getSetting('perm_tech_gps').then(val => {
-    const el = $('settings-perm-tech-gps');
-    if (el) el.checked = val === 'true' || val === true;
-  });
   getSetting('perm_tech_add_client').then(val => {
     const el = $('settings-perm-tech-add-client');
     if (el) el.checked = val === 'true' || val === true;
@@ -1007,11 +775,8 @@ function renderDashboard() {
 
 // Salveaza permisiuni tehnicieni si aplica imediat pe pagina
 async function savePermSettings() {
-  const gpsEl = $('settings-perm-tech-gps');
   const addEl = $('settings-perm-tech-add-client');
-  const permGps = !!(gpsEl && gpsEl.checked);
   const permAdd = !!(addEl && addEl.checked);
-  await setSetting('perm_tech_gps', permGps ? 'true' : 'false');
   await setSetting('perm_tech_add_client', permAdd ? 'true' : 'false');
   await applyTechPermissions();
   showToast('Permisiuni salvate.', 'success');
@@ -1021,19 +786,15 @@ async function savePermSettings() {
 // Admin: toate butoanele raman vizibile (.admin-only + role-admin).
 // Tehnician: daca permisiunea e activa, scoatem clasa .admin-only de pe butonul specific.
 async function applyTechPermissions() {
-  // Butoane controlate: GPS toggle, Add Client tab
-  const gpsBtn = $('btn-gps-status');
+  // Buton controlat: Add Client tab
   const addBtn = document.querySelector('.tab-btn[onclick*="showAddClientModal"]');
 
   // Reset (re-adauga admin-only inainte de a evalua)
-  if (gpsBtn) gpsBtn.classList.add('admin-only');
   if (addBtn) addBtn.classList.add('admin-only');
 
   if (isAdmin()) return; // admin vede tot oricum
 
-  const permGps = await getSetting('perm_tech_gps');
   const permAdd = await getSetting('perm_tech_add_client');
-  if ((permGps === 'true' || permGps === true) && gpsBtn) gpsBtn.classList.remove('admin-only');
   if ((permAdd === 'true' || permAdd === true) && addBtn) addBtn.classList.remove('admin-only');
 }
 
@@ -1132,6 +893,7 @@ async function renderClientList(searchTerm) {
       </div>
       <div class="client-actions">
         <button class="client-action-btn" onclick="openClientIntervention('${client.client_id}')">➕ Intervenție nouă</button>
+        <button class="client-action-btn" onclick="event.stopPropagation(); openVoiceIntervention('${client.client_id}')" style="color:var(--blue-600)" title="Intervenție rapidă — notă vocală">🎙️ Rapid</button>
         <button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">ℹ️ Info</button>
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
@@ -1174,7 +936,7 @@ function navigateToClient(clientId) {
   window.open(url, '_blank');
 }
 
-/** Admin: set client GPS location from current position */
+/** Set client GPS location from current device position (any logged-in user). */
 async function setClientLocation(clientId) {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
@@ -1182,6 +944,7 @@ async function setClientLocation(clientId) {
     showToast('GPS nu este disponibil pe acest dispozitiv.', 'error');
     return;
   }
+  const wasSet = !!client.location_set;
   showToast('Se obține locația...', 'info', 3000);
   navigator.geolocation.getCurrentPosition(
     async (pos) => {
@@ -1197,14 +960,302 @@ async function setClientLocation(clientId) {
           body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
         }).catch(err => console.warn('[SYNC] Client loc push failed:', err.message));
       }
+      logLocationAudit(wasSet ? 'update_location' : 'set_location', client);
       showToast('📍 Locația salvată pentru ' + client.name, 'success');
       renderClientList($('search-input') ? $('search-input').value : '');
+      // Refresh the client-info modal's location row, if it's open for this client
+      const locStatusEl = $('client-detail-gps-status');
+      if (locStatusEl) locStatusEl.textContent = '✅ Setată';
+      const updBtn = $('client-detail-gps-update-btn');
+      if (updBtn) updBtn.textContent = '📍 Actualizează';
+      const delBtn = $('client-detail-gps-delete-btn');
+      if (delBtn) delBtn.style.display = '';
     },
     (err) => {
       showToast('Eroare GPS: ' + err.message, 'error');
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
+}
+
+/** Delete (clear) a client's saved GPS location — any logged-in user. */
+async function deleteClientLocation(clientId) {
+  const client = APP.clients.find(c => c.client_id === clientId);
+  if (!client || !client.location_set) return;
+  if (!confirm('Ștergi locația GPS salvată pentru ' + client.name + '?')) return;
+
+  client.latitude     = null;
+  client.longitude    = null;
+  client.location_set = false;
+  client.updated_at   = new Date().toISOString();
+  await put('clients', client);
+  // Push to GAS
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+    }).catch(err => console.warn('[SYNC] Client loc delete push failed:', err.message));
+  }
+  logLocationAudit('delete_location', client);
+  showToast('🗑️ Locația a fost ștearsă pentru ' + client.name, 'success');
+  renderClientList($('search-input') ? $('search-input').value : '');
+  // Refresh the client-info modal's location row, if it's open for this client
+  const locStatusEl = $('client-detail-gps-status');
+  if (locStatusEl) locStatusEl.textContent = '❌ Nesetată';
+  const updBtn = $('client-detail-gps-update-btn');
+  if (updBtn) updBtn.textContent = '📍 Adaugă';
+  const delBtn = $('client-detail-gps-delete-btn');
+  if (delBtn) delBtn.style.display = 'none';
+}
+
+/** Fire-and-forget audit log entry for a client GPS location change (set/update/delete). */
+function logLocationAudit(actionType, client) {
+  if (!APP.user || !isSyncConfigured()) return;
+  apiFetch(SYNC_CONFIG.API_URL, {
+    method: 'POST',
+    body: JSON.stringify({
+      action:           'logAudit',
+      technician_id:    APP.user.technician_id,
+      technician_name:  APP.user.name,
+      log_action:       actionType,
+      client_id:        client.client_id,
+      client_name:      client.name,
+      timestamp:        new Date().toISOString()
+    })
+  }).catch(err => console.warn('[AUDIT] log failed:', err.message));
+}
+
+const AUDIT_ACTION_LABELS = {
+  set_location:    '📍 Locație adăugată',
+  update_location: '📍 Locație actualizată',
+  delete_location: '🗑️ Locație ștearsă'
+};
+
+/** Admin: show the GPS-location audit log (who / when / what changed). */
+async function showAuditLogModal() {
+  const modal = $('modal-audit-log');
+  const body  = $('audit-log-modal-body');
+  if (!modal || !body) return;
+  modal.classList.add('open');
+
+  if (!isSyncConfigured()) {
+    body.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">Configurați API URL în Setări pentru a vedea jurnalul.</p>';
+    return;
+  }
+  body.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">Se încarcă...</p>';
+  try {
+    const data = await apiFetch(SYNC_CONFIG.API_URL + '?action=getAuditLog', { cache: 'no-store' });
+    const entries = data.entries || [];
+    if (!entries.length) {
+      body.innerHTML = '<p style="color:var(--text-secondary);font-size:.85rem">Nicio intrare în jurnal.</p>';
+      return;
+    }
+    body.innerHTML = '<div style="display:flex;flex-direction:column;gap:8px">' + entries.map(e => {
+      const label = AUDIT_ACTION_LABELS[e.log_action] || e.log_action;
+      const dt = new Date(e.timestamp);
+      const dtLabel = isNaN(dt.getTime()) ? e.timestamp : dt.toLocaleString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      return '<div style="padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px;font-size:.82rem">' +
+        '<div style="font-weight:600">' + escHtml(label) + ' — ' + escHtml(e.client_name || e.client_id || '') + '</div>' +
+        '<div style="color:var(--text-secondary);margin-top:2px">' + escHtml(e.technician_name || '') + ' · ' + dtLabel + '</div>' +
+        '</div>';
+    }).join('') + '</div>';
+  } catch (err) {
+    body.innerHTML = '<p style="color:var(--danger);font-size:.85rem">Eroare la încărcarea jurnalului: ' + escHtml(err.message) + '</p>';
+  }
+}
+
+function closeAuditLogModal() {
+  const modal = $('modal-audit-log');
+  if (modal) modal.classList.remove('open');
+}
+
+// ════════════════════════════════════════════════════════════════
+// VOICE-NOTE QUICK INTERVENTION — record audio, log a minimal
+// intervention automatically, upload the recording to Drive so the
+// treatment can be filled in manually later from the audio.
+// ════════════════════════════════════════════════════════════════
+
+var _voiceRecorder     = null;
+var _voiceChunks       = [];
+var _voiceStream       = null;
+var _voiceTimerInt     = null;
+var _voiceStartTs      = 0;
+var _voiceBlob         = null;
+var _voiceClientId     = null;
+
+/** Open the quick voice-note modal for a client. */
+function openVoiceIntervention(clientId) {
+  const client = APP.clients.find(c => c.client_id === clientId);
+  if (!client) return;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
+    showToast('Înregistrarea audio nu este suportată pe acest dispozitiv/browser.', 'error');
+    return;
+  }
+  _voiceClientId = clientId;
+  _voiceBlob = null;
+  $('voice-client-name').textContent = client.name;
+  $('voice-rec-idle').style.display = '';
+  $('voice-rec-active').style.display = 'none';
+  $('voice-rec-preview').style.display = 'none';
+  $('modal-voice-intervention').classList.add('open');
+}
+
+function closeVoiceIntervention() {
+  _stopVoiceStream();
+  if (_voiceRecorder && _voiceRecorder.state === 'recording') {
+    try { _voiceRecorder.stop(); } catch (e) {}
+  }
+  if (_voiceTimerInt) { clearInterval(_voiceTimerInt); _voiceTimerInt = null; }
+  _voiceBlob = null;
+  $('modal-voice-intervention').classList.remove('open');
+}
+
+function _stopVoiceStream() {
+  if (_voiceStream) {
+    _voiceStream.getTracks().forEach(function(t) { t.stop(); });
+    _voiceStream = null;
+  }
+}
+
+/** Pick the best-supported audio mime type for MediaRecorder on this browser. */
+function _pickVoiceMimeType() {
+  var candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/ogg'];
+  for (var i = 0; i < candidates.length; i++) {
+    if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(candidates[i])) return candidates[i];
+  }
+  return '';
+}
+
+async function startVoiceRecording() {
+  $('voice-rec-preview').style.display = 'none';
+  $('voice-rec-idle').style.display = 'none';
+  $('voice-rec-active').style.display = '';
+
+  try {
+    _voiceStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (e) {
+    showToast('Nu am putut accesa microfonul: ' + e.message, 'error');
+    $('voice-rec-active').style.display = 'none';
+    $('voice-rec-idle').style.display = '';
+    return;
+  }
+
+  var mimeType = _pickVoiceMimeType();
+  _voiceChunks = [];
+  _voiceRecorder = mimeType ? new MediaRecorder(_voiceStream, { mimeType: mimeType }) : new MediaRecorder(_voiceStream);
+  _voiceRecorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) _voiceChunks.push(e.data); };
+  _voiceRecorder.onstop = function() {
+    _voiceBlob = new Blob(_voiceChunks, { type: _voiceRecorder.mimeType || mimeType || 'audio/webm' });
+    _stopVoiceStream();
+    var audioEl = $('voice-rec-audio');
+    if (audioEl) audioEl.src = URL.createObjectURL(_voiceBlob);
+    $('voice-rec-active').style.display = 'none';
+    $('voice-rec-preview').style.display = '';
+  };
+  _voiceRecorder.start();
+
+  _voiceStartTs = Date.now();
+  _updateVoiceTimer();
+  _voiceTimerInt = setInterval(_updateVoiceTimer, 500);
+}
+
+function _updateVoiceTimer() {
+  var el = $('voice-rec-timer');
+  if (!el) return;
+  var sec = Math.floor((Date.now() - _voiceStartTs) / 1000);
+  el.textContent = Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0');
+}
+
+function stopVoiceRecording() {
+  if (_voiceTimerInt) { clearInterval(_voiceTimerInt); _voiceTimerInt = null; }
+  if (_voiceRecorder && _voiceRecorder.state === 'recording') {
+    _voiceRecorder.stop();
+  }
+}
+
+/** Save the recorded note as a minimal intervention, then upload the audio to Drive in background. */
+async function saveVoiceIntervention() {
+  const clientId = _voiceClientId;
+  const audioBlob = _voiceBlob;
+  const client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  if (!client || !audioBlob || !APP.user) return;
+
+  closeVoiceIntervention();
+  showToast('🎙️ Se salvează nota vocală...', 'info', 4000);
+
+  // Upload the recording to Drive FIRST so the link is baked into the very first save —
+  // patching it in afterward raced with the normal push/pull sync cycle and could get lost.
+  const audioFileUrl = await _uploadVoiceAudio(audioBlob, client);
+
+  const today = new Date().toISOString().split('T')[0];
+  const intervention = {
+    intervention_id:  uid(),
+    client_id:        client.client_id,
+    client_name:      client.name,
+    technician_id:    APP.user.technician_id,
+    technician_name:  APP.user.name,
+    date:             today,
+    created_at:       new Date().toISOString(),
+    measured_chlorine: null,
+    measured_ph:       null,
+    observations:     '🎙️ Notă vocală — completați clorul/pH-ul și tratamentul din înregistrarea audio.',
+    operations:       [],
+    photos:           [],
+    synced:           false,
+    audio_file_url:   audioFileUrl
+  };
+
+  await saveIntervention(intervention);
+  APP.interventions.push(intervention);
+  APP.pendingSync++;
+
+  showToast('🎙️ Intervenție rapidă salvată pentru ' + client.name, 'success');
+  forceSync().catch(function() {});
+  await loadData();
+  renderDashboard();
+}
+
+/** Upload the audio recording to Google Drive ("Export Interventii/<client>"). Returns the file URL, or null. */
+async function _uploadVoiceAudio(audioBlob, client) {
+  if (!isSyncConfigured()) return null;
+  try {
+    var ext = audioBlob.type.indexOf('mp4') !== -1 ? 'm4a' : (audioBlob.type.indexOf('ogg') !== -1 ? 'ogg' : 'webm');
+    var fname = 'Audio_' + sanitizeFilename(client.name) + '_' + new Date().toISOString().slice(0, 10) + '_' + Date.now() + '.' + ext;
+    var b64 = await _blobToBase64(audioBlob);
+
+    const res = await apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action:   'saveExportToDrive',
+        fileName: fname,
+        data:     b64,
+        mimeType: audioBlob.type || 'audio/webm',
+        clientName: client.name
+      })
+    });
+
+    if (res && res.success && res.fileUrl) return res.fileUrl;
+    console.warn('[VOICE] Drive upload did not return a file URL:', res && res.error);
+    return null;
+  } catch (e) {
+    console.warn('[VOICE] Audio upload failed:', e.message);
+    showToast('Nota a fost salvată, dar încărcarea audio în Drive a eșuat.', 'warning');
+    return null;
+  }
+}
+
+/** Convert a Blob to a base64 string (no data: prefix). */
+function _blobToBase64(blob) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onloadend = function() {
+      var result = reader.result || '';
+      var comma = result.indexOf(',');
+      resolve(comma >= 0 ? result.slice(comma + 1) : result);
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
 }
 
 function openClientIntervention(clientId) {
@@ -1360,9 +1411,6 @@ async function renderIntervention(client) {
     APP._interventionDate = todayStr;
   }
 
-  // Reset arrival timer and start geofence monitoring
-  _resetArrivalTimer();
-  _startGeofenceWatch();
   // Render operations checklist in step 2
   var opsContainer = $('ops-checklist');
   if (opsContainer) {
@@ -1769,9 +1817,6 @@ async function doSaveIntervention() {
   if (!client || !APP.user) return;
 
   const departureTime  = new Date().toISOString();
-  const durationMin    = APP.arrivalTime
-    ? Math.round((Date.parse(departureTime) - Date.parse(APP.arrivalTime)) / 60000)
-    : null;
 
   const vol = client.pool_volume_mc;
   const cl  = parseFloat($('m-chlorine').value) || null;
@@ -1812,16 +1857,8 @@ async function doSaveIntervention() {
     })(),
     photos:       [...APP.currentPhotos],
     synced:       false,
-
-    // GPS
-    geo_lat:      APP.currentPosition ? APP.currentPosition.lat : null,
-    geo_lng:      APP.currentPosition ? APP.currentPosition.lng : null,
-    geo_accuracy: APP.currentPosition ? APP.currentPosition.accuracy : null,
-
-    // Time tracking
-    arrival_time:     APP.arrivalTime,
-    departure_time:   departureTime,
-    duration_minutes: durationMin
+    // Preserve the linked voice-note recording (if this intervention started as a quick voice note)
+    audio_file_url: APP._editingIntervention ? (APP._editingIntervention.audio_file_url || null) : null
   };
 
   // Dynamic treatment fields from stock products
@@ -2018,7 +2055,13 @@ async function showClientDetails(clientId) {
       <div class="client-detail-row"><span class="detail-label">Tip</span><span class="detail-value">${client.pool_type}</span></div>
       ${client.phone ? `<div class="client-detail-row"><span class="detail-label">Telefon</span><span class="detail-value">${escHtml(client.phone)}</span></div>` : ''}
       ${client.address ? `<div class="client-detail-row"><span class="detail-label">Adresă</span><span class="detail-value">${escHtml(client.address)}</span></div>` : ''}
-      <div class="client-detail-row"><span class="detail-label">Locație GPS</span><span class="detail-value">${hasLocation ? '✅ Setată' : '❌ Nesetată'}</span></div>
+      <div class="client-detail-row" style="flex-direction:column;align-items:flex-start;gap:6px">
+        <span class="detail-label">Locație GPS <span id="client-detail-gps-status">${hasLocation ? '✅ Setată' : '❌ Nesetată'}</span></span>
+        <span class="detail-value" style="display:flex;flex-wrap:wrap;gap:8px;width:100%">
+          <button id="client-detail-gps-update-btn" class="client-action-btn" style="flex:0 0 auto;padding:4px 10px;font-size:.78rem" onclick="event.stopPropagation(); setClientLocation('${clientId}')">📍 ${hasLocation ? 'Actualizează' : 'Adaugă'}</button>
+          <button id="client-detail-gps-delete-btn" class="client-action-btn" style="flex:0 0 auto;padding:4px 10px;font-size:.78rem;color:var(--danger);display:${hasLocation ? '' : 'none'}" onclick="event.stopPropagation(); deleteClientLocation('${clientId}')">🗑️ Șterge</button>
+        </span>
+      </div>
       ${client.notes ? `<div class="client-detail-row"><span class="detail-label">Note</span><span class="detail-value">${escHtml(client.notes)}</span></div>` : ''}
     </div>
     <div class="client-detail-section" id="history-section">
@@ -3919,6 +3962,14 @@ function _renderHistoryList(clientId, allInterventions) {
     if (i.observations) {
       html += '<div style="font-size:.75rem;color:var(--text-secondary);margin-top:2px;font-style:italic">"' + escHtml(i.observations) + '"</div>';
     }
+    if (i.audio_file_url) {
+      html += '<div style="margin-top:4px" onclick="event.stopPropagation()">';
+      html += '<a href="' + escHtml(i.audio_file_url) + '" target="_blank" rel="noopener" style="font-size:.75rem;color:var(--blue-600);text-decoration:none;background:var(--blue-50,#eff6ff);padding:3px 8px;border-radius:6px;display:inline-block">🎙️ Ascultă înregistrarea</a>';
+      if (i.measured_chlorine == null && i.measured_ph == null) {
+        html += ' <span style="font-size:.7rem;color:var(--amber-600)">⚠ de completat</span>';
+      }
+      html += '</div>';
+    }
     // Show photos if available
     if (i.photos && i.photos.length > 0) {
       html += '<div style="display:flex;gap:4px;margin-top:4px;flex-wrap:wrap" onclick="event.stopPropagation()">';
@@ -4178,6 +4229,9 @@ function showInterventionDetails(interventionId) {
     general += row('📍 GPS',
       '<a href="https://www.google.com/maps?q=' + i.geo_lat + ',' + i.geo_lng + '" target="_blank" style="color:var(--blue-600)">' +
       Number(i.geo_lat).toFixed(5) + ', ' + Number(i.geo_lng).toFixed(5) + '</a>');
+  }
+  if (i.audio_file_url) {
+    general += row('🎙️ Notă vocală', '<a href="' + escHtml(i.audio_file_url) + '" target="_blank" rel="noopener" style="color:var(--blue-600)">Ascultă înregistrarea</a>');
   }
   html += sect('Informații generale', general);
 
@@ -4655,7 +4709,7 @@ function generateBillingExcel() {
   if (devizType === 2) {
     exportDevizComplet(client, interventions);
   } else {
-    exportBillingXLSX(client, interventions);
+    exportDevizChimicale(client, interventions);
   }
 }
 
@@ -4950,708 +5004,6 @@ document.addEventListener('click', function _drumOutside(e) {
   confirmDrumPicker();
 }, true);
 
-// ════════════════════════════════════════════════════════════════
-// GPS LOCATION TRACKING — trimite poziția la GAS la fiecare 5 min
-// ════════════════════════════════════════════════════════════════
-
-let _locationInterval       = null;
-let _bgLocationWatcherId    = null; // Capacitor BackgroundGeolocation watcher ID
-
-/**
- * Pornește tracking GPS.
- * — În APK Capacitor: folosește BackgroundGeolocation (funcționează în background)
- * — În browser/PWA:   folosește navigator.geolocation la fiecare 5 min (foreground)
- */
-async function startLocationTracking() {
-  if (!isSyncConfigured()) return;
-  stopLocationTracking();
-
-  // ── Capacitor native mode (APK) ──────────────────────────────
-  if (window.Capacitor?.isNativePlatform?.()) {
-    const BGL = window.Capacitor.Plugins?.BackgroundGeolocation;
-    if (BGL) {
-      try {
-        _bgLocationWatcherId = await BGL.addWatcher(
-          { backgroundMessage: 'Pool Manager urmărește locația ta',
-            backgroundTitle:   'Pool Manager GPS Activ',
-            requestPermissions: true,
-            stale: false,
-            distanceFilter: 100 },
-          (location, error) => {
-            if (error || !location) return;
-            _sendLocationData(location.latitude, location.longitude, location.accuracy);
-          }
-        );
-        return; // native tracker activ, nu mai folosim fallback
-      } catch { /* plugin indisponibil — cade la fallback */ }
-    }
-  }
-
-  // ── Browser / PWA fallback: trimite la intervalul configurat (foreground only) ──
-  if (!navigator.geolocation) return;
-  const gpsIntervalSec = parseInt(await getSetting('gps_interval') || '300', 10);
-  sendCurrentLocation();
-  _locationInterval = setInterval(sendCurrentLocation, gpsIntervalSec * 1000);
-}
-
-/** Oprește tracking-ul GPS (ambele moduri). */
-function stopLocationTracking() {
-  if (_locationInterval) { clearInterval(_locationInterval); _locationInterval = null; }
-  if (_bgLocationWatcherId) {
-    const BGL = window.Capacitor?.Plugins?.BackgroundGeolocation;
-    if (BGL) BGL.removeWatcher({ id: _bgLocationWatcherId }).catch(() => {});
-    _bgLocationWatcherId = null;
-  }
-}
-
-// ── GPS Schedule & Manual Override ───────────────────────────────
-
-/**
- * Verifică dacă ora curentă este în intervalul de program configurat (ex. 07:00–18:00).
- * Folosește APP.gpsStart și APP.gpsEnd (încărcate din setări la login).
- */
-function isWithinGpsHours() {
-  const h = new Date().getHours();
-  return h >= APP.gpsStart && h < APP.gpsEnd;
-}
-
-/**
- * Returnează true dacă GPS-ul trebuie să trimită date acum:
- * — override='on'  → mereu activ
- * — override='off' → mereu inactiv
- * — null           → urmează programul (isWithinGpsHours)
- */
-async function shouldSendGps() {
-  const ov = await getSetting('gps_manual_override');
-  if (ov === 'on')  return true;
-  if (ov === 'off') return false;
-  return isWithinGpsHours();
-}
-
-/**
- * Buton GPS din footer: comutare inteligentă On/Off.
- *   — GPS activ + în program  → oprire manuală (override='off')
- *   — GPS oprit + în program  → reactivare (șterge override)
- *   — GPS activ + afara prog. → oprire (șterge override='on')
- *   — GPS oprit + afara prog. → pornire manuală (override='on')
- */
-async function toggleGpsOverride() {
-  const active   = await shouldSendGps();
-  const inHours  = isWithinGpsHours();
-  const startStr = APP.gpsStart + ':00';
-  const endStr   = APP.gpsEnd   + ':00';
-
-  if (active) {
-    // GPS trimite acum → utilizatorul vrea să îl oprească
-    await setSetting('gps_manual_override', 'off');
-    showToast('GPS dezactivat manual.', 'warning', 3500);
-  } else if (inHours) {
-    // În program, dar era oprit manual → reactivare la normal
-    await setSetting('gps_manual_override', null);
-    showToast('GPS reactivat (program normal).', 'success', 3000);
-  } else {
-    // În afara programului → pornire forțată
-    await setSetting('gps_manual_override', 'on');
-    showToast(`GPS pornit manual (în afara programului ${startStr}–${endStr}).`, 'success', 4000);
-  }
-  updateGpsToggleBtn();
-}
-
-/**
- * Actualizează aspectul butonului GPS din footer în funcție de starea curentă.
- * 🟢 GPS Activ    — program activ, fără override
- * 🟡 GPS Manual   — override='on' în afara programului
- * 🔴 GPS Oprit    — override='off' (oprit manual în program)
- * ⭕ GPS Inactiv  — în afara programului, fără override
- */
-async function updateGpsToggleBtn() {
-  const btn = $('btn-gps-status');
-  if (!btn) return;
-  const ov     = await getSetting('gps_manual_override');
-  const active = ov === 'on' || (ov !== 'off' && isWithinGpsHours());
-
-  let baseTitle;
-  if (ov === 'off') {
-    btn.textContent = '🔴 GPS';
-    baseTitle = 'GPS oprit manual — apasă pentru reactivare';
-    btn.dataset.state = 'off';
-  } else if (ov === 'on') {
-    btn.textContent = '🟡 GPS';
-    baseTitle = `GPS pornit manual (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
-    btn.dataset.state = 'manual';
-  } else if (active) {
-    btn.textContent = '🟢 GPS';
-    baseTitle = `GPS activ conform programului (${APP.gpsStart}:00–${APP.gpsEnd}:00)`;
-    btn.dataset.state = 'on';
-  } else {
-    btn.textContent = '⭕ GPS';
-    baseTitle = `GPS inactiv (în afara programului ${APP.gpsStart}:00–${APP.gpsEnd}:00) — apasă pentru pornire manuală`;
-    btn.dataset.state = 'idle';
-  }
-  // Adauga ultima stare transmitere pentru diagnostic (vizibil la long-press / hover)
-  const s = APP._gpsLastStatus;
-  if (s) {
-    const timeStr = s.ts ? new Date(s.ts).toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' }) : '';
-    btn.title = baseTitle + '\n[ultima: ' + s.state + (s.msg ? ' — ' + s.msg : '') + (timeStr ? ' la ' + timeStr : '') + ']';
-  } else {
-    btn.title = baseTitle;
-  }
-}
-
-/**
- * Trimite datele GPS la GAS — apelat din ambele căi (nativă și browser).
- * Logheaza status-ul in APP._gpsLastStatus pentru diagnostic in UI.
- */
-async function _sendLocationData(lat, lng, accuracy) {
-  if (!APP.user) { _setGpsStatus('fail', 'fara user'); return; }
-  if (!isSyncConfigured()) { _setGpsStatus('fail', 'API neconfigurat'); return; }
-  if (!await shouldSendGps()) { _setGpsStatus('skip', 'in afara programului'); return; }
-  try {
-    const res = await fetch(SYNC_CONFIG.API_URL, {
-      method: 'POST', redirect: 'follow',
-      body: JSON.stringify({
-        action: 'saveLocation',
-        technician_id: APP.user.technician_id,
-        name:          APP.user.name,
-        lat, lng,
-        accuracy:  Math.round(accuracy || 0),
-        timestamp: new Date().toISOString()
-      })
-    });
-    if (res && res.ok) {
-      _setGpsStatus('ok', 'trimis ' + lat.toFixed(5) + ',' + lng.toFixed(5));
-    } else {
-      _setGpsStatus('fail', 'HTTP ' + (res ? res.status : '?'));
-    }
-  } catch (e) {
-    _setGpsStatus('fail', 'reţea: ' + (e && e.message || 'necunoscut'));
-    console.warn('[GPS] send error:', e);
-  }
-}
-
-// Memoreaza ultima stare GPS pentru diagnostic (afisat in titlul butonului GPS)
-function _setGpsStatus(state, msg) {
-  APP._gpsLastStatus = { state, msg, ts: new Date().toISOString() };
-  console.log('[GPS]', state, '—', msg);
-  try { updateGpsToggleBtn(); } catch {}
-}
-
-/** Browser fallback — obține poziția și apelează _sendLocationData. */
-function sendCurrentLocation() {
-  if (!APP.user) return;
-  if (!isSyncConfigured()) { _setGpsStatus('fail', 'API neconfigurat'); return; }
-  if (!navigator.geolocation) { _setGpsStatus('fail', 'geolocation indisponibil'); return; }
-  navigator.geolocation.getCurrentPosition(
-    pos => _sendLocationData(pos.coords.latitude, pos.coords.longitude, pos.coords.accuracy),
-    err => {
-      const map = { 1: 'permisiune refuzată', 2: 'GPS indisponibil', 3: 'timeout' };
-      _setGpsStatus('fail', 'geo: ' + (map[err && err.code] || (err && err.message) || 'necunoscut'));
-    },
-    { timeout: 15000, enableHighAccuracy: false, maximumAge: 120000 }
-  );
-}
-
-/** Forţeaza o trimitere GPS imediata (cu feedback vizibil) — accesibil din meniu debug. */
-async function sendLocationNow() {
-  if (!APP.user) { showToast('Autentifica-te intai.', 'error'); return; }
-  if (!isSyncConfigured()) { showToast('API URL nu e configurat.', 'error'); return; }
-  if (!navigator.geolocation) { showToast('Browser-ul nu suporta GPS.', 'error'); return; }
-  showToast('Se cere pozitia...', 'info');
-  navigator.geolocation.getCurrentPosition(
-    async pos => {
-      // Forteaza trimiterea (ignora program + override)
-      try {
-        const res = await fetch(SYNC_CONFIG.API_URL, {
-          method: 'POST', redirect: 'follow',
-          body: JSON.stringify({
-            action: 'saveLocation',
-            technician_id: APP.user.technician_id,
-            name:          APP.user.name,
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-            accuracy:  Math.round(pos.coords.accuracy || 0),
-            timestamp: new Date().toISOString()
-          })
-        });
-        if (res && res.ok) {
-          _setGpsStatus('ok', 'manual OK');
-          showToast('Poziţie trimisă: ' + pos.coords.latitude.toFixed(5) + ', ' + pos.coords.longitude.toFixed(5), 'success', 4000);
-        } else {
-          showToast('Eroare server: HTTP ' + (res ? res.status : '?'), 'error');
-        }
-      } catch (e) {
-        showToast('Eroare reţea: ' + (e && e.message || ''), 'error');
-      }
-    },
-    err => {
-      const map = { 1: 'Permisiune GPS refuzată. Permite locaţia din setări browser.', 2: 'GPS indisponibil', 3: 'Timeout — încearcă din nou' };
-      showToast(map[err && err.code] || ('Eroare GPS: ' + (err && err.message || '')), 'error', 6000);
-    },
-    { timeout: 15000, enableHighAccuracy: true, maximumAge: 0 }
-  );
-}
-
-// ════════════════════════════════════════════════════════════════
-// MAP SCREEN — Leaflet.js + OpenStreetMap (complet gratuit)
-// ════════════════════════════════════════════════════════════════
-
-let _leafletLoaded    = false;
-let _leafletMap       = null;
-let _historyLayer     = null;   // Leaflet LayerGroup pentru traseul istoric
-let _mapMarkers       = [];
-let _mapRefreshInterval = null;
-
-/**
- * Inițializează / reîncarcă ecranul hartă.
- * Apelat din showScreen('map').
- */
-async function loadMapScreen() {
-  const noApi    = $('map-no-api');
-  const mapDiv   = $('map-container');
-
-  if (!isSyncConfigured()) {
-    if (noApi)  noApi.style.display  = '';
-    if (mapDiv) mapDiv.style.display = 'none';
-    return;
-  }
-  if (noApi)  noApi.style.display  = 'none';
-  if (mapDiv) mapDiv.style.display = '';
-
-  // Leaflet se încarcă o singură dată (lazy CDN)
-  if (!_leafletLoaded) {
-    await loadLeaflet();
-    _leafletLoaded = true;
-  }
-
-  // Inițializează harta o singură dată (centru România)
-  if (!_leafletMap && mapDiv) {
-    _leafletMap = L.map('map-container').setView([45.9432, 24.9668], 7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© <a href="https://openstreetmap.org">OpenStreetMap</a>',
-      maxZoom: 19
-    }).addTo(_leafletMap);
-  }
-
-  // Recalculează dimensiunea (ecranul era ascuns la init)
-  setTimeout(() => { if (_leafletMap) _leafletMap.invalidateSize(); }, 150);
-
-  await refreshMapLocations();
-  _mapRefreshInterval = setInterval(refreshMapLocations, 60 * 1000); // refresh la 60s
-
-  // ── Populare dropdown tehnicieni pentru istoricul GPS (admin only) ──
-  if (isAdmin()) {
-    const histTech = $('map-hist-tech');
-    if (histTech) {
-      getAll('technicians').then(techs => {
-        const options = techs
-          .filter(t => t.role === 'technician' || t.role !== 'admin')
-          .map(t => `<option value="${escHtml(t.technician_id)}">${escHtml(t.name)}</option>`)
-          .join('');
-        histTech.innerHTML = '<option value="">Alege tehnician...</option>' + options;
-      });
-    }
-    const dateEl = $('map-hist-date');
-    if (dateEl && !dateEl.value) {
-      dateEl.value = new Date().toISOString().slice(0, 10); // azi implicit
-    }
-  }
-}
-
-/** Obține locațiile de la GAS și actualizează markerii pe hartă. */
-async function refreshMapLocations() {
-  if (!isSyncConfigured() || !_leafletMap) return;
-  try {
-    const resp      = await fetch(SYNC_CONFIG.API_URL + '?action=getLocations', { cache: 'no-store' });
-    const locations = await resp.json();
-    if (Array.isArray(locations)) renderMapMarkers(locations);
-    const upd = $('map-last-update');
-    if (upd) upd.textContent = 'actualizat ' + new Date().toLocaleTimeString('ro-RO', { hour: '2-digit', minute: '2-digit' });
-  } catch { /* offline */ }
-}
-
-/** Desenează markerii pe hartă. Culorile indică vârsta poziției. */
-function renderMapMarkers(locations) {
-  if (!_leafletMap) return;
-  _mapMarkers.forEach(m => _leafletMap.removeLayer(m));
-  _mapMarkers = [];
-  if (!locations.length) return;
-
-  locations.forEach(loc => {
-    const ageMs   = Date.now() - new Date(loc.timestamp).getTime();
-    const minsAgo = Math.round(ageMs / 60000);
-    // Verde = sub 10 min, Portocaliu = sub 1h, Gri = mai vechi
-    const color   = ageMs < 10 * 60000 ? '#16a34a' : ageMs < 60 * 60000 ? '#d97706' : '#94a3b8';
-    const initials = loc.name.split(' ').map(w => w[0] || '').join('').slice(0, 2).toUpperCase();
-    const timeLabel = minsAgo < 1 ? 'acum' : minsAgo < 60 ? minsAgo + 'min' : Math.round(minsAgo / 60) + 'h';
-
-    const icon = L.divIcon({
-      className: '',
-      html: `<div class="map-marker" style="background:${color}">` +
-            `<span class="map-marker-init">${initials}</span>` +
-            `<span class="map-marker-time">${timeLabel}</span></div>`,
-      iconSize:   [44, 52],
-      iconAnchor: [22, 52]
-    });
-
-    const popup =
-      `<div class="map-popup-inner">` +
-      `<b>${escHtml(loc.name)}</b><br>` +
-      `<span style="color:#64748b;font-size:12px">` +
-        (minsAgo < 1 ? 'Locație curentă' : `acum ${minsAgo} min`) +
-      `</span><br>` +
-      `<span style="color:#94a3b8;font-size:11px">±${loc.accuracy} m</span>` +
-      `</div>`;
-
-    const marker = L.marker([loc.lat, loc.lng], { icon }).addTo(_leafletMap).bindPopup(popup, { maxWidth: 220 });
-    _mapMarkers.push(marker);
-  });
-
-  // Zoom automat să cuprindă toți markerii vizibili
-  if (_mapMarkers.length > 0) {
-    const bounds = L.latLngBounds(locations.map(l => [l.lat, l.lng]));
-    _leafletMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 14 });
-  }
-}
-
-/** Încarcă Leaflet CSS + JS din CDN, o singură dată. */
-function loadLeaflet() {
-  return new Promise(resolve => {
-    if (window.L) { resolve(); return; }
-    const link  = document.createElement('link');
-    link.rel    = 'stylesheet';
-    link.href   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-    document.head.appendChild(link);
-    const script   = document.createElement('script');
-    script.src     = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.onload  = resolve;
-    script.onerror = resolve; // nu bloca app-ul dacă CDN offline
-    document.head.appendChild(script);
-  });
-}
-
-// ════════════════════════════════════════════════════════════════
-// GPS HISTORY — Traseu istoric pe hartă
-// ════════════════════════════════════════════════════════════════
-
-/**
- * Preia traseul unui tehnician pentru o dată selectată și îl desenează pe hartă.
- */
-async function loadAndShowHistory() {
-  const techId  = $('map-hist-tech')?.value;
-  const dateVal = $('map-hist-date')?.value;
-
-  if (!techId)  { showToast('Alege un tehnician.', 'warning', 3000); return; }
-  if (!dateVal) { showToast('Alege o dată.', 'warning', 3000); return; }
-  if (!isSyncConfigured()) { showToast('Configurați API URL în Setări.', 'warning'); return; }
-  if (!_leafletMap) { showToast('Harta nu este inițializată.', 'warning'); return; }
-
-  showToast('Se încarcă traseul...', 'info', 2000);
-
-  try {
-    const url  = SYNC_CONFIG.API_URL +
-      '?action=getLocationHistory&tech_id=' + encodeURIComponent(techId) +
-      '&date=' + encodeURIComponent(dateVal);
-    const resp = await fetch(url, { cache: 'no-store' });
-    const data = await resp.json();
-
-    if (!data.positions || data.positions.length === 0) {
-      showToast('Nicio poziție găsită pentru această dată.', 'warning', 4000);
-      return;
-    }
-    renderHistoryTrail(data.positions, data.tech_name || 'Tehnician');
-  } catch {
-    showToast('Eroare la încărcarea istoricului GPS.', 'error');
-  }
-}
-
-/**
- * Desenează traseul pe hartă: polyline albastru + markeri start/stop/intermediari.
- */
-function renderHistoryTrail(positions, techName) {
-  if (!_leafletMap || !window.L) return;
-  clearHistoryTrail();
-
-  const latlngs = positions.map(p => [p.lat, p.lng]);
-
-  _historyLayer = L.layerGroup();
-
-  // Linie traseu
-  L.polyline(latlngs, { color: '#3b82f6', weight: 3, opacity: 0.75, dashArray: null })
-    .addTo(_historyLayer);
-
-  // Marker START — verde
-  L.circleMarker(latlngs[0], {
-    radius: 9, color: '#fff', weight: 2,
-    fillColor: '#16a34a', fillOpacity: 1
-  }).bindPopup(`<b>🟢 Start</b><br>${positions[0].time}`).addTo(_historyLayer);
-
-  // Marker STOP — roșu
-  const last = positions[positions.length - 1];
-  L.circleMarker([last.lat, last.lng], {
-    radius: 9, color: '#fff', weight: 2,
-    fillColor: '#dc2626', fillOpacity: 1
-  }).bindPopup(`<b>🔴 Sfârșit</b><br>${last.time}`).addTo(_historyLayer);
-
-  // Markeri intermediari — mici, albaștri
-  positions.slice(1, -1).forEach(p => {
-    L.circleMarker([p.lat, p.lng], {
-      radius: 4, color: '#3b82f6', weight: 1,
-      fillColor: '#93c5fd', fillOpacity: 0.85
-    }).bindPopup(`${p.time}<br><span style="font-size:11px;color:#64748b">±${Math.round(p.accuracy)} m</span>`)
-      .addTo(_historyLayer);
-  });
-
-  _historyLayer.addTo(_leafletMap);
-
-  // Zoom să cuprindă tot traseul
-  try { _leafletMap.fitBounds(L.latLngBounds(latlngs), { padding: [40, 40], maxZoom: 16 }); }
-  catch { /* bounds invalide dacă un singur punct */ }
-
-  // Info bar sub controale
-  const info = $('map-hist-info');
-  if (info) {
-    const dur = positions.length > 1
-      ? _formatDuration(positions[0].timestamp, last.timestamp)
-      : '';
-    info.style.display = '';
-    info.innerHTML =
-      `<b>${escHtml(techName)}</b> — ${positions.length} poziții` +
-      (dur ? ` &nbsp;·&nbsp; ${dur}` : '') +
-      ` &nbsp;·&nbsp; ${positions[0].time} → ${last.time}`;
-  }
-}
-
-/** Elimină traseul de pe hartă și resetează info bar. */
-function clearHistoryTrail() {
-  if (_historyLayer && _leafletMap) {
-    _leafletMap.removeLayer(_historyLayer);
-    _historyLayer = null;
-  }
-  const info = $('map-hist-info');
-  if (info) info.style.display = 'none';
-}
-
-/** Formatează durata dintre două timestamps ISO ca "Xh Ymin". */
-function _formatDuration(tsStart, tsEnd) {
-  const diffMin = Math.round((new Date(tsEnd) - new Date(tsStart)) / 60000);
-  if (diffMin < 1)  return '< 1 min';
-  if (diffMin < 60) return diffMin + ' min';
-  const h = Math.floor(diffMin / 60);
-  const m = diffMin % 60;
-  return h + 'h' + (m > 0 ? ' ' + m + 'min' : '');
-}
-
-// ─────────────────────────────────────────────────────────────
-// ── CALENDAR INTERVENȚII ──────────────────────────────────────
-// ─────────────────────────────────────────────────────────────
-
-/** Returns YYYY-MM-DD in local timezone (avoids UTC shift from toISOString). */
-function toLocalDate(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return y + '-' + m + '-' + day;
-}
-
-let _calWeekOffset = 0; // 0 = săptămâna curentă, -1/+1 = prev/next
-
-/** Returnează {start, end, label} pentru săptămâna Luni–Duminică cu offset-ul dat. */
-function getWeekBounds(offset) {
-  const now  = new Date();
-  const day  = now.getDay();                 // 0=Dum, 1=Lun…
-  const diff = (day === 0 ? -6 : 1 - day);  // zile până la Luni acestei săptămâni
-  const mon  = new Date(now);
-  mon.setHours(0, 0, 0, 0);
-  mon.setDate(now.getDate() + diff + offset * 7);
-  const sun = new Date(mon);
-  sun.setDate(mon.getDate() + 6);
-
-  const toISO = d => toLocalDate(d);
-  const mo    = ['ian','feb','mar','apr','mai','iun','iul','aug','sep','oct','nov','dec'];
-  const monLbl = mon.getDate() + ' ' + mo[mon.getMonth()];
-  const sunLbl = sun.getDate() + ' ' + mo[sun.getMonth()] + ' ' + sun.getFullYear();
-  return { start: toISO(mon), end: toISO(sun), label: monLbl + ' – ' + sunLbl };
-}
-
-/** Merge imported entries into local IndexedDB cache. */
-async function _mergeCalendarLocal(entries) {
-  try {
-    const stored = await getSetting('calendar_entries');
-    const all = stored ? JSON.parse(stored) : [];
-    const map = {};
-    all.forEach(e => { map[e.id] = e; });
-    entries.forEach(e => { map[e.id] = e; });
-    await setSetting('calendar_entries', JSON.stringify(Object.values(map)));
-  } catch (e) { console.warn('[CAL] Local save failed:', e.message); }
-}
-
-/** Get calendar entries from local cache, filtered by date range. */
-async function _getCalendarLocal(dateFrom, dateTo, techId) {
-  try {
-    const stored = await getSetting('calendar_entries');
-    if (!stored) return [];
-    const all = JSON.parse(stored);
-    return all.filter(e => {
-      if (dateFrom && e.date < dateFrom) return false;
-      if (dateTo && e.date > dateTo) return false;
-      if (techId && e.technician_id !== techId) return false;
-      return true;
-    });
-  } catch (e) { return []; }
-}
-
-/** Incarca si randeaza calendarul (local-first, apoi GAS). */
-async function loadCalendarScreen() {
-  const noApi   = $('cal-no-api');
-  const loading = $('cal-loading');
-  const content = $('cal-content');
-  const bounds = getWeekBounds(_calWeekOffset);
-  const label  = $('cal-week-label');
-  if (label) label.textContent = bounds.label;
-  const techId = (APP.user && APP.user.role !== 'admin') ? APP.user.technician_id : '';
-  const local = await _getCalendarLocal(bounds.start, bounds.end, techId);
-  if (local.length) {
-    if (noApi) noApi.style.display = 'none';
-    if (loading) loading.style.display = 'none';
-    renderCalendar(local, bounds);
-  }
-  if (isSyncConfigured()) {
-    if (noApi) noApi.style.display = 'none';
-    if (!local.length) { if (loading) loading.style.display = ''; if (content) content.innerHTML = ''; }
-    try {
-      let url = SYNC_CONFIG.API_URL + '?action=getCalendar&date_from=' + bounds.start + '&date_to=' + bounds.end;
-      if (techId) url += '&tech_id=' + encodeURIComponent(techId);
-      const data = await apiFetch(url);
-      const entries = data.entries || [];
-      if (entries.length) _mergeCalendarLocal(entries);
-      if (loading) loading.style.display = 'none';
-      renderCalendar(entries.length ? entries : local, bounds);
-    } catch (err) {
-      console.warn('[CAL] GAS fetch failed:', err.message);
-      if (loading) loading.style.display = 'none';
-    }
-  } else {
-    if (loading) loading.style.display = 'none';
-    if (!local.length) { if (noApi) noApi.style.display = ''; if (content) content.innerHTML = ''; }
-  }
-}
-
-
-/** Open the add-calendar-entry modal and populate dropdowns. */
-async function openAddCalendarEntry() {
-  const modal = $('modal-cal-add');
-  if (!modal) return;
-
-  // Set default date to today
-  const dateInput = $('cal-add-date');
-  if (dateInput) dateInput.value = toLocalDate(new Date());
-
-  // Time disabled by default, toggled by checkbox
-  const timeInput = $('cal-add-time');
-  const timeChk = $('cal-add-time-chk');
-  if (timeInput) {
-    const now = new Date();
-    const h = (now.getHours() + 1) % 24;
-    timeInput.value = String(h).padStart(2, '0') + ':00';
-    timeInput.disabled = true;
-    timeInput.style.opacity = '0.4';
-  }
-  if (timeChk) {
-    timeChk.checked = false;
-  }
-
-  // Populate technician dropdown
-  const techSelect = $('cal-add-tech');
-  if (techSelect) {
-    const techs = await getAll('technicians');
-    techSelect.innerHTML = techs
-      .filter(t => t.active !== false)
-      .map(t => '<option value="' + escHtml(t.technician_id) + '" data-name="' + escHtml(t.name) + '">' + escHtml(t.name) + '</option>')
-      .join('');
-  }
-
-  // Populate client datalist
-  const clientList = $('cal-add-client-list');
-  if (clientList && APP.clients) {
-    clientList.innerHTML = APP.clients
-      .filter(cl => cl.active !== false)
-      .map(cl => '<option value="' + escHtml(cl.name) + '">')
-      .join('');
-  }
-
-  $('cal-add-notes').value = '';
-  $('cal-add-client').value = '';
-  modal.classList.add('open');
-}
-
-/** Save a new calendar entry from the modal form. */
-async function saveNewCalendarEntry() {
-  const date   = ($('cal-add-date')  || {}).value || '';
-  const timeChk = $('cal-add-time-chk');
-  const time   = (timeChk && timeChk.checked) ? (($('cal-add-time') || {}).value || '') : '';
-  const client = ($('cal-add-client')|| {}).value.trim();
-  const notes  = ($('cal-add-notes') || {}).value.trim();
-
-  const techSelect = $('cal-add-tech');
-  const techId   = techSelect ? techSelect.value : '';
-  const techName = techSelect && techSelect.selectedOptions[0] ? techSelect.selectedOptions[0].dataset.name || techSelect.selectedOptions[0].text : '';
-
-  if (!date) { showToast('Selectează o dată.', 'error'); return; }
-  if (!client) { showToast('Introdu numele clientului.', 'error'); return; }
-  if (!techId) { showToast('Selectează un tehnician.', 'error'); return; }
-
-  const entry = {
-    id:              'p_' + Date.now() + '_' + Math.random().toString(36).slice(2,6),
-    date:            date,
-    time:            time || '',
-    technician_id:   techId,
-    technician_name: techName,
-    client_name:     client,
-    address:         '',
-    notes:           notes
-  };
-
-  // Save locally
-  await _mergeCalendarLocal([entry]);
-
-  // Close modal and refresh immediately
-  const modal = $('modal-cal-add');
-  if (modal) modal.classList.remove('open');
-  showToast('Salvat local.', 'success');
-
-  // Push to GAS in background
-  if (isSyncConfigured()) {
-    apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'saveCalendarEntries', entries: [entry] })
-    }).then(function(resp) {
-      showToast('Calendar sincronizat cu serverul ✓', 'success');
-    }).catch(function(e) {
-      console.warn('[CAL] GAS push failed:', e.message);
-      showToast('Eroare sincronizare calendar: ' + e.message, 'error');
-    });
-  }
-  loadCalendarScreen();
-}
-
-function toggleCalDay(h) {
-  const el = h.nextElementSibling;
-  if (el && el.classList.contains('cal-day-entries')) el.classList.toggle('collapsed');
-}
-
-/** Navighează cu o săptămână înainte sau înapoi. */
-function changeCalendarWeek(delta) {
-  _calWeekOffset += delta;
-  loadCalendarScreen();
-}
-
-/** Revine la săptămâna curentă. */
-function jumpCalendarToToday() {
-  _calWeekOffset = 0;
-  loadCalendarScreen();
-}
-
-
 /** Update intervention date from picker. */
 function updateInterventionDate(val) {
   if (!val) return;
@@ -5673,436 +5025,6 @@ function updateInterventionDate(val) {
     }
   }
 }
-/** Toggle time field enabled/disabled in calendar add modal. */
-function toggleCalTime(chk) {
-  var inp = $('cal-add-time');
-  if (inp) {
-    inp.disabled = !chk.checked;
-    inp.style.opacity = chk.checked ? '1' : '0.4';
-  }
-}
-
-
-/** Randeaz\u0103 lista de interven\u021bii zi cu zi \u00een #cal-content. */
-function renderCalendar(entries, bounds) {
-  const content = $('cal-content');
-  if (!content) return;
-
-  const today    = toLocalDate(new Date());
-  const dayNames = ['Duminic\u0103','Luni','Mar\u021bi','Miercuri','Joi','Vineri','S\u00e2mb\u0103t\u0103'];
-  const mo       = ['ianuarie','februarie','martie','aprilie','mai','iunie',
-                    'iulie','august','septembrie','octombrie','noiembrie','decembrie'];
-  const isAdmin  = APP.user && APP.user.role === 'admin';
-
-  const TECH_COLORS = ['#1d4ed8','#16a34a','#ea580c','#9333ea','#0891b2'];
-  const techColors = {};
-  let colorIdx = 0;
-  entries.forEach(e => {
-    if (!techColors.hasOwnProperty(e.technician_id)) {
-      techColors[e.technician_id] = colorIdx++ % 5;
-    }
-  });
-
-  const byDate = {};
-  entries.forEach(e => {
-    if (!byDate[e.date]) byDate[e.date] = [];
-    byDate[e.date].push(e);
-  });
-
-  let html = '';
-  const d = new Date(bounds.start + 'T00:00:00');
-
-  for (let i = 0; i < 7; i++) {
-    const dateStr  = toLocalDate(d);
-    const isToday  = dateStr === today;
-    const dayLabel = dayNames[d.getDay()] + ', ' + d.getDate() + ' ' + mo[d.getMonth()];
-    const dayEntries = byDate[dateStr] || [];
-    const entryCount = dayEntries.length;
-
-    html += '<div class="cal-day-group">';
-    html += '<div class="cal-day-header' + (isToday ? ' is-today' : '') + '" onclick="toggleCalDay(this)">';
-    html += '<span>' + escHtml(dayLabel) + (isToday ? ' <span class="cal-today-badge">Azi</span>' : '') + '</span>';
-    html += entryCount ? '<span class="cal-day-count">' + entryCount + '</span>' : '';
-    html += '</div>';
-
-    html += '<div class="cal-day-entries' + (isToday ? '' : ' collapsed') + '">';
-
-    if (entryCount === 0) {
-      html += '<div class="cal-day-empty">Nicio interven\u021bie planificat\u0103</div>';
-    } else {
-      // Unique techs for this day
-      const dayTechs = [];
-      const dayTechSet = new Set();
-      dayEntries.forEach(e => {
-        if (!dayTechSet.has(e.technician_id)) {
-          dayTechSet.add(e.technician_id);
-          dayTechs.push({ id: e.technician_id, name: e.technician_name || '' });
-        }
-      });
-
-      // Group entries per tech, sorted by time
-      const perTech = {};
-      dayTechs.forEach(t => { perTech[t.id] = []; });
-      dayEntries.forEach(e => { perTech[e.technician_id].push(e); });
-      dayTechs.forEach(t => {
-        perTech[t.id].sort((a, b) => (a.time || '').localeCompare(b.time || ''));
-      });
-      const maxRows = Math.max(...dayTechs.map(t => perTech[t.id].length));
-
-      // Build compact table — each column fills top-to-bottom independently
-      html += '<div class="cal-table-wrap"><table class="cal-table">';
-      html += '<thead><tr>';
-      dayTechs.forEach(tech => {
-        const ci = techColors[tech.id] !== undefined ? techColors[tech.id] : 0;
-        html += '<th style="color:' + TECH_COLORS[ci] + '">' + escHtml(tech.name) + '</th>';
-      });
-      html += '</tr></thead><tbody>';
-
-      for (let r = 0; r < maxRows; r++) {
-        html += '<tr>';
-        dayTechs.forEach(tech => {
-          const list = perTech[tech.id];
-          if (r < list.length) {
-            const e = list[r];
-            const eid = (e.id || '').replace(/'/g, "\\'");
-            html += '<td class="cal-td-entry">';
-            html += '<div class="cal-cell-entry">';
-            if (e.time && e.time !== '00:00' && e.time !== '0') html += '<span class="cal-cell-time">' + escHtml(e.time) + '</span> ';
-            html += '<span class="cal-cell-client">' + escHtml(e.client_name || '\u2014') + '</span>';
-            if (e.notes) html += '<span class="cal-cell-notes">' + escHtml(e.notes) + '</span>';
-            if (isAdmin) html += '<button class="cal-cell-del" onclick="deleteCalendarEntry(\'' + eid + '\')" title="\u0218terge">\u2715</button>';
-            html += '</div></td>';
-          } else {
-            html += '<td></td>';
-          }
-        });
-        html += '</tr>';
-      }
-
-      html += '</tbody></table></div>';
-    }
-
-    html += '</div></div>';
-    d.setDate(d.getDate() + 1);
-  }
-
-  if (!entries.length) {
-    html += '<div style="text-align:center;padding:32px 16px;color:var(--slate-400);font-size:.9rem">';
-    html += 'Nu exist\u0103 interven\u021bii programate \u00een aceast\u0103 s\u0103pt\u0103m\u00e2n\u0103.';
-    if (isAdmin) html += '<br><small style="font-size:.8rem">Importa\u021bi un fi\u0219ier Excel cu butonul din header sau ad\u0103uga\u021bi manual cu +.</small>';
-    html += '</div>';
-  }
-
-  content.innerHTML = html;
-}
-
-/** Șterge o intrare din calendar (admin only). */
-async function deleteCalendarEntry(id) {
-  if (!id) return;
-  if (!confirm('Ștergi această intervenție din program?')) return;
-  try {
-    const resp = await fetch(SYNC_CONFIG.API_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      body:    JSON.stringify({ action: 'deleteCalendarEntry', id })
-    });
-    const data = await resp.json();
-    if (data.success) {
-      // Șterge și din cache-ul local
-      try {
-        const stored = await getSetting('calendar_entries');
-        if (stored) {
-          const all = JSON.parse(stored).filter(e => e.id !== id);
-          await setSetting('calendar_entries', JSON.stringify(all));
-        }
-      } catch (_) {}
-      showToast('Intervenție ștearsă din program.', 'success');
-      loadCalendarScreen();
-    } else {
-      showToast('Eroare la ștergere: ' + (data.error || ''), 'error');
-    }
-  } catch (err) {
-    showToast('Eroare de rețea.', 'error');
-  }
-}
-
-// ── Calendar swipe navigation ──────────────────────────────
-(function setupCalendarSwipe() {
-  let _calTouchStartX = 0;
-  let _calTouchStartY = 0;
-  document.addEventListener('touchstart', e => {
-    const cal = document.getElementById('screen-calendar');
-    if (!cal || !cal.classList.contains('active')) return;
-    _calTouchStartX = e.touches[0].clientX;
-    _calTouchStartY = e.touches[0].clientY;
-  }, { passive: true });
-  document.addEventListener('touchend', e => {
-    const cal = document.getElementById('screen-calendar');
-    if (!cal || !cal.classList.contains('active')) return;
-    const dx = e.changedTouches[0].clientX - _calTouchStartX;
-    const dy = e.changedTouches[0].clientY - _calTouchStartY;
-    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
-      if (dx > 0) changeCalendarWeek(-1);  // swipe right = prev week
-      else        changeCalendarWeek(1);   // swipe left = next week
-    }
-  }, { passive: true });
-})();
-
-/** Descarcă template Excel pentru import calendar. */
-async function downloadCalendarTemplate() {
-  try { await loadXLSX(); } catch (e) {
-    showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
-    return;
-  }
-  const headers = ['data (ZZ.LL.AAAA)', 'ora (HH:MM)', 'technician_name', 'client_name', 'adresa', 'observatii'];
-  const nd = new Date();
-  const exDate = String(nd.getDate()).padStart(2,'0') + '.' + String(nd.getMonth()+1).padStart(2,'0') + '.' + nd.getFullYear();
-  const ex1     = [exDate, '09:00', 'Nume Tehnician', 'Client ABC', 'Str. Exemplu 1, București', 'Verificare clor'];
-  const ex2     = [exDate, '11:30', 'Nume Tehnician', 'Client DEF', 'Str. Exemplu 2, Cluj', ''];
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet([headers, ex1, ex2]);
-  // Stil header (lărgime coloane)
-  ws['!cols'] = [{ wch: 18 }, { wch: 10 }, { wch: 20 }, { wch: 24 }, { wch: 36 }, { wch: 30 }];
-  XLSX.utils.book_append_sheet(wb, ws, 'Program');
-  XLSX.writeFile(wb, 'template-program-' + new Date().toISOString().slice(0,10) + '.xlsx');
-}
-
-/** Procesează fișierul Excel importat și trimite intrările la GAS. */
-async function onCalendarFileImport(file) {
-  if (!file) return;
-  // Reset file input
-  const inp = $('cal-import-input');
-  if (inp) inp.value = '';
-
-  try { await loadXLSX(); } catch (e) {
-    showToast('SheetJS nu este disponibil. Reconectați-vă la internet.', 'warning');
-    return;
-  }
-  showToast('Se procesează fișierul...', 'info', 5000);
-
-  try {
-    const buf  = await file.arrayBuffer();
-    const wb   = XLSX.read(buf, { type: 'array' });
-    const ws   = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: true });
-    if (rows.length < 2) {
-      showToast('Fișierul este gol sau are format greșit.', 'error');
-      return;
-    }
-
-    // Construiește map: technician_name.lower → obiect tehnician (din IndexedDB)
-    const techs      = await getAll('technicians');
-    const techByName = {};
-    techs.forEach(t => { techByName[t.name.toLowerCase().trim()] = t; });
-
-    const entries = [];
-    const skipped = [];
-    const now     = Date.now();
-
-    for (let i = 1; i < rows.length; i++) {
-      const rawCells = rows[i];
-      // Parsare dată robustă: Date object, serial number Excel, sau string
-      let dateRaw = rawCells[0];
-      if (typeof dateRaw === 'number' && dateRaw > 1000) {
-        // Excel serial number → JS Date (UTC)
-        const d = new Date((dateRaw - 25569) * 86400000);
-        dateRaw = String(d.getUTCDate()).padStart(2,'0') + '.' + String(d.getUTCMonth()+1).padStart(2,'0') + '.' + d.getUTCFullYear();
-      } else if (dateRaw instanceof Date) {
-        dateRaw = String(dateRaw.getDate()).padStart(2,'0') + '.' + String(dateRaw.getMonth()+1).padStart(2,'0') + '.' + dateRaw.getFullYear();
-      }
-      // Parsare oră: serial Excel (0.375=09:00), număr întreg (14=14:00), sau string
-      let timeRaw = rawCells[1];
-      if (typeof timeRaw === 'number') {
-        if (timeRaw < 1) {
-          // Fracție de zi: 0.375 = 09:00, 0.5 = 12:00
-          const totalMin = Math.round(timeRaw * 1440);
-          const hh = String(Math.floor(totalMin / 60)).padStart(2, '0');
-          const mm = String(totalMin % 60).padStart(2, '0');
-          timeRaw = hh + ':' + mm;
-        } else {
-          // Număr întreg (ex: 14 → 14:00)
-          timeRaw = String(Math.floor(timeRaw)).padStart(2, '0') + ':00';
-        }
-      }
-      const cells = rawCells.map(v => String(v || '').trim());
-      cells[0] = String(dateRaw || '').trim();
-      cells[1] = String(timeRaw || '').trim();
-      const [date, time, tname, cname, addr, notes] = cells;
-      if (!date && !tname && !cname) continue; // rând complet gol — skip silențios
-
-      // Normalizare dată: DD.MM.YYYY → YYYY-MM-DD; DD/MM/YYYY → YYYY-MM-DD; M/D/YYYY → YYYY-MM-DD
-      let normDate = date;
-      if (/^\d{1,2}\.\d{1,2}\.\d{4}$/.test(date)) {
-        const [dd, mm, yyyy] = date.split('.');
-        normDate = yyyy + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
-      } else if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(date)) {
-        const parts = date.split('/');
-        // Detect M/D/YYYY vs D/M/YYYY: if first part > 12 it must be day
-        let dd, mm, yyyy;
-        if (parseInt(parts[0]) > 12) { dd = parts[0]; mm = parts[1]; yyyy = parts[2]; }
-        else if (parseInt(parts[1]) > 12) { dd = parts[1]; mm = parts[0]; yyyy = parts[2]; }
-        else { dd = parts[0]; mm = parts[1]; yyyy = parts[2]; } // assume D/M/YYYY
-        normDate = yyyy + '-' + mm.padStart(2,'0') + '-' + dd.padStart(2,'0');
-      }
-      if (!normDate || !/^\d{4}-\d{2}-\d{2}$/.test(normDate)) {
-        skipped.push(`Rândul ${i+1}: format dată invalid "${date}" (trebuie ZZ.LL.AAAA sau YYYY-MM-DD)`);
-        continue;
-      }
-      // Validare technician
-      if (!tname) {
-        skipped.push(`Rândul ${i+1}: lipsește numele tehnicianului`);
-        continue;
-      }
-      const tech     = techByName[tname.toLowerCase().trim()];
-      const techId   = tech ? tech.technician_id : 'unknown_' + tname.toLowerCase().replace(/\s+/g, '_');
-      const techName = tech ? tech.name : tname;
-      if (!tech) {
-        skipped.push(`Rândul ${i+1}: tehnician "${tname}" nu a fost găsit (va fi marcat "unknown")`);
-      }
-
-      entries.push({
-        id:              'p_' + now + '_' + i,
-        date:            normDate,
-        time:            time || '',
-        technician_id:   techId,
-        technician_name: techName,
-        client_name:     cname || '',
-        address:         addr  || '',
-        notes:           notes || ''
-      });
-    }
-
-    if (entries.length === 0) {
-      showToast('Nicio intrare validă în fișier.', 'error');
-      if (skipped.length) showToast(skipped.slice(0, 3).join('\n'), 'warning', 6000);
-      return;
-    }
-
-    // Salvare locală în IndexedDB (mereu, chiar fără API)
-    await _mergeCalendarLocal(entries);
-
-    if (isSyncConfigured()) {
-      try {
-        const data = await apiFetch(SYNC_CONFIG.API_URL, {
-          method: 'POST',
-          body:   JSON.stringify({ action: 'saveCalendarEntries', entries })
-        });
-        if (!data.success) console.warn('[CAL] GAS save error:', data.error);
-        else showToast('Calendar sincronizat cu serverul ✓', 'success');
-      } catch (gasErr) {
-        console.warn('[CAL] GAS push failed (local data saved):', gasErr.message);
-        showToast('Eroare sync calendar: ' + gasErr.message, 'error');
-      }
-    }
-
-    let msg = `Import reușit: ${entries.length} intrări salvate.`;
-    if (skipped.length) msg += ` (${skipped.length} omise)`;
-    showToast(msg, 'success', 5000);
-    if (skipped.length) {
-      setTimeout(() => showToast('Omise: ' + skipped.slice(0, 3).join(' | '), 'warning', 7000), 1200);
-    }
-    loadCalendarScreen();
-  } catch (err) {
-    showToast('Eroare la procesarea fișierului: ' + err.message, 'error');
-  }
-}
-
-/** Exportă calendarul curent ca PDF via browser print. */
-function exportCalendarPdf() {
-  const content = $('cal-content');
-  const label   = $('cal-week-label');
-  if (!content || !content.innerHTML.trim()) {
-    showToast('Nu există date de exportat.', 'warning');
-    return;
-  }
-
-  const title    = 'Program Intervenții — ' + (label ? label.textContent : '');
-  const printInner = _buildCalendarPrintHtml();
-
-  const printHtml = `<!DOCTYPE html>
-<html lang="ro">
-<head>
-  <meta charset="UTF-8">
-  <title>${escHtml(title)}</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #111; padding: 20px; }
-    h2 { color: #1d4ed8; border-bottom: 2px solid #1d4ed8; padding-bottom: 8px; margin-bottom: 20px; font-size: 17px; }
-    .day-group { margin-bottom: 18px; page-break-inside: avoid; }
-    .day-header { font-weight: 700; font-size: 13px; color: #374151; padding: 5px 0; border-bottom: 1.5px solid #d1d5db; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .04em; }
-    .day-header.today { color: #1d4ed8; }
-    .cal-entry { display: flex; gap: 10px; margin-bottom: 7px; padding: 7px 10px; border-left: 3px solid #1d4ed8; background: #eff6ff; border-radius: 5px; }
-    .e-time { font-weight: 700; color: #1d4ed8; min-width: 42px; flex-shrink: 0; font-size: 13px; padding-top: 1px; }
-    .e-body { flex: 1; min-width: 0; }
-    .e-tech { color: #4b5563; font-size: 11px; margin-bottom: 2px; }
-    .e-client { font-weight: 600; font-size: 13px; }
-    .e-addr { color: #6b7280; font-size: 11px; }
-    .e-notes { color: #6b7280; font-size: 11px; font-style: italic; }
-    .empty { color: #9ca3af; font-style: italic; font-size: 12px; padding: 4px 0 10px; }
-    .footer { margin-top: 24px; font-size: 11px; color: #9ca3af; border-top: 1px solid #e5e7eb; padding-top: 8px; }
-    @media print { body { padding: 8mm; } @page { margin: 10mm; } }
-  </style>
-</head>
-<body>
-  <h2>${escHtml(title)}</h2>
-  ${printInner}
-  <div class="footer">Generat de Pool Manager · ${new Date().toLocaleDateString('ro-RO', { day:'2-digit', month:'long', year:'numeric' })}</div>
-</body>
-</html>`;
-
-  const w = window.open('', '_blank');
-  if (!w) {
-    showToast('Activați popup-urile pentru a exporta PDF.', 'warning');
-    return;
-  }
-  w.document.write(printHtml);
-  w.document.close();
-  w.focus();
-  setTimeout(() => { w.print(); w.close(); }, 400);
-}
-
-/** Construiește HTML-ul intern al calendarului pentru print. */
-function _buildCalendarPrintHtml() {
-  const content = $('cal-content');
-  if (!content) return '';
-  const today = new Date().toISOString().slice(0, 10);
-  let html = '';
-
-  content.querySelectorAll('.cal-day-group').forEach(dg => {
-    const hdr    = dg.querySelector('.cal-day-header');
-    const isEmpty= !!dg.querySelector('.cal-day-empty');
-    const entEls = dg.querySelectorAll('.cal-entry');
-
-    // Determină data din header pentru colorare "azi"
-    const isToday = hdr && hdr.classList.contains('is-today');
-
-    html += '<div class="day-group">';
-    html += `<div class="day-header${isToday ? ' today' : ''}">${hdr ? escHtml(hdr.textContent.replace('Azi','').trim()) : ''}</div>`;
-
-    if (isEmpty) {
-      html += '<div class="empty">Nicio intervenție planificată</div>';
-    } else {
-      entEls.forEach(ent => {
-        const time   = ent.querySelector('.cal-entry-time');
-        const tech   = ent.querySelector('.cal-entry-tech');
-        const client = ent.querySelector('.cal-entry-client');
-        const addr   = ent.querySelector('.cal-entry-addr');
-        const notes  = ent.querySelector('.cal-entry-notes');
-        html += '<div class="cal-entry">';
-        html += `<div class="e-time">${escHtml(time   ? time.textContent.trim()   : '—')}</div>`;
-        html += '<div class="e-body">';
-        if (tech)   html += `<div class="e-tech">${escHtml(tech.textContent.trim())}</div>`;
-        if (client) html += `<div class="e-client">${escHtml(client.textContent.trim())}</div>`;
-        if (addr)   html += `<div class="e-addr">${escHtml(addr.textContent.trim())}</div>`;
-        if (notes)  html += `<div class="e-notes">${escHtml(notes.textContent.trim())}</div>`;
-        html += '</div></div>';
-      });
-    }
-    html += '</div>';
-  });
-  return html;
-}
-
 // ─────────────────────────────────────────────────────────────
 // ── EVIDENȚĂ CHECKLIST ────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────
@@ -6377,7 +5299,7 @@ async function clearChecklist() {
 // ── Swipe-back gesture on all non-dashboard screens ─────────────────
 (function() {
   var _swipeStartX = 0, _swipeStartY = 0, _swipeTracking = false;
-  var SWIPEABLE = ['map', 'info', 'checklist', 'calendar', 'intervention', 'success', 'billing-list'];
+  var SWIPEABLE = ['info', 'checklist', 'intervention', 'success', 'billing-list'];
 
   document.addEventListener('touchstart', function(e) {
     if (SWIPEABLE.indexOf(APP.currentScreen) < 0) return;
