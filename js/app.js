@@ -1035,7 +1035,10 @@ const AUDIT_ACTION_LABELS = {
 async function showAuditLogModal() {
   const modal = $('modal-audit-log');
   const body  = $('audit-log-modal-body');
-  if (!modal || !body) return;
+  if (!modal || !body) {
+    showToast('Aplicația s-a actualizat parțial. Închide-o complet și redeschide-o, apoi încearcă din nou.', 'warning', 6000);
+    return;
+  }
   modal.classList.add('open');
 
   if (!isSyncConfigured()) {
@@ -1087,6 +1090,11 @@ var _voiceClientId     = null;
 function openVoiceIntervention(clientId) {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
+  const modal = $('modal-voice-intervention');
+  if (!modal) {
+    showToast('Aplicația s-a actualizat parțial. Închide-o complet și redeschide-o, apoi încearcă din nou.', 'warning', 6000);
+    return;
+  }
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === 'undefined') {
     showToast('Înregistrarea audio nu este suportată pe acest dispozitiv/browser.', 'error');
     return;
@@ -1097,7 +1105,7 @@ function openVoiceIntervention(clientId) {
   $('voice-rec-idle').style.display = '';
   $('voice-rec-active').style.display = 'none';
   $('voice-rec-preview').style.display = 'none';
-  $('modal-voice-intervention').classList.add('open');
+  modal.classList.add('open');
 }
 
 function closeVoiceIntervention() {
