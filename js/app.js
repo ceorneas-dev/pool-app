@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 223;
+const APP_VERSION = 224;
 
 async function initApp() {
   await openDB();
@@ -3077,7 +3077,7 @@ async function doSaveTech() {
         }
       }).catch(function(pushErr) {
         console.warn('[SYNC] Technician push failed:', pushErr.message);
-        showToast('Push la server eșuat. Se va reîncerca automat.', 'warning', 4000);
+        showToast('Salvat local. Se va sincroniza automat la următoarea conexiune bună.', 'warning', 4000);
       });
     }
   } catch (e) {

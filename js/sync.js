@@ -282,11 +282,13 @@ function pullData() {
     }
 
     if (data.technicians && data.technicians.length) {
-      // GAS is source of truth for technicians. Always pull.
-      // Edits are pushed immediately in doSaveTech, deletions via pushTechnicians.
+      // GAS is source of truth for technicians, BUT we must never drop a local-only
+      // technician that failed to reach the server (e.g. weak signal on the admin phone).
+      // Such "orphans" are re-pushed to the server and kept locally, so a new account
+      // isn't silently lost and can log in from other devices too.
       const techMerge = (async function() {
         var deletedTechIds = (await getSetting('deleted_technician_ids')) || [];
-        console.log('[SYNC] Technicians: pulling from server...');
+        console.log('[SYNC] Technicians: reconciling with server...');
         const parsed = data.technicians.map(t => ({
           technician_id: t.technician_id,
           name:          t.name,
@@ -296,13 +298,46 @@ function pullData() {
           active:        t.active === true || String(t.active).toLowerCase() === 'true',
           last_sync:     t.last_sync || null
         }));
-        // Clear local techs and replace with server data
+        const serverIds = new Set(parsed.map(t => String(t.technician_id)));
+
+        // Find local technicians the server doesn't know about (failed push), excluding
+        // ones the admin explicitly deleted, and only real accounts (have username+password).
+        let localTechs = [];
+        try { localTechs = await getAll('technicians'); } catch(_) {}
+        const orphans = localTechs.filter(t =>
+          t && t.technician_id &&
+          !serverIds.has(String(t.technician_id)) &&
+          deletedTechIds.indexOf(t.technician_id) === -1 &&
+          t.username && t.password
+        );
+
+        // Re-push orphans to the server so every device can authenticate them.
+        if (orphans.length && isSyncConfigured()) {
+          try {
+            await apiFetch(SYNC_CONFIG.API_URL, {
+              method: 'POST',
+              body: JSON.stringify({ action: 'push', type: 'technicians', data: orphans.map(t => ({
+                technician_id: t.technician_id,
+                name:          t.name || '',
+                username:      t.username,
+                password:      t.password,
+                role:          t.role || 'technician',
+                active:        t.active === false ? 'false' : 'true'
+              })) })
+            });
+            console.log('[SYNC] Recovered', orphans.length, 'local-only technician(s) to server');
+          } catch (e) {
+            console.warn('[SYNC] Orphan technician push failed (kept locally, will retry):', e.message);
+          }
+        }
+
+        // Rebuild local store from server data PLUS the orphans we just recovered.
         try { await clearStore('technicians'); } catch(_) {}
+        const merged = parsed.concat(orphans);
         const usedUsernames = new Set();
         let ok = 0;
-        for (const t of parsed) {
-          // Skip locally-deleted technicians
-          if (deletedTechIds.indexOf(t.technician_id) !== -1) continue;
+        for (const t of merged) {
+          if (deletedTechIds.indexOf(t.technician_id) !== -1) continue; // locally deleted
           if (!t.username || !String(t.username).trim()) {
             t.username = 'user_' + t.technician_id;
           }
@@ -314,7 +349,7 @@ function pullData() {
             console.warn('[SYNC] Tech put failed for', t.username, ':', e.message);
           }
         }
-        console.log('[SYNC] Pulled', ok, '/', parsed.length, 'technicians from server');
+        console.log('[SYNC] Technicians reconciled:', ok, 'kept (' + orphans.length + ' recovered)');
         try {
           const all = await getAll('technicians');
           await setSetting('technicians_backup', JSON.stringify(all));
