@@ -358,6 +358,19 @@ function pullData() {
       tasks.push(techMerge);
     }
 
+    // Global app config (tech permissions set by admin) — apply to THIS device's settings
+    // so a permission the admin enabled is honoured on every phone, not just the admin's.
+    if (data.config && typeof data.config === 'object') {
+      const cfgKeys = ['perm_tech_add_client', 'perm_tech_gps_location'];
+      tasks.push((async function() {
+        for (const k of cfgKeys) {
+          if (k in data.config) {
+            try { await setSetting(k, String(data.config[k])); } catch(_) {}
+          }
+        }
+      })());
+    }
+
     if (data.treatment_rules && data.treatment_rules.length) {
       const parsed = data.treatment_rules.map(r => ({
         rule_id:      parseInt(r.rule_id),

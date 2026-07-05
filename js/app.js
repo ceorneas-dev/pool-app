@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 224;
+const APP_VERSION = 225;
 
 async function initApp() {
   await openDB();
@@ -792,12 +792,27 @@ function renderDashboard() {
 async function savePermSettings() {
   const addEl = $('settings-perm-tech-add-client');
   const gpsEl = $('settings-perm-tech-gps-location');
-  const permAdd = !!(addEl && addEl.checked);
-  const permGps = !!(gpsEl && gpsEl.checked);
-  await setSetting('perm_tech_add_client', permAdd ? 'true' : 'false');
-  await setSetting('perm_tech_gps_location', permGps ? 'true' : 'false');
+  const permAdd = !!(addEl && addEl.checked) ? 'true' : 'false';
+  const permGps = !!(gpsEl && gpsEl.checked) ? 'true' : 'false';
+  await setSetting('perm_tech_add_client', permAdd);
+  await setSetting('perm_tech_gps_location', permGps);
   await applyTechPermissions();
-  showToast('Permisiuni salvate.', 'success');
+  // Trimite permisiunile la server ca sa ajunga pe TOATE telefoanele (nu doar acesta).
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'saveConfig', entries: {
+        perm_tech_add_client: permAdd,
+        perm_tech_gps_location: permGps
+      } })
+    }).then(function() {
+      showToast('Permisiuni salvate și trimise pe toate telefoanele ✓', 'success');
+    }).catch(function(e) {
+      showToast('Salvat local. Permisiunile se vor trimite la următoarea sincronizare.', 'warning', 4000);
+    });
+  } else {
+    showToast('Permisiuni salvate.', 'success');
+  }
 }
 
 // Aplica (pentru utilizatorul curent) permisiunile acordate tehnicienilor.

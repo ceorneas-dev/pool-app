@@ -94,6 +94,8 @@ function doPost(e) {
       result = handleSendEmail(body);
     } else if (action === 'logAudit') {
       result = handleLogAudit(body);
+    } else if (action === 'saveConfig') {
+      result = handleSaveConfig(body);
     } else {
       result = { error: 'Unknown action: ' + action };
     }
@@ -122,8 +124,40 @@ function handlePull(params) {
     const all    = sheetToObjects('interventions', INTERVENTIONS_COLS);
     result.interventions = techId ? all.filter(i => i.technician_id === techId) : all;
   }
+  if (type === 'all' || type === 'config') {
+    result.config = handleGetConfig();
+  }
 
   return result;
+}
+
+// ── App config (permisiuni globale tehnicieni etc.) ───────────
+// Sheet key/value: astfel o permisiune setată de admin ajunge pe toate telefoanele.
+const APP_CONFIG_COLS = ['key', 'value'];
+
+function handleGetConfig() {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('app_config');
+  if (!sheet) return {};
+  const rows = sheet.getDataRange().getValues();
+  const out = {};
+  rows.slice(1).forEach(r => { if (r[0]) out[String(r[0])] = String(r[1]); });
+  return out;
+}
+
+function handleSaveConfig(body) {
+  const entries = body.entries || {};
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = getOrCreateSheet(ss, 'app_config', APP_CONFIG_COLS);
+  const rows  = sheet.getDataRange().getValues();
+  const idx = {};
+  rows.slice(1).forEach((r, i) => { if (r[0]) idx[String(r[0])] = i + 2; });
+  Object.keys(entries).forEach(k => {
+    const v = String(entries[k]);
+    if (idx[k]) sheet.getRange(idx[k], 2).setValue(v);
+    else sheet.appendRow([k, v]);
+  });
+  return { success: true };
 }
 
 // ── GET: stats ────────────────────────────────────────────────
@@ -679,7 +713,8 @@ function setupSheetStructure() {
     { name: 'technicians',      cols: TECHNICIANS_COLS,    color: '#b91c1c' }, // red
     { name: 'sync_log',         cols: SYNC_LOG_COLS,       color: '#475569' }, // gray
     { name: 'checklist',        cols: CHECKLIST_COLS,        color: '#b45309' },  // amber - evidenta checklist
-    { name: 'audit_log',        cols: AUDIT_LOG_COLS,        color: '#374151' }   // gri inchis - jurnal audit
+    { name: 'audit_log',        cols: AUDIT_LOG_COLS,        color: '#374151' },  // gri inchis - jurnal audit
+    { name: 'app_config',       cols: APP_CONFIG_COLS,       color: '#0891b2' }   // cyan - config global (permisiuni)
   ];
 
   sheets.forEach(({ name, cols, color }) => {
