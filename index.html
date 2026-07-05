@@ -229,6 +229,10 @@
             <label for="settings-perm-tech-add-client" style="font-size:.88rem">➕ Pot adăuga clienți noi</label>
             <input type="checkbox" id="settings-perm-tech-add-client" style="width:20px;height:20px">
           </div>
+          <div class="settings-row" style="padding:0;margin:0 0 8px;display:flex;align-items:center;justify-content:space-between">
+            <label for="settings-perm-tech-gps-location" style="font-size:.88rem">📍 Pot adăuga/schimba locația GPS a clienților</label>
+            <input type="checkbox" id="settings-perm-tech-gps-location" style="width:20px;height:20px">
+          </div>
           <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:6px" onclick="savePermSettings()">💾 Salvează permisiuni</button>
         </div>
       </details>
@@ -244,17 +248,34 @@
       <!-- Backup & Restore -->
       <details class="admin-only" style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">💾 Backup & Restore</summary>
-        <div style="display:flex;gap:8px;padding:4px 14px 14px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;padding:4px 14px 8px;flex-wrap:wrap">
           <button class="btn-settings-save" style="flex:1;min-width:120px;padding:10px" onclick="exportBackupJSON()">💾 Backup</button>
           <label class="btn-settings-save" style="flex:1;min-width:120px;padding:10px;cursor:pointer;text-align:center">📂 Restore<input type="file" id="restore-file-input" accept=".json" style="display:none" onchange="importBackupJSON(this.files[0])"></label>
         </div>
+        <div style="padding:4px 14px 14px;border-top:1px solid var(--slate-200);margin-top:4px">
+          <p style="font-size:.78rem;color:var(--text-secondary);margin:8px 0 8px">Backup automat în Google Drive (folder ales de tine), la intervalul ales — rulează silențios când deschide admin-ul aplicația.</p>
+          <div class="settings-row" style="padding:0;margin:0 0 8px">
+            <label for="settings-backup-folder">Nume folder Drive pentru backup</label>
+            <input type="text" id="settings-backup-folder" placeholder="Backup Pool Manager" style="width:100%">
+          </div>
+          <div class="settings-row" style="padding:0;margin:0 0 8px">
+            <label for="settings-backup-interval">Interval backup automat</label>
+            <select id="settings-backup-interval" style="width:100%">
+              <option value="0">Dezactivat (doar manual)</option>
+              <option value="1">Zilnic</option>
+              <option value="7">Săptămânal</option>
+              <option value="30">Lunar</option>
+            </select>
+          </div>
+          <button class="btn-settings-save" style="width:100%;padding:10px" onclick="saveBackupSettings()">💾 Salvează setări backup</button>
+        </div>
       </details>
 
-      <!-- Jurnal Locații GPS (audit) -->
+      <!-- Jurnal Activitate (audit) -->
       <details class="admin-only" style="margin:4px 0">
-        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📋 Jurnal Locații GPS</summary>
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📋 Jurnal Activitate</summary>
         <div style="padding:4px 14px 14px">
-          <p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 10px">Cine, când și ce a adăugat/șters/schimbat la locația GPS a clienților.</p>
+          <p style="font-size:.78rem;color:var(--text-secondary);margin:0 0 10px">Cine, când și ce a adăugat/modificat/șters — clienți, intervenții, locații GPS.</p>
           <button class="btn-settings-save" style="width:100%;padding:10px" onclick="showAuditLogModal()">📋 Vezi jurnal</button>
         </div>
       </details>
@@ -1106,7 +1127,7 @@
 <div id="modal-audit-log" class="modal-overlay admin-only" onclick="if(event.target===this)closeAuditLogModal()">
   <div class="modal-content" style="max-width:560px;max-height:85vh;overflow-y:auto" onclick="event.stopPropagation()">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <h3 style="margin:0;font-size:1.1rem">📋 Jurnal Locații GPS</h3>
+      <h3 style="margin:0;font-size:1.1rem">📋 Jurnal Activitate</h3>
       <button style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);padding:4px" onclick="closeAuditLogModal()">&#10005;</button>
     </div>
     <div id="audit-log-modal-body"></div>

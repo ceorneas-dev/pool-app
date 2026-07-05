@@ -1347,6 +1347,20 @@ body.role-technician #client-list {
   to   { transform: translateY(0);    opacity: 1; }
 }
 
+/* Centered dialog variant (used by modals built with inline max-width, e.g. billing/audit/voice-note) */
+.modal-content {
+  background: white;
+  border-radius: var(--radius-lg);
+  width: calc(100% - 32px);
+  max-width: 480px;
+  padding: 20px;
+  margin-bottom: 24px;
+  max-height: 85dvh;
+  overflow-y: auto;
+  box-shadow: var(--shadow-lg, 0 10px 30px rgba(0,0,0,.25));
+  animation: slideUp 0.25s ease;
+}
+
 .modal-handle {
   display: flex;
   justify-content: center;
@@ -1714,6 +1728,7 @@ body.dark-mode .modal-body p {
 }
 
 body.dark-mode .modal-sheet,
+body.dark-mode .modal-content,
 body.dark-mode .form-section,
 body.dark-mode .prev-intervention,
 body.dark-mode details {
@@ -1874,6 +1889,7 @@ body.dark-mode {
 }
 body.dark-mode .login-card,
 body.dark-mode .modal-sheet,
+body.dark-mode .modal-content,
 body.dark-mode .client-card,
 body.dark-mode .stat-card,
 body.dark-mode .intervention-body,

@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 222;
+const APP_VERSION = 223;
 
 async function initApp() {
   await openDB();
@@ -457,6 +457,8 @@ async function postLogin() {
   updateSyncBadge();
   // QR deeplink: ?client=ID
   setTimeout(checkClientDeeplink, 200);
+  // Backup automat, dacă e configurat și a trecut intervalul (doar admin, silențios)
+  if (isAdmin()) runAutoBackupIfDue().catch(function() {});
 }
 
 // ── PIN Screen ───────────────────────────────────────────────
@@ -771,13 +773,29 @@ function renderDashboard() {
     const el = $('settings-perm-tech-add-client');
     if (el) el.checked = val === 'true' || val === true;
   });
+  getSetting('perm_tech_gps_location').then(val => {
+    const el = $('settings-perm-tech-gps-location');
+    if (el) el.checked = val === 'true' || val === true;
+  });
+  // Setări backup automat
+  getSetting('backup_folder_name').then(val => {
+    const el = $('settings-backup-folder');
+    if (el) el.value = val || 'Backup Pool Manager';
+  });
+  getSetting('backup_interval_days').then(val => {
+    const el = $('settings-backup-interval');
+    if (el) el.value = val || '0';
+  });
 }
 
 // Salveaza permisiuni tehnicieni si aplica imediat pe pagina
 async function savePermSettings() {
   const addEl = $('settings-perm-tech-add-client');
+  const gpsEl = $('settings-perm-tech-gps-location');
   const permAdd = !!(addEl && addEl.checked);
+  const permGps = !!(gpsEl && gpsEl.checked);
   await setSetting('perm_tech_add_client', permAdd ? 'true' : 'false');
+  await setSetting('perm_tech_gps_location', permGps ? 'true' : 'false');
   await applyTechPermissions();
   showToast('Permisiuni salvate.', 'success');
 }
@@ -801,6 +819,8 @@ async function applyTechPermissions() {
 async function renderClientList(searchTerm) {
   const list = $('client-list');
   if (!list) return;
+
+  const canEditLocationList = isAdmin() || (await getSetting('perm_tech_gps_location')) === 'true';
 
   const term = (searchTerm || '').toLowerCase().trim();
   let filtered = APP.clients.filter(c =>
@@ -898,7 +918,7 @@ async function renderClientList(searchTerm) {
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
-        ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); setClientLocation('${client.client_id}')" style="color:var(--emerald-600)">📍 ${client.location_set ? 'Relocare' : 'Locație'}</button>` : ''}
+        ${canEditLocationList ? `<button class="client-action-btn" onclick="event.stopPropagation(); setClientLocation('${client.client_id}')" style="color:var(--emerald-600)">📍 ${client.location_set ? 'Relocare' : 'Locație'}</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); deleteClient('${client.client_id}')" style="color:var(--danger)">🗑️ Șterge</button>` : ''}
       </div>
     </li>`;
@@ -960,7 +980,7 @@ async function setClientLocation(clientId) {
           body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
         }).catch(err => console.warn('[SYNC] Client loc push failed:', err.message));
       }
-      logLocationAudit(wasSet ? 'update_location' : 'set_location', client);
+      logAudit(wasSet ? 'update_location' : 'set_location', client);
       showToast('📍 Locația salvată pentru ' + client.name, 'success');
       renderClientList($('search-input') ? $('search-input').value : '');
       // Refresh the client-info modal's location row, if it's open for this client
@@ -996,7 +1016,7 @@ async function deleteClientLocation(clientId) {
       body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
     }).catch(err => console.warn('[SYNC] Client loc delete push failed:', err.message));
   }
-  logLocationAudit('delete_location', client);
+  logAudit('delete_location', client);
   showToast('🗑️ Locația a fost ștearsă pentru ' + client.name, 'success');
   renderClientList($('search-input') ? $('search-input').value : '');
   // Refresh the client-info modal's location row, if it's open for this client
@@ -1008,8 +1028,8 @@ async function deleteClientLocation(clientId) {
   if (delBtn) delBtn.style.display = 'none';
 }
 
-/** Fire-and-forget audit log entry for a client GPS location change (set/update/delete). */
-function logLocationAudit(actionType, client) {
+/** Fire-and-forget audit log entry (client/intervenție/locație adăugat(ă)/schimbat(ă)/șters(ă)). */
+function logAudit(actionType, client, details) {
   if (!APP.user || !isSyncConfigured()) return;
   apiFetch(SYNC_CONFIG.API_URL, {
     method: 'POST',
@@ -1018,20 +1038,27 @@ function logLocationAudit(actionType, client) {
       technician_id:    APP.user.technician_id,
       technician_name:  APP.user.name,
       log_action:       actionType,
-      client_id:        client.client_id,
-      client_name:      client.name,
+      client_id:        client ? client.client_id : '',
+      client_name:      client ? client.name : '',
+      details:          details || '',
       timestamp:        new Date().toISOString()
     })
   }).catch(err => console.warn('[AUDIT] log failed:', err.message));
 }
 
 const AUDIT_ACTION_LABELS = {
-  set_location:    '📍 Locație adăugată',
-  update_location: '📍 Locație actualizată',
-  delete_location: '🗑️ Locație ștearsă'
+  set_location:      '📍 Locație adăugată',
+  update_location:   '📍 Locație actualizată',
+  delete_location:   '🗑️ Locație ștearsă',
+  add_client:        '👤 Client adăugat',
+  edit_client:       '✏️ Client modificat',
+  delete_client:     '🗑️ Client dezactivat',
+  add_intervention:  '➕ Intervenție adăugată',
+  edit_intervention: '✏️ Intervenție modificată',
+  delete_intervention: '🗑️ Intervenție ștearsă'
 };
 
-/** Admin: show the GPS-location audit log (who / when / what changed). */
+/** Admin: show the activity log (who / when / what changed). */
 async function showAuditLogModal() {
   const modal = $('modal-audit-log');
   const body  = $('audit-log-modal-body');
@@ -1057,9 +1084,11 @@ async function showAuditLogModal() {
       const label = AUDIT_ACTION_LABELS[e.log_action] || e.log_action;
       const dt = new Date(e.timestamp);
       const dtLabel = isNaN(dt.getTime()) ? e.timestamp : dt.toLocaleString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      const detailsHtml = e.details ? '<div style="color:var(--text-secondary);margin-top:2px;font-style:italic">' + escHtml(e.details) + '</div>' : '';
       return '<div style="padding:8px 10px;border:1px solid var(--slate-200);border-radius:8px;font-size:.82rem">' +
-        '<div style="font-weight:600">' + escHtml(label) + ' — ' + escHtml(e.client_name || e.client_id || '') + '</div>' +
+        '<div style="font-weight:600">' + escHtml(label) + (e.client_name ? ' — ' + escHtml(e.client_name) : '') + '</div>' +
         '<div style="color:var(--text-secondary);margin-top:2px">' + escHtml(e.technician_name || '') + ' · ' + dtLabel + '</div>' +
+        detailsHtml +
         '</div>';
     }).join('') + '</div>';
   } catch (err) {
@@ -1907,6 +1936,14 @@ async function doSaveIntervention() {
     APP.pendingSync++;
     APP.lastIntervention = intervention;   // for share report
 
+    logAudit(
+      APP._editingIntervention ? 'edit_intervention' : 'add_intervention',
+      client,
+      fmtDate(intervention.date) + (intervention.measured_chlorine != null || intervention.measured_ph != null
+        ? ' — Cl: ' + (intervention.measured_chlorine != null ? intervention.measured_chlorine : '—') + ', pH: ' + (intervention.measured_ph != null ? intervention.measured_ph : '—')
+        : '')
+    );
+
     // Deduct consumed products from stock
     deductStockForIntervention(intervention).catch(e => console.warn('[STOCK] Deduction error:', e));
 
@@ -2038,6 +2075,7 @@ async function showClientDetails(clientId) {
   APP.pendingSync = allFromDb.filter(i => !i.synced).length;
 
   const hasLocation = client.location_set && client.latitude;
+  const canEditLocation = isAdmin() || (await getSetting('perm_tech_gps_location')) === 'true';
 
   // Filter, normalize dates, and sort descending (newest first)
   const ci = allFromDb.filter(i => String(i.client_id) === String(clientId) && i.date)
@@ -2065,10 +2103,11 @@ async function showClientDetails(clientId) {
       ${client.address ? `<div class="client-detail-row"><span class="detail-label">Adresă</span><span class="detail-value">${escHtml(client.address)}</span></div>` : ''}
       <div class="client-detail-row" style="flex-direction:column;align-items:flex-start;gap:6px">
         <span class="detail-label">Locație GPS <span id="client-detail-gps-status">${hasLocation ? '✅ Setată' : '❌ Nesetată'}</span></span>
+        ${canEditLocation ? `
         <span class="detail-value" style="display:flex;flex-wrap:wrap;gap:8px;width:100%">
           <button id="client-detail-gps-update-btn" class="client-action-btn" style="flex:0 0 auto;padding:4px 10px;font-size:.78rem" onclick="event.stopPropagation(); setClientLocation('${clientId}')">📍 ${hasLocation ? 'Actualizează' : 'Adaugă'}</button>
           <button id="client-detail-gps-delete-btn" class="client-action-btn" style="flex:0 0 auto;padding:4px 10px;font-size:.78rem;color:var(--danger);display:${hasLocation ? '' : 'none'}" onclick="event.stopPropagation(); deleteClientLocation('${clientId}')">🗑️ Șterge</button>
-        </span>
+        </span>` : ''}
       </div>
       ${client.notes ? `<div class="client-detail-row"><span class="detail-label">Note</span><span class="detail-value">${escHtml(client.notes)}</span></div>` : ''}
     </div>
@@ -2722,18 +2761,83 @@ function toggleObsChip(btn) {
 // ════════════════════════════════════════════════════════════════
 // FEATURE 5 — Backup / Restore DB
 // ════════════════════════════════════════════════════════════════
-async function exportBackupJSON() {
+/** Gather all local data into a single backup object. */
+async function _buildBackupData() {
   const stores = ['clients', 'interventions', 'technicians', 'stock', 'settings'];
   const backup = { version: 3, date: new Date().toISOString(), data: {} };
   for (const s of stores) {
     try { backup.data[s] = await getAll(s); } catch { backup.data[s] = []; }
   }
+  return backup;
+}
+
+async function exportBackupJSON() {
+  const backup = await _buildBackupData();
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = `pool-backup-${new Date().toISOString().split('T')[0]}.json`;
   a.click();
   showToast('Backup descărcat.', 'success');
+  _uploadBackupToDrive(backup, true);
+}
+
+/** Upload a backup JSON to the configured Google Drive folder. Fire-and-forget. */
+async function _uploadBackupToDrive(backup, showToasts) {
+  if (!isSyncConfigured()) return;
+  try {
+    const folderName = (await getSetting('backup_folder_name')) || 'Backup Pool Manager';
+    const json = JSON.stringify(backup);
+    const b64 = btoa(unescape(encodeURIComponent(json)));
+    const fname = 'pool-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+    const res = await apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action:     'saveExportToDrive',
+        fileName:   fname,
+        data:       b64,
+        mimeType:   'application/json',
+        rootFolder: folderName
+      })
+    });
+    if (res && res.success) {
+      await setSetting('last_auto_backup_at', new Date().toISOString());
+      if (showToasts) showToast('Backup salvat și în Drive: ' + folderName + '/' + fname, 'success', 4000);
+    } else if (showToasts) {
+      showToast('Backup local OK, dar salvarea în Drive a eșuat: ' + (res && res.error || ''), 'warning');
+    }
+  } catch (e) {
+    console.warn('[BACKUP] Drive upload failed:', e.message);
+    if (showToasts) showToast('Backup local OK, dar salvarea în Drive a eșuat.', 'warning');
+  }
+}
+
+/** Check on app start whether an automatic backup is due, and run it quietly if so. */
+async function runAutoBackupIfDue() {
+  try {
+    const intervalDays = parseInt(await getSetting('backup_interval_days') || '0', 10);
+    if (!intervalDays || !isSyncConfigured()) return; // 0 = dezactivat
+
+    const lastAt = await getSetting('last_auto_backup_at');
+    const dueMs = intervalDays * 24 * 60 * 60 * 1000;
+    if (lastAt && (Date.now() - Date.parse(lastAt)) < dueMs) return; // nu e încă timpul
+
+    const backup = await _buildBackupData();
+    await _uploadBackupToDrive(backup, false);
+  } catch (e) {
+    console.warn('[BACKUP] Auto-backup check failed:', e.message);
+  }
+}
+
+/** Save backup folder name + interval, from Settings. */
+async function saveBackupSettings() {
+  const folderEl   = $('settings-backup-folder');
+  const intervalEl = $('settings-backup-interval');
+  const folderName = (folderEl && folderEl.value.trim()) || 'Backup Pool Manager';
+  const interval   = intervalEl ? parseInt(intervalEl.value, 10) || 0 : 0;
+  await setSetting('backup_folder_name', folderName);
+  await setSetting('backup_interval_days', String(interval));
+  showToast('Setări backup salvate.', 'success');
 }
 
 async function importBackupJSON(file) {
@@ -2834,6 +2938,7 @@ async function doSaveClientForm() {
         body: JSON.stringify({ action: 'push', type: 'clients', data: [data] })
       }).catch(err => console.warn('[SYNC] Client push failed:', err.message));
     }
+    logAudit(isEdit ? 'edit_client' : 'add_client', data);
     await loadData();
     renderDashboard();
     closeClientFormModal();
@@ -2864,6 +2969,7 @@ async function deleteClient(clientId) {
         body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
       }).catch(err => console.warn('[SYNC] Client deactivate push failed:', err.message));
     }
+    logAudit('delete_client', client);
     await loadData();
     renderDashboard();
     showToast('Clientul "' + client.name + '" a fost dezactivat.', 'success');
@@ -4018,6 +4124,9 @@ async function deleteIntervention(interventionId, clientId) {
   if (!isAdmin()) return;
   if (!confirm('Sigur vrei sa stergi aceasta interventie?')) return;
 
+  const intv   = APP.interventions.find(function(i) { return i.intervention_id === interventionId; });
+  const client = APP.clients.find(function(c) { return c.client_id === clientId; });
+
   try {
     await deleteRecord('interventions', interventionId);
     APP.interventions = APP.interventions.filter(function(i) { return i.intervention_id !== interventionId; });
@@ -4033,6 +4142,7 @@ async function deleteIntervention(interventionId, clientId) {
       }).catch(function(e) { console.warn('[SYNC] Delete push failed:', e.message); });
     }
 
+    logAudit('delete_intervention', client, intv ? fmtDate(intv.date) : '');
     showToast('Interventie stearsa.', 'success');
     // Refresh the details modal
     showClientDetails(clientId);

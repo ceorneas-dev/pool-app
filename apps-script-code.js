@@ -45,9 +45,9 @@ const SYNC_LOG_COLS = [
 // Evidenta Checklist - un singur rand (suprascris la fiecare salvare)
 const CHECKLIST_COLS = ['updated_at','title','items_json'];
 
-// Jurnal audit — un rând per acțiune (append), vizibil doar adminului în UI
+// Jurnal audit (activitate generală) — un rând per acțiune (append), vizibil doar adminului în UI
 const AUDIT_LOG_COLS = [
-  'timestamp','technician_id','technician_name','log_action','client_id','client_name'
+  'timestamp','technician_id','technician_name','log_action','client_id','client_name','details'
 ];
 
 // ── HTTP Handlers ─────────────────────────────────────────────
@@ -432,9 +432,9 @@ function handleSaveChecklist(body) {
 }
 
 // ── POST: logAudit ─────────────────────────────────────────────
-// Adaugă o intrare în jurnalul de audit (ex: modificare locație GPS client).
+// Adaugă o intrare în jurnalul de activitate (client/intervenție/locație adăugat(ă)/schimbat(ă)/șters(ă)).
 function handleLogAudit(body) {
-  const { technician_id, technician_name, log_action, client_id, client_name, timestamp } = body;
+  const { technician_id, technician_name, log_action, client_id, client_name, details, timestamp } = body;
   if (!log_action) return { success: false, error: 'Lipsește log_action' };
 
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
@@ -445,13 +445,14 @@ function handleLogAudit(body) {
     technician_name || '',
     log_action,
     client_id   || '',
-    client_name || ''
+    client_name || '',
+    details     || ''
   ]);
   return { success: true };
 }
 
 // ── GET: getAuditLog ───────────────────────────────────────────
-// Returnează ultimele 200 intrări din jurnal, cele mai noi primele.
+// Returnează ultimele 300 intrări din jurnal, cele mai noi primele.
 function handleGetAuditLog() {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName('audit_log');
@@ -466,14 +467,15 @@ function handleGetAuditLog() {
     technician_name:  String(row[2]),
     log_action:       String(row[3]),
     client_id:        String(row[4]),
-    client_name:      String(row[5])
+    client_name:      String(row[5]),
+    details:          String(row[6] || '')
   }));
 
   entries.sort((a, b) => (a.timestamp < b.timestamp ? 1 : -1)); // newest first
-  return { entries: entries.slice(0, 200) };
+  return { entries: entries.slice(0, 300) };
 }
 
-/** Save exported file to Google Drive folder "Export Interventii" */
+/** Save exported file to a Google Drive folder (default "Export Interventii", or body.rootFolder) */
 function handleSaveExportToDrive(body) {
   var fileName = body.fileName || 'export.xlsx';
   var base64Data = body.data || '';
@@ -481,8 +483,8 @@ function handleSaveExportToDrive(body) {
 
   if (!base64Data) return { error: 'No file data provided' };
 
-  // Find or create "Export Interventii" folder
-  var folderName = 'Export Interventii';
+  // Find or create root folder (default "Export Interventii", overridable e.g. for backups)
+  var folderName = body.rootFolder || 'Export Interventii';
   var folders = DriveApp.getFoldersByName(folderName);
   var folder;
   if (folders.hasNext()) {

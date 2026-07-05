@@ -25,6 +25,20 @@ function loadXLSX() {
 
 var _exportDirHandle = null; // cached FileSystemDirectoryHandle
 
+/**
+ * The File System Access directory picker only works reliably on desktop Chrome/Edge.
+ * On Android (including the installed PWA/TWA), `showDirectoryPicker` can exist as a
+ * function reference but throw "NotFoundError" when actually invoked — so feature-detect
+ * AND exclude mobile/touch devices instead of trusting `typeof` alone.
+ */
+function _supportsLocalFolderPicker() {
+  if (typeof window.showDirectoryPicker !== 'function') return false;
+  var ua = navigator.userAgent || '';
+  if (/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) return false;
+  if ((navigator.maxTouchPoints || 0) > 2 && !(window.matchMedia && window.matchMedia('(pointer: fine)').matches)) return false;
+  return true;
+}
+
 /** Get stored export directory handle from IndexedDB */
 async function _getExportDirHandle() {
   if (_exportDirHandle) return _exportDirHandle;
@@ -40,8 +54,8 @@ async function _getExportDirHandle() {
 
 /** Prompt user to pick export root folder (first time or reset) */
 async function pickExportFolder() {
-  if (typeof window.showDirectoryPicker !== 'function') {
-    showToast('Browserul nu suportă alegerea folderului. Folosește Chrome/Edge pe desktop.', 'warning');
+  if (!_supportsLocalFolderPicker()) {
+    showToast('Alegerea unui folder local funcționează doar pe Chrome/Edge desktop. Pe telefon, exporturile ajung automat în Google Drive.', 'warning', 5000);
     return null;
   }
   try {
@@ -72,8 +86,8 @@ async function _verifyDirPermission(handle) {
 
 /** Write workbook to export folder, creating client subfolder if needed */
 async function _writeFileWithPicker(wb, defaultName, clientName) {
-  // Try stored directory handle first
-  if (typeof window.showDirectoryPicker === 'function') {
+  // Try stored directory handle first (desktop only — see _supportsLocalFolderPicker)
+  if (_supportsLocalFolderPicker()) {
     var dirHandle = await _getExportDirHandle();
 
     // First time: prompt to pick folder
@@ -371,6 +385,27 @@ function sanitizeSheetName(name) {
   return (name || 'Client').replace(/[\[\]\*\/\\\?:]/g, '_').substring(0, 31);
 }
 
+/**
+ * Append a short note listing which interventions have a voice-recording attached (from the
+ * quick "Intervenție rapidă" feature), with a clickable link to the audio in Drive. Added as
+ * plain rows AFTER the fixed invoice template so it never disturbs the template's own merges.
+ */
+function _appendVoiceNoteSummary(ws, interventions) {
+  var withAudio = (interventions || []).filter(function(i) { return i.audio_file_url; });
+  if (!withAudio.length) return;
+
+  ws.addRow([]);
+  var titleRow = ws.addRow(['🎙️ Intervenții cu notă vocală atașată (verificați tratamentul manual):']);
+  titleRow.getCell(1).font = { name: 'Arial', size: 9, bold: true };
+
+  withAudio.forEach(function(i) {
+    var row = ws.addRow(['  ' + fmtDateDMY(i.date) + ' — ascultă înregistrarea:']);
+    var cell = row.getCell(2);
+    cell.value = { text: i.audio_file_url, hyperlink: i.audio_file_url };
+    cell.font = { name: 'Arial', size: 9, color: { argb: 'FF1D4ED8' }, underline: true };
+  });
+}
+
 
 // ── Upload to Google Drive via GAS ────────────────────────────
 
@@ -438,8 +473,8 @@ async function _writeExcelJSFile(wb, defaultName, clientName) {
   // Always mirror to Google Drive "Export Interventii" (fire-and-forget)
   _uploadExcelJSToDrive(buf, defaultName, clientName);
 
-  // Try stored directory handle first (File System Access API)
-  if (typeof window.showDirectoryPicker === 'function') {
+  // Try stored directory handle first (desktop only — see _supportsLocalFolderPicker)
+  if (_supportsLocalFolderPicker()) {
     var dirHandle = await _getExportDirHandle();
     if (!dirHandle) dirHandle = await pickExportFolder();
 
@@ -1075,6 +1110,8 @@ async function _buildV2(wb, client, sorted, prices) {
   // ── Strip diacritics on data rows only ──
   if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
 
+  _appendVoiceNoteSummary(ws, sorted);
+
   return wb;
 }
 
@@ -1565,6 +1602,8 @@ async function _buildV1(wb, client, sorted, prices) {
 
   // ── Strip diacritics on data rows only ──
   if (NR > 0) _stripAllDiacritics(ws, FIRST_DATA_ROW, lastDataRow, LAST_COL);
+
+  _appendVoiceNoteSummary(ws, sorted);
 
   return wb;
 }
