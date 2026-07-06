@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 225;
+const APP_VERSION = 226;
 
 async function initApp() {
   await openDB();
@@ -459,6 +459,8 @@ async function postLogin() {
   setTimeout(checkClientDeeplink, 200);
   // Backup automat, dacă e configurat și a trecut intervalul (doar admin, silențios)
   if (isAdmin()) runAutoBackupIfDue().catch(function() {});
+  // Export automat toți clienții, dacă e configurat și a venit ziua (doar admin)
+  if (isAdmin()) runAutoExportIfDue().catch(function() {});
 }
 
 // ── PIN Screen ───────────────────────────────────────────────
@@ -785,6 +787,15 @@ function renderDashboard() {
   getSetting('backup_interval_days').then(val => {
     const el = $('settings-backup-interval');
     if (el) el.value = val || '0';
+  });
+  getSetting('export_auto_mode').then(val => {
+    const el = $('settings-export-auto-mode');
+    if (el) el.value = val || 'off';
+    _updateAutoExportDayVisibility();
+  });
+  getSetting('export_auto_weekday').then(val => {
+    const el = $('settings-export-auto-day');
+    if (el) el.value = (val == null || val === '') ? '6' : val;
   });
 }
 
@@ -2842,6 +2853,91 @@ async function runAutoBackupIfDue() {
   } catch (e) {
     console.warn('[BACKUP] Auto-backup check failed:', e.message);
   }
+}
+
+// ── Export automat (toți clienții, pe interval) ──────────────────
+function _ymdLocal(d) {
+  return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+}
+
+/** Most recent past-or-today occurrence of `weekday` (0=Dum..6=Sâm), at 00:00 local. */
+function _lastWeekdayOccurrence(now, weekday) {
+  var d = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var diff = (d.getDay() - weekday + 7) % 7;
+  d.setDate(d.getDate() - diff);
+  return d;
+}
+
+/** Decide whether the automatic all-clients export should run now. */
+function _isAutoExportDue(mode, weekday, lastAtIso) {
+  if (!mode || mode === 'off') return false;
+  var now = new Date();
+  var last = lastAtIso ? new Date(lastAtIso) : null;
+  if (!last || isNaN(last.getTime())) return true; // never run → due
+  if (mode === 'daily')   return _ymdLocal(last) !== _ymdLocal(now);
+  if (mode === 'weekly')  return last.getTime() < _lastWeekdayOccurrence(now, weekday).getTime();
+  if (mode === 'monthly') return last.getFullYear() !== now.getFullYear() || last.getMonth() !== now.getMonth();
+  return false;
+}
+
+/** On app open (admin), run the automatic all-clients export to Drive if it's due. */
+async function runAutoExportIfDue() {
+  try {
+    if (!isAdmin() || !isSyncConfigured()) return;
+    var mode = (await getSetting('export_auto_mode')) || 'off';
+    if (mode === 'off') return;
+    var weekday = parseInt(await getSetting('export_auto_weekday'), 10);
+    if (isNaN(weekday)) weekday = 6; // Sâmbătă implicit
+    var lastAt = await getSetting('last_auto_export_at');
+    if (!_isAutoExportDue(mode, weekday, lastAt)) return;
+
+    await loadData();
+    if (!APP.interventions.length) return;
+    var fname = await exportAllDevizMixed(APP.clients, APP.interventions, null, true);
+    if (fname) {
+      await setSetting('last_auto_export_at', new Date().toISOString());
+      showToast('📤 Export automat salvat în Drive: ' + fname, 'success', 4000);
+    }
+  } catch (e) {
+    console.warn('[EXPORT] Auto-export check failed:', e.message);
+  }
+}
+
+/** Manual "run now" button for the automatic export (from Settings). */
+async function runAutoExportNow() {
+  if (!isSyncConfigured()) { showToast('Configurați API URL în Setări.', 'warning'); return; }
+  try {
+    showToast('Se generează exportul...', 'info', 3000);
+    await loadData();
+    if (!APP.interventions.length) { showToast('Nicio intervenție de exportat.', 'warning'); return; }
+    var fname = await exportAllDevizMixed(APP.clients, APP.interventions, null, true);
+    if (fname) {
+      await setSetting('last_auto_export_at', new Date().toISOString());
+      showToast('📤 Export salvat în Drive: ' + fname, 'success', 5000);
+    } else {
+      showToast('Exportul nu a putut fi salvat în Drive.', 'error');
+    }
+  } catch (e) {
+    showToast('Eroare export: ' + e.message, 'error');
+  }
+}
+
+/** Show the weekday picker only for the weekly interval. */
+function _updateAutoExportDayVisibility() {
+  var modeEl = $('settings-export-auto-mode');
+  var row = $('settings-export-auto-day-row');
+  if (row && modeEl) row.style.display = (modeEl.value === 'weekly') ? '' : 'none';
+}
+
+/** Save automatic-export settings from the Settings screen. */
+async function saveAutoExportSettings() {
+  var modeEl = $('settings-export-auto-mode');
+  var dayEl  = $('settings-export-auto-day');
+  var mode = modeEl ? modeEl.value : 'off';
+  var weekday = dayEl ? parseInt(dayEl.value, 10) : 6;
+  await setSetting('export_auto_mode', mode);
+  await setSetting('export_auto_weekday', String(isNaN(weekday) ? 6 : weekday));
+  showToast('Setări export automat salvate.', 'success');
 }
 
 /** Save backup folder name + interval, from Settings. */

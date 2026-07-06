@@ -271,6 +271,37 @@
         </div>
       </details>
 
+      <!-- Export automat toți clienții -->
+      <details class="admin-only" style="margin:4px 0">
+        <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📤 Export automat</summary>
+        <div style="padding:4px 14px 14px">
+          <p style="font-size:.78rem;color:var(--text-secondary);margin:8px 0 8px">Generează automat devizul Excel cu toți clienții și îl salvează în Google Drive (folderul „Export Interventii"), la intervalul ales. Rulează când deschide admin-ul aplicația în ziua stabilită sau după.</p>
+          <div class="settings-row" style="padding:0;margin:0 0 8px">
+            <label for="settings-export-auto-mode">Interval export automat</label>
+            <select id="settings-export-auto-mode" style="width:100%" onchange="_updateAutoExportDayVisibility()">
+              <option value="off">Dezactivat</option>
+              <option value="daily">Zilnic</option>
+              <option value="weekly">Săptămânal</option>
+              <option value="monthly">Lunar</option>
+            </select>
+          </div>
+          <div class="settings-row" id="settings-export-auto-day-row" style="padding:0;margin:0 0 8px;display:none">
+            <label for="settings-export-auto-day">Ziua săptămânii</label>
+            <select id="settings-export-auto-day" style="width:100%">
+              <option value="1">Luni</option>
+              <option value="2">Marți</option>
+              <option value="3">Miercuri</option>
+              <option value="4">Joi</option>
+              <option value="5">Vineri</option>
+              <option value="6">Sâmbătă</option>
+              <option value="0">Duminică</option>
+            </select>
+          </div>
+          <button class="btn-settings-save" style="width:100%;padding:10px" onclick="saveAutoExportSettings()">💾 Salvează export automat</button>
+          <button class="btn-settings-save" style="width:100%;padding:10px;margin-top:6px;background:var(--blue-100);color:var(--blue-700)" onclick="runAutoExportNow()">📤 Rulează exportul acum (test)</button>
+        </div>
+      </details>
+
       <!-- Jurnal Activitate (audit) -->
       <details class="admin-only" style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📋 Jurnal Activitate</summary>

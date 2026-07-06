@@ -466,9 +466,15 @@ function _parseOps(operations) {
   return [];
 }
 
-/** Write ExcelJS workbook to export folder or download */
-async function _writeExcelJSFile(wb, defaultName, clientName) {
+/** Write ExcelJS workbook to export folder or download.
+ *  When driveOnly is true (automatic scheduled export), it uploads to Drive silently and
+ *  does NOT trigger a local download — returns true only if the Drive save was confirmed. */
+async function _writeExcelJSFile(wb, defaultName, clientName, driveOnly) {
   var buf = await wb.xlsx.writeBuffer();
+
+  if (driveOnly) {
+    return await _uploadExcelJSToDrive(buf, defaultName, clientName, true);
+  }
 
   // Always mirror to Google Drive "Export Interventii" (fire-and-forget)
   _uploadExcelJSToDrive(buf, defaultName, clientName);
@@ -518,9 +524,11 @@ async function _writeExcelJSFile(wb, defaultName, clientName) {
   return true;
 }
 
-/** Upload ExcelJS workbook buffer to Google Drive via GAS */
-function _uploadExcelJSToDrive(buf, fileName, clientName) {
-  if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
+/** Upload ExcelJS workbook buffer to Google Drive via GAS.
+ *  Returns a Promise<boolean> (true on confirmed save). `silent` suppresses the toast
+ *  (used by the automatic scheduled export). */
+function _uploadExcelJSToDrive(buf, fileName, clientName, silent) {
+  if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return Promise.resolve(false);
   try {
     var safeName = clientName ? clientName.trim().replace(/\s+/g, ' ') : '';
     // Convert buffer to base64
@@ -529,7 +537,7 @@ function _uploadExcelJSToDrive(buf, fileName, clientName) {
     for (var i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     var b64 = btoa(binary);
 
-    fetch(SYNC_CONFIG.API_URL, {
+    return fetch(SYNC_CONFIG.API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain' },
       redirect: 'follow',
@@ -543,15 +551,18 @@ function _uploadExcelJSToDrive(buf, fileName, clientName) {
     }).then(function(r) { return r.json(); })
       .then(function(res) {
         if (res.success) {
-          showToast('Salvat in Drive: Export Interventii/' + (clientName ? clientName + '/' : '') + fileName, 'success', 4000);
-        } else {
-          console.warn('[DRIVE] Save failed:', res.error);
+          if (!silent) showToast('Salvat in Drive: Export Interventii/' + (clientName ? clientName + '/' : '') + fileName, 'success', 4000);
+          return true;
         }
+        console.warn('[DRIVE] Save failed:', res.error);
+        return false;
       }).catch(function(e) {
         console.warn('[DRIVE] Upload failed:', e.message);
+        return false;
       });
   } catch (e) {
     console.warn('[DRIVE] Upload error:', e.message);
+    return Promise.resolve(false);
   }
 }
 
@@ -1890,7 +1901,7 @@ function exportDevizComplet(client, interventions) {
 }
 
 // ── NEW: Export All Deviz Mixed (all clients, template-based) ──────
-function exportAllDevizMixed(clients, allInterventions, filter) {
+function exportAllDevizMixed(clients, allInterventions, filter, driveOnly) {
   return loadExcelJS().then(async function() {
     var prices = (typeof getExportPrices === 'function') ? await getExportPrices() : {};
 
@@ -1965,12 +1976,14 @@ function exportAllDevizMixed(clients, allInterventions, filter) {
     }
 
     if (sheetCount === 0) {
-      showToast('Nicio interventie de exportat.', 'warning');
-      return;
+      if (!driveOnly) showToast('Nicio interventie de exportat.', 'warning');
+      return null;
     }
 
     var fname = 'DevizToti_' + fmtDateExport(new Date()) + '.xlsx';
-    await _writeExcelJSFile(wbFinal, fname);
+    var ok = await _writeExcelJSFile(wbFinal, fname, null, driveOnly);
+    // In driveOnly (automatic) mode, report success only if Drive confirmed the save.
+    if (driveOnly) return ok ? fname : null;
     return fname;
   }).catch(function(e) {
     console.error('[EXPORT] exportAllDevizMixed failed:', e.message, e.stack);
