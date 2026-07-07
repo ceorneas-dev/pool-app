@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 226;
+const APP_VERSION = 227;
 
 async function initApp() {
   await openDB();
@@ -1981,12 +1981,9 @@ async function doSaveIntervention() {
     if (clientEl) clientEl.textContent = client.name;
 
     if (isAdmin()) {
-      // Admin: show duration + share buttons
+      // Admin: share buttons (durata a fost eliminata odata cu tracking-ul GPS)
       const durEl = $('success-duration');
-      if (durEl) {
-        durEl.textContent = durationMin !== null ? '⏱ Durată: ' + durationMin + ' min' : '';
-        durEl.style.display = durationMin !== null ? '' : 'none';
-      }
+      if (durEl) durEl.style.display = 'none';
       const waBtn = $('btn-share-wa');
       if (waBtn) waBtn.style.display = client.phone ? '' : 'none';
       const hint = $('success-share-hint');
