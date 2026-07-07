@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 227;
+const APP_VERSION = 228;
 
 async function initApp() {
   await openDB();
@@ -216,9 +216,17 @@ function toggleNavMenu() {
 
 /** Open settings from header button — scroll to and open settings details */
 function _updateExportFolderLabel() {
+  // The local-folder option only works on desktop Chrome/Edge; on phones exports go to
+  // Drive automatically, so hide the (non-functional) local picker there to avoid confusion.
+  var supportsLocal = (typeof _supportsLocalFolderPicker === 'function') && _supportsLocalFolderPicker();
+  var row  = $('export-folder-local-row');
+  var hint = $('export-folder-local-hint');
+  if (row)  row.style.display  = supportsLocal ? 'flex' : 'none';
+  if (hint) hint.style.display = supportsLocal ? 'block' : 'none';
+
   var el = $('export-folder-name');
   if (!el) return;
-  if (typeof _getExportDirHandle === 'function') {
+  if (supportsLocal && typeof _getExportDirHandle === 'function') {
     _getExportDirHandle().then(function(h) {
       el.textContent = h ? '📁 ' + h.name : 'Nesetat';
     }).catch(function() { el.textContent = 'Nesetat'; });

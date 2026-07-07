@@ -314,11 +314,12 @@
       <!-- Export Folder -->
       <details style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📂 Folder Export</summary>
-        <div style="display:flex;gap:8px;padding:4px 14px 14px;align-items:center">
-          <button class="btn-settings-save" style="flex:1;padding:10px" onclick="pickExportFolder()">📂 Alege folderul de export</button>
+        <p style="padding:8px 14px 4px;font-size:.78rem;color:var(--text-secondary);margin:0">☁️ Toate exporturile (Excel + audio) se salvează automat în <b>Google Drive → Export Interventii</b> (cu subfolder per client). Le deschizi din aplicația Google Drive de pe telefon. Nu trebuie nicio setare aici.</p>
+        <div id="export-folder-local-row" style="display:none;gap:8px;padding:8px 14px 4px;align-items:center">
+          <button id="btn-pick-export-folder" class="btn-settings-save" style="flex:1;padding:10px" onclick="pickExportFolder()">📂 Alege folder local (copie extra)</button>
           <span id="export-folder-name" style="font-size:.8rem;color:var(--text-secondary)"></span>
         </div>
-        <p style="padding:0 14px 10px;font-size:.75rem;color:var(--text-secondary);margin:0">Toate exporturile ajung automat și în Google Drive, folderul „Export Interventii" (cu subfolder per client) — nu necesită nicio configurare. Alegerea unui folder local de mai jos e opțională, doar pentru o copie suplimentară pe acest dispozitiv, și funcționează doar pe Chrome/Edge desktop.</p>
+        <p id="export-folder-local-hint" style="display:none;padding:0 14px 10px;font-size:.72rem;color:var(--text-secondary);margin:0">Opțional, doar pe Chrome/Edge de calculator: o copie suplimentară a exporturilor și pe acest calculator.</p>
       </details>
 
       <!-- Template & Import -->
