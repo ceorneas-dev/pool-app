@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 229;
+const APP_VERSION = 230;
 
 async function initApp() {
   await openDB();
@@ -658,13 +658,15 @@ function renderDashboard() {
     };
   }
 
-  // Dismiss keyboard on swipe/scroll (mobile UX — use ontouchmove to avoid accumulation)
+  // Dismiss ONLY the search keyboard when scrolling the client list (mobile UX).
+  // Previously this blurred ANY focused input on the dashboard, which also killed the
+  // keyboard while typing in Settings fields (e.g. the WhatsApp API key sat low in the
+  // list, so tapping it scrolled the view → touchmove → instant blur → couldn't type).
   const dashboard = $('screen-dashboard');
   if (dashboard) {
     dashboard.ontouchmove = function() {
-      if (document.activeElement && document.activeElement.tagName === 'INPUT') {
-        document.activeElement.blur();
-      }
+      var ae = document.activeElement;
+      if (ae && ae.id === 'search-input') ae.blur();
     };
   }
 
