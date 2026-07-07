@@ -112,7 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 228;
+const APP_VERSION = 229;
 
 async function initApp() {
   await openDB();
@@ -1881,6 +1881,13 @@ function closeConfirmModal() {
   if (modal) modal.classList.remove('open');
 }
 
+/** Parse a numeric field, preserving a real 0 (unlike parseFloat(x)||null). */
+function _numOrNull(v) {
+  if (v == null || String(v).trim() === '') return null;
+  var n = parseFloat(v);
+  return isNaN(n) ? null : n;
+}
+
 async function doSaveIntervention() {
   closeConfirmModal();
 
@@ -1890,8 +1897,10 @@ async function doSaveIntervention() {
   const departureTime  = new Date().toISOString();
 
   const vol = client.pool_volume_mc;
-  const cl  = parseFloat($('m-chlorine').value) || null;
-  const ph  = parseFloat($('m-ph').value)       || null;
+  // _numOrNull preserves a real 0 (parseFloat(x)||null wrongly turned "0" into null,
+  // so a measured chlorine of 0 was lost and shown as "—").
+  const cl  = _numOrNull($('m-chlorine').value);
+  const ph  = _numOrNull($('m-ph').value);
   const rec = (cl !== null && ph !== null) ? getRecommendation(vol, cl, ph) : null;
 
   const intervention = {
@@ -1905,12 +1914,12 @@ async function doSaveIntervention() {
 
     measured_chlorine:   cl,
     measured_ph:         ph,
-    measured_temp:       parseFloat($('m-temp')        ? $('m-temp').value        : '') || null,
-    measured_hardness:   parseFloat($('m-hardness')    ? $('m-hardness').value    : '') || null,
-    measured_alkalinity: parseFloat($('m-alkalinity')  ? $('m-alkalinity').value  : '') || null,
-    measured_salinity:   parseFloat($('m-salinity')    ? $('m-salinity').value    : '') || null,
-    measured_tc:         parseFloat($('m-tc')          ? $('m-tc').value          : '') || null,
-    measured_cya:        parseFloat($('m-cya')         ? $('m-cya').value         : '') || null,
+    measured_temp:       _numOrNull($('m-temp')        ? $('m-temp').value        : ''),
+    measured_hardness:   _numOrNull($('m-hardness')    ? $('m-hardness').value    : ''),
+    measured_alkalinity: _numOrNull($('m-alkalinity')  ? $('m-alkalinity').value  : ''),
+    measured_salinity:   _numOrNull($('m-salinity')    ? $('m-salinity').value    : ''),
+    measured_tc:         _numOrNull($('m-tc')          ? $('m-tc').value          : ''),
+    measured_cya:        _numOrNull($('m-cya')         ? $('m-cya').value         : ''),
 
     rec_cl_gr:    rec ? rec.cl_granule_gr : null,
     rec_cl_tab:   rec ? rec.cl_tablete    : null,
@@ -4422,7 +4431,7 @@ function openClientModalById(clientId) {
 }
 
 // ── Detalii intervenție (modal) ───────────────────────────────
-function showInterventionDetails(interventionId) {
+async function showInterventionDetails(interventionId) {
   const i = APP.interventions.find(x => x.intervention_id === interventionId);
   if (!i) { showToast('Intervenția nu a fost găsită.', 'error'); return; }
 
@@ -4493,18 +4502,37 @@ function showInterventionDetails(interventionId) {
     html += sect('Operațiuni efectuate', opsHtml);
   }
 
-  // Tratament efectuat
+  // Tratament efectuat — folosim produsele REALE de stoc (nume + unitate corecte,
+  // indiferent de product_id), nu chei fixe. Asta repara cazul in care valorile
+  // apareau sub eticheta gresita (ex. "Clor lichid" in loc de "Clor tablete").
+  const stock = (APP._stockProducts && APP._stockProducts.length) ? APP._stockProducts : await getAllStock();
   const treatments = [];
-  if (i.treat_cl_granule_gr > 0)     treatments.push(['Clor granule',        i.treat_cl_granule_gr + ' g']);
-  if (i.treat_cl_tablete > 0)        treatments.push(['Clor tablete',        i.treat_cl_tablete + ' buc']);
-  if (i.treat_cl_lichid_bidoane > 0) treatments.push(['Clor lichid',         i.treat_cl_lichid_bidoane + ' bid']);
-  if (i.treat_ph_granule > 0)        treatments.push(['pH minus granule',    i.treat_ph_granule + ' kg']);
-  if (i.treat_ph_lichid_bidoane > 0) treatments.push(['pH minus lichid',     i.treat_ph_lichid_bidoane + ' bid']);
-  if (i.treat_antialgic > 0)         treatments.push(['Antialgic',           i.treat_antialgic + ' L']);
-  if (i.treat_anticalcar > 0)        treatments.push(['Anticalcar',          i.treat_anticalcar + ' L']);
-  if (i.treat_floculant > 0)         treatments.push(['Floculant',           i.treat_floculant + ' L']);
-  if (i.treat_bicarbonat > 0)        treatments.push(['Bicarbonat',          i.treat_bicarbonat + ' kg']);
-  if (i.treat_sare_saci > 0)         treatments.push(['Sare',                i.treat_sare_saci + ' saci']);
+  const shownKeys = {};
+  stock.forEach(function(p) {
+    const key = 'treat_' + p.product_id;
+    const val = parseFloat(i[key]);
+    if (!isNaN(val) && val > 0) {
+      treatments.push([escHtml(p.name), val + (p.unit ? ' ' + escHtml(p.unit) : '')]);
+      shownKeys[key] = true;
+    }
+  });
+  // Chei mostenite de la intervenții vechi al caror produs nu mai e in stoc → etichete cunoscute.
+  const LEGACY_TREAT = {
+    treat_cl_granule_gr: ['Clor granule', 'g'], treat_cl_tablete: ['Clor tablete', 'buc'],
+    treat_cl_tablete_export_gr: ['Clor tablete', 'g'], treat_cl_lichid_bidoane: ['Clor lichid', 'bid'],
+    treat_ph_granule: ['pH minus granule', 'kg'], treat_ph_lichid_bidoane: ['pH minus lichid', 'bid'],
+    treat_antialgic: ['Antialgic', 'L'], treat_anticalcar: ['Anticalcar', 'L'],
+    treat_floculant: ['Floculant', 'L'], treat_bicarbonat: ['Bicarbonat', 'kg'], treat_sare_saci: ['Sare', 'saci']
+  };
+  Object.keys(i).forEach(function(key) {
+    if (key.indexOf('treat_') !== 0 || shownKeys[key]) return;
+    const val = parseFloat(i[key]);
+    if (isNaN(val) || val <= 0) return;
+    const lbl = LEGACY_TREAT[key];
+    const name = lbl ? lbl[0] : key.replace('treat_', '').replace(/_/g, ' ');
+    const unit = lbl ? lbl[1] : '';
+    treatments.push([escHtml(name), val + (unit ? ' ' + unit : '')]);
+  });
 
   if (treatments.length) {
     let tHtml = '';
@@ -4667,6 +4695,13 @@ async function exportBillingPdf(clientId) {
   }
 }
 
+/** Clear message about what's missing for WhatsApp (phone, key, or both). */
+function _whatsappNotConfiguredMsg(phone, apikey) {
+  if (!phone && !apikey) return 'WhatsApp neconfigurat: lipsesc numărul ȘI cheia CallMeBot. Setări → WhatsApp.';
+  if (!phone) return 'Lipsește numărul tău WhatsApp. Setări → WhatsApp.';
+  return 'Lipsește cheia CallMeBot API. Numărul singur nu e destul — Setări → WhatsApp (vezi pașii de obținere a cheii).';
+}
+
 /** Send WhatsApp notification for a specific billable client */
 function sendBillingWhatsApp(clientId) {
   var client = APP.clients.find(function(c) { return c.client_id === clientId; });
@@ -4679,7 +4714,7 @@ function sendBillingWhatsApp(clientId) {
   Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
     var phone = vals[0], apikey = vals[1];
     if (!phone || !apikey) {
-      showToast('WhatsApp neconfigurat! Mergi la Settings.', 'warning');
+      showToast(_whatsappNotConfiguredMsg(phone, apikey), 'warning', 6000);
       return;
     }
     var msg = '*Facturare: ' + client.name + '*\n'
@@ -4800,8 +4835,8 @@ function _sendBillingWhatsApp(client, count) {
     return Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
       var phone = vals[0], apikey = vals[1];
       if (!phone || !apikey) {
-        console.warn('[WA] WhatsApp neconfigurat. Mergi la Settings.');
-        showToast('WhatsApp neconfigurat! Mergi la Settings.', 'warning');
+        console.warn('[WA] WhatsApp neconfigurat:', _whatsappNotConfiguredMsg(phone, apikey));
+        showToast(_whatsappNotConfiguredMsg(phone, apikey), 'warning', 6000);
         return;
       }
       var msg = '*Facturare: ' + client.name + '*\n'
