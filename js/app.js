@@ -644,14 +644,18 @@ function renderDashboard() {
   }
 
   updateSyncBadge();
-  renderClientList('');
+  // Preserve any active search term across re-renders. renderDashboard runs not
+  // only on entry but also when a background sync completes (onSyncComplete). If
+  // the user is mid-typing when a sync lands, wiping the field forces them to
+  // retype — so keep whatever is currently in the box instead of clearing it.
+  const searchInput = $('search-input');
+  const currentSearch = searchInput ? searchInput.value : '';
+  renderClientList(currentSearch);
   renderAdminStats();
 
 
   // Search
-  const searchInput = $('search-input');
   if (searchInput) {
-    searchInput.value = '';
     searchInput.oninput = e => renderClientList(e.target.value);
     searchInput.onkeydown = function(e) {
       if (e.key === 'Enter') { e.preventDefault(); searchInput.blur(); }
