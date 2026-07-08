@@ -84,54 +84,6 @@ async function _verifyDirPermission(handle) {
   }
 }
 
-/** Write workbook to export folder, creating client subfolder if needed */
-async function _writeFileWithPicker(wb, defaultName, clientName) {
-  // Try stored directory handle first (desktop only — see _supportsLocalFolderPicker)
-  if (_supportsLocalFolderPicker()) {
-    var dirHandle = await _getExportDirHandle();
-
-    // First time: prompt to pick folder
-    if (!dirHandle) {
-      dirHandle = await pickExportFolder();
-    }
-
-    if (dirHandle) {
-      // Verify permission (may need re-grant after browser restart)
-      var hasPermission = await _verifyDirPermission(dirHandle);
-      if (!hasPermission) {
-        // Permission lost, re-prompt
-        dirHandle = await pickExportFolder();
-        hasPermission = dirHandle ? await _verifyDirPermission(dirHandle) : false;
-      }
-
-      if (dirHandle && hasPermission) {
-        try {
-          var targetDir = dirHandle;
-
-          // If clientName provided, create/get client subfolder
-          if (clientName) {
-            var folderName = sanitizeFilename(clientName);
-            targetDir = await dirHandle.getDirectoryHandle(folderName, { create: true });
-          }
-
-          // Write the file
-          var fileHandle = await targetDir.getFileHandle(defaultName, { create: true });
-          var writable = await fileHandle.createWritable();
-          var buf = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-          await writable.write(new Uint8Array(buf));
-          await writable.close();
-          return true;
-        } catch (e) {
-          console.warn('[EXPORT] Directory write failed, falling back:', e.message);
-          showToast('Eroare salvare în folder: ' + e.message, 'warning');
-        }
-      }
-    }
-  }
-  // Fallback: standard download to Downloads folder
-  XLSX.writeFile(wb, defaultName);
-  return true;
-}
 
 // ── Download import template ───────────────────────────────────
 function downloadImportTemplate() {
@@ -347,32 +299,6 @@ async function downloadClientTemplate() {
 }
 
 // ── Helpers ───────────────────────────────────────────────────
-function calcTotals(interventions) {
-  const durations = interventions.filter(i => i.duration_minutes != null).map(i => i.duration_minutes);
-  return {
-    cl_granule_gr:        sum(interventions, 'treat_cl_granule_gr'),
-    cl_tablete:           sum(interventions, 'treat_cl_tablete'),
-    cl_tablete_export_gr: sum(interventions, 'treat_cl_tablete_export_gr'),
-    cl_lichid:            sum(interventions, 'treat_cl_lichid_bidoane'),
-    ph_granule:           round2(sum(interventions, 'treat_ph_granule')),
-    ph_lichid:            sum(interventions, 'treat_ph_lichid_bidoane'),
-    antialgic:            round2(sum(interventions, 'treat_antialgic')),
-    anticalcar:           round2(sum(interventions, 'treat_anticalcar')),
-    floculant:            round2(sum(interventions, 'treat_floculant')),
-    sare:                 sum(interventions, 'treat_sare_saci'),
-    bicarbonat:           round2(sum(interventions, 'treat_bicarbonat')),
-    avgDuration:          durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0
-  };
-}
-
-function sum(arr, field) {
-  return arr.reduce((acc, item) => acc + (parseFloat(item[field]) || 0), 0);
-}
-
-function round2(n) {
-  return Math.round(n * 100) / 100;
-}
-
 function fmtDateExport(date) {
   return date.toISOString().split('T')[0].replace(/-/g, '');
 }
@@ -446,15 +372,6 @@ function loadExcelJS() {
     script.onerror = function() { reject(new Error('Nu s-a putut incarca ExcelJS. Verificati conexiunea.')); };
     document.head.appendChild(script);
   });
-}
-
-/** Convert base64 string to ArrayBuffer */
-function _b64toBuffer(b64) {
-  var bin = atob(b64);
-  var len = bin.length;
-  var bytes = new Uint8Array(len);
-  for (var i = 0; i < len; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes.buffer;
 }
 
 /** Parse operations from intervention (handles array, JSON string, or empty) */
@@ -590,17 +507,6 @@ function _normOp(str) {
     .toLowerCase();
 }
 
-/** Read template R10 sub-headers (columns B onwards) and return normalized map */
-function _readTemplateOpsHeaders(ws, headerRow, startCol, endCol) {
-  var headers = [];
-  for (var c = startCol; c <= endCol; c++) {
-    var cell = ws.getRow(headerRow).getCell(c);
-    var raw = cell.value ? String(cell.value) : '';
-    headers.push({ col: c, raw: raw, norm: _normOp(raw) });
-  }
-  return headers;
-}
-
 /** Match an app operation name against template headers (diacritics-insensitive) */
 function _findOpColumn(opName, templateHeaders) {
   var norm = _normOp(opName);
@@ -614,31 +520,6 @@ function _findOpColumn(opName, templateHeaders) {
     }
   }
   return -1; // no match
-}
-
-/** Helper: Parse cell reference like "A29" → { col: 1, row: 29 } */
-function _parseCellRef(ref) {
-  var match = ref.match(/^([A-Z]+)(\d+)$/);
-  if (!match) return null;
-  var letters = match[1];
-  var row = parseInt(match[2]);
-  var col = 0;
-  for (var i = 0; i < letters.length; i++) {
-    col = col * 26 + (letters.charCodeAt(i) - 64);
-  }
-  return { col: col, row: row };
-}
-
-/** Build cell reference like { col: 1, row: 29 } → "A29" */
-function _cellRef(col, row) {
-  var letters = '';
-  var c = col;
-  while (c > 0) {
-    var rem = (c - 1) % 26;
-    letters = String.fromCharCode(65 + rem) + letters;
-    c = Math.floor((c - 1) / 26);
-  }
-  return letters + row;
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -1683,52 +1564,6 @@ function _excelCol(num) {
   return s;
 }
 
-/** Set cell value preserving existing style */
-function _setCellValue(ws, rowNum, colNum, value) {
-  var row = ws.getRow(rowNum);
-  var cell = row.getCell(colNum);
-  cell.value = value;
-  row.commit();
-}
-
-/** Set cell formula preserving existing style */
-function _setCellFormula(ws, rowNum, colNum, formula) {
-  var row = ws.getRow(rowNum);
-  var cell = row.getCell(colNum);
-  cell.value = { formula: formula };
-  row.commit();
-}
-
-/** Capture styles from a template row (returns object keyed by 1-based col) */
-function _captureRowStyles(ws, rowNum, numCols) {
-  var styles = {};
-  var row = ws.getRow(rowNum);
-  for (var c = 1; c <= numCols; c++) {
-    var cell = row.getCell(c);
-    styles[c] = {
-      font: cell.font ? JSON.parse(JSON.stringify(cell.font)) : undefined,
-      fill: cell.fill ? JSON.parse(JSON.stringify(cell.fill)) : undefined,
-      border: cell.border ? JSON.parse(JSON.stringify(cell.border)) : undefined,
-      alignment: cell.alignment ? JSON.parse(JSON.stringify(cell.alignment)) : undefined,
-      numFmt: cell.numFmt || undefined
-    };
-  }
-  return styles;
-}
-
-/** Set cell value and apply style */
-function _setCellValueWithStyle(row, colNum, value, style) {
-  var cell = row.getCell(colNum);
-  cell.value = value;
-  if (style) {
-    if (style.font) cell.font = style.font;
-    if (style.fill) cell.fill = style.fill;
-    if (style.border) cell.border = style.border;
-    if (style.alignment) cell.alignment = style.alignment;
-    if (style.numFmt) cell.numFmt = style.numFmt;
-  }
-}
-
 /** Copy worksheet from source to target workbook (row-by-row with styles, merges, dimensions) */
 function _copyWorksheet(sourceWs, targetWb, sheetName) {
   var targetWs = targetWb.addWorksheet(sheetName);
@@ -1990,38 +1825,6 @@ function exportAllDevizMixed(clients, allInterventions, filter, driveOnly) {
     if (typeof showToast === 'function') showToast('Eroare export: ' + e.message, 'error');
     throw e;
   });
-}
-
-function _uploadToDrive(wb, fileName, mimeType, clientName) {
-  if (typeof isSyncConfigured !== 'function' || !isSyncConfigured()) return;
-  try {
-    // Sanitize clientName for consistent Drive folder naming (avoid duplicate folders)
-    var safeName = clientName ? clientName.trim().replace(/\s+/g, ' ') : '';
-    var wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
-    fetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain' },
-      redirect: 'follow',
-      body: JSON.stringify({
-        action: 'saveExportToDrive',
-        fileName: fileName,
-        data: wbout,
-        mimeType: mimeType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        clientName: safeName
-      })
-    }).then(function(r) { return r.json(); })
-      .then(function(res) {
-        if (res.success) {
-          showToast('Salvat in Drive: Export Interventii/' + (clientName ? clientName + '/' : '') + fileName, 'success', 4000);
-        } else {
-          console.warn('[DRIVE] Save failed:', res.error);
-        }
-      }).catch(function(e) {
-        console.warn('[DRIVE] Upload failed:', e.message);
-      });
-  } catch (e) {
-    console.warn('[DRIVE] Upload error:', e.message);
-  }
 }
 
 function setColWidths(ws, widths) {

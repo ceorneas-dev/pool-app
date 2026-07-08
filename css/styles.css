@@ -1658,6 +1658,24 @@ body.role-technician #client-list {
   border-color: var(--blue-400);
 }
 
+/* Stacked settings row: label above a full-width control. The default side-by-side
+   flex layout squeezed inputs into tiny boxes on phones when labels were long. */
+.settings-row.stacked { display: block; }
+.settings-row.stacked label { display: block; margin-bottom: 4px; }
+.settings-row.stacked input,
+.settings-row.stacked select {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-left: 0;
+  font-size: 1rem;
+  padding: 10px 12px;
+  border: 1.5px solid var(--slate-300);
+  border-radius: 8px;
+  background: var(--slate-50);
+  color: var(--slate-700);
+}
+
 .btn-settings-save {
   margin: 10px 14px;
   padding: 10px 16px;
@@ -3396,87 +3414,6 @@ body.dark-mode .footer-nav-logout:hover {
 #settings-section { background: white; }
 body.dark-mode #settings-section { background: var(--slate-900); }
 body.dark-mode #settings-section summary { color: var(--text-secondary); }
-
-/* Calendar add modal inputs */
-#modal-cal-add .form-input {
-  padding: 8px 10px;
-  border: 1.5px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  background: var(--surface);
-  color: var(--text-primary);
-  outline: none;
-  transition: border-color 0.15s;
-}
-#modal-cal-add .form-input:focus {
-  border-color: var(--primary);
-}
-#modal-cal-add select.form-input {
-  appearance: auto;
-}
-
-/* ── S36: Billing Modal ────────────────────────────────────── */
-.billing-summary {
-  background: var(--blue-50);
-  border: 1px solid var(--blue-200);
-  border-radius: 8px;
-  padding: 10px 14px;
-  margin-bottom: 12px;
-  font-size: .88rem;
-  color: var(--blue-800);
-}
-body.dark-mode .billing-summary { background: #1a2744; border-color: #2d4a7a; color: #93c5fd; }
-
-.billing-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-bottom: 14px;
-  font-size: .8rem;
-}
-.billing-table th {
-  background: var(--blue-700);
-  color: #fff;
-  padding: 6px 8px;
-  font-size: .72rem;
-  text-align: left;
-  text-transform: uppercase;
-  letter-spacing: .03em;
-}
-.billing-table td {
-  padding: 5px 8px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: top;
-}
-.billing-table tr:nth-child(even) td { background: var(--slate-50); }
-body.dark-mode .billing-table th { background: #1e3a5f; }
-body.dark-mode .billing-table td { border-color: var(--border); }
-body.dark-mode .billing-table tr:nth-child(even) td { background: var(--card); }
-
-.billing-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-.billing-action-btn {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  cursor: pointer;
-  text-align: left;
-  color: var(--text);
-  transition: background .15s;
-}
-.billing-action-btn:hover { background: var(--blue-50); }
-body.dark-mode .billing-action-btn:hover { background: #1a2744; }
-.billing-action-btn strong { display: block; font-size: .88rem; }
-.billing-action-btn small { display: block; font-size: .72rem; color: var(--text-secondary); }
-
-
 
 /* §35 Billing List Screen */
 .billing-list-card {

@@ -55,30 +55,6 @@ const $q = sel => document.querySelector(sel);
 const $$ = sel => document.querySelectorAll(sel);
 const uid = () => 'i_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
 
-/**
- * Deduplicate interventions: keep only the newest per client_id + date.
- * "Newest" = latest created_at. Returns a new array (does not mutate input).
- */
-function _deduplicateInterventions(interventions) {
-  // Sort newest first so the first encountered per key wins
-  var sorted = interventions.slice().sort(function(a, b) {
-    return (b.created_at || '').localeCompare(a.created_at || '');
-  });
-  var seen = {};
-  var result = [];
-  for (var i = 0; i < sorted.length; i++) {
-    // Normalize date for key — ensures "2026-03-18" matches even if stored differently
-    var rawDate = String(sorted[i].date || '');
-    var normDate = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : (function(d) { var p = new Date(d); return isNaN(p.getTime()) ? d : p.getFullYear() + '-' + ('0'+(p.getMonth()+1)).slice(-2) + '-' + ('0'+p.getDate()).slice(-2); })(rawDate);
-    var key = String(sorted[i].client_id) + '_' + String(sorted[i].technician_id || '') + '_' + normDate;
-    if (!seen[key]) {
-      seen[key] = true;
-      result.push(sorted[i]);
-    }
-  }
-  return result;
-}
-
 // ── Global State ─────────────────────────────────────────────
 const APP = {
   currentScreen:  'login',
@@ -87,7 +63,6 @@ const APP = {
   clients:         [],
   interventions:   [],
   pendingSync:     0,
-  clGranUnit:      'gr',       // 'gr' or 'kg'
   currentPhotos:   [],
   currentPosition: null,       // GPS: {lat, lng, accuracy} — one-shot fix for distance badge / client location
   pinBuffer:       '',         // PIN input buffer
@@ -112,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 232;
+const APP_VERSION = 233;
 
 async function initApp() {
   await openDB();
@@ -531,11 +506,14 @@ async function setUserPin(pin) {
 
 // ── Load Data ────────────────────────────────────────────────
 async function loadData() {
-  const [clients, interventions] = await Promise.all([
+  const [clients, interventions, stockProducts] = await Promise.all([
     getActiveClients(),
-    getAll('interventions')
+    getAll('interventions'),
+    getAllStock().catch(function() { return []; })
   ]);
-  APP.clients       = clients;
+  APP.clients        = clients;
+  // Cache-ul de stoc e folosit de listTreatments în contexte sincrone (chips, raport)
+  if (stockProducts && stockProducts.length) APP._stockProducts = stockProducts;
 
   // Normalize operations field: ensure it's always an array (fixes old sync data stored as string)
   for (var ni = 0; ni < interventions.length; ni++) {
@@ -755,11 +733,9 @@ function renderDashboard() {
           APP.alertShown = false; // permite re-evaluarea cu noul prag
         }
       }
-      // WhatsApp notification (CallMeBot)
-      const waPhoneEl = $('settings-wa-phone');
-      const waKeyEl = $('settings-wa-apikey');
-      if (waPhoneEl) await setSetting('wa_phone', waPhoneEl.value.trim());
-      if (waKeyEl) await setSetting('wa_apikey', waKeyEl.value.trim());
+      // Email pentru notificari facturare
+      const notifyEmailEl = $('settings-notify-email');
+      if (notifyEmailEl) await setSetting('notify_email', notifyEmailEl.value.trim());
       showToast('Setări salvate.', 'success');
       // Close settings section after saving
       const settingsDetails = $('settings-section');
@@ -776,12 +752,8 @@ function renderDashboard() {
     const thrInput = $('settings-alert-threshold');
     if (thrInput) thrInput.value = thr || APP.alertThreshold;
   });
-  getSetting('wa_phone').then(val => {
-    const el = $('settings-wa-phone');
-    if (el && val) el.value = val;
-  });
-  getSetting('wa_apikey').then(val => {
-    const el = $('settings-wa-apikey');
+  getSetting('notify_email').then(val => {
+    const el = $('settings-notify-email');
     if (el && val) el.value = val;
   });
   // Permisiuni tehnicieni
@@ -1677,12 +1649,13 @@ function resetInterventionForm() {
 
 function updateRecommendation() {
   const vol = APP.selectedClient ? APP.selectedClient.pool_volume_mc : 0;
-  const cl  = parseFloat($('m-chlorine')  ? $('m-chlorine').value  : '') || null;
-  const ph  = parseFloat($('m-ph')        ? $('m-ph').value        : '') || null;
-  const tc  = parseFloat($('m-tc')        ? $('m-tc').value        : '') || null;
-  const ta  = parseFloat($('m-alkalinity')? $('m-alkalinity').value: '') || null;
-  const ch  = parseFloat($('m-hardness')  ? $('m-hardness').value  : '') || null;
-  const cya = parseFloat($('m-cya')       ? $('m-cya').value       : '') || null;
+  // _numOrNull păstrează un 0 real (clor 0 e o măsurătoare validă — rules au benzi cl_min:0)
+  const cl  = _numOrNull($('m-chlorine')  ? $('m-chlorine').value  : '');
+  const ph  = _numOrNull($('m-ph')        ? $('m-ph').value        : '');
+  const tc  = _numOrNull($('m-tc')        ? $('m-tc').value        : '');
+  const ta  = _numOrNull($('m-alkalinity')? $('m-alkalinity').value: '');
+  const ch  = _numOrNull($('m-hardness')  ? $('m-hardness').value  : '');
+  const cya = _numOrNull($('m-cya')       ? $('m-cya').value       : '');
 
   // CC = Total Chlorine − FAC (clamp to 0)
   const cc = (tc !== null && cl !== null) ? Math.round(Math.max(0, tc - cl) * 100) / 100 : null;
@@ -1806,21 +1779,6 @@ function updateSaveButton() {
   btn.disabled = !cl || !ph;
 }
 
-// ── Cl Granule unit toggle ────────────────────────────────────
-function toggleClGranUnit(unit) {
-  APP.clGranUnit = unit;
-  const unitGr = $('unit-gr');
-  const unitKg = $('unit-kg');
-  if (unitGr) unitGr.classList.toggle('active', unit === 'gr');
-  if (unitKg) unitKg.classList.toggle('active', unit === 'kg');
-  updateTabConvHint();
-}
-
-function getClGranInGrams() {
-  const raw = parseFloat($('t-cl-granule') ? $('t-cl-granule').value : '0') || 0;
-  return APP.clGranUnit === 'kg' ? raw * 1000 : raw;
-}
-
 function updateTabConvHint() {
   const hint = $('tab-conv-hint');
   if (!hint) return;
@@ -1892,6 +1850,41 @@ function _numOrNull(v) {
   if (v == null || String(v).trim() === '') return null;
   var n = parseFloat(v);
   return isNaN(n) ? null : n;
+}
+
+// Etichete pentru chei treat_* vechi al căror produs nu (mai) există în stoc.
+var LEGACY_TREAT_LABELS = {
+  treat_cl_granule_gr: ['Cl Granule', 'gr'],    treat_cl_tablete: ['Cl Tablete', 'buc'],
+  treat_cl_tablete_export_gr: ['Cl Tablete', 'gr'], treat_cl_lichid_bidoane: ['Cl Lichid', 'bidoane'],
+  treat_ph_granule: ['pH Granule', 'kg'],       treat_ph_lichid_bidoane: ['pH Lichid', 'bidoane'],
+  treat_antialgic: ['Antialgic', 'L'],          treat_anticalcar: ['Anticalcar', 'L'],
+  treat_floculant: ['Floculant', 'L'],          treat_bicarbonat: ['Bicarbonat', 'kg'],
+  treat_sare_saci: ['Sare', 'saci']
+};
+
+/**
+ * Lista tratamentelor unei intervenții: [[nume, valoare, unitate], ...].
+ * Folosește produsele REALE de stoc (APP._stockProducts) și cade pe etichetele
+ * legacy pentru chei vechi — astfel valorile nu mai apar sub nume greșite,
+ * indiferent de product_id-urile din stoc.
+ */
+function listTreatments(i) {
+  var out = [];
+  var shown = {};
+  var stock = (APP._stockProducts && APP._stockProducts.length) ? APP._stockProducts : [];
+  stock.forEach(function(p) {
+    var key = 'treat_' + p.product_id;
+    var val = parseFloat(i[key]);
+    if (!isNaN(val) && val > 0) { out.push([p.name, val, p.unit || '']); shown[key] = true; }
+  });
+  Object.keys(i).forEach(function(key) {
+    if (key.indexOf('treat_') !== 0 || shown[key]) return;
+    var val = parseFloat(i[key]);
+    if (isNaN(val) || val <= 0) return;
+    var lbl = LEGACY_TREAT_LABELS[key];
+    out.push([lbl ? lbl[0] : key.replace('treat_', '').replace(/_/g, ' '), val, lbl ? lbl[1] : '']);
+  });
+  return out;
 }
 
 async function doSaveIntervention() {
@@ -2267,33 +2260,6 @@ async function savePricesSettings() {
   if (modal) modal.classList.remove('open');
   showToast('Preturi salvate!', 'success');
 }
-
-/** Show export format choice dialog. */
-function showExportChoice() {
-  return new Promise(function(resolve) {
-    var overlay = document.createElement('div');
-    overlay.className = 'modal-overlay open';
-    overlay.style.zIndex = '300';
-    overlay.innerHTML = '<div class="modal-sheet" style="max-width:340px;margin:auto;border-radius:16px">' +
-      '<div class="modal-handle"></div>' +
-      '<div class="modal-title">Alege formatul export</div>' +
-      '<div style="display:flex;flex-direction:column;gap:8px;padding:0 16px 16px">' +
-      '<button class="btn-primary" style="padding:12px" data-ch="standard">Raport Standard</button>' +
-      '<button class="btn-primary" style="padding:12px;background:var(--blue-600)" data-ch="chimicale">Deviz Chimicale</button>' +
-      '<button class="btn-primary" style="padding:12px;background:#16a34a" data-ch="complet">Deviz Complet (+ Operatiuni)</button>' +
-      '<button class="btn-modal-cancel" data-ch="">Anuleaza</button>' +
-      '</div></div>';
-    overlay.addEventListener('click', function(e) {
-      var ch = e.target.dataset.ch;
-      if (ch !== undefined || e.target === overlay) {
-        overlay.remove();
-        resolve(ch || '');
-      }
-    });
-    document.body.appendChild(overlay);
-  });
-}
-
 
 /** Show export filter dialog — choose interval only */
 function showExportFilter(client, allInterventions) {
@@ -3280,7 +3246,8 @@ function renderAdminStats() {
   });
 
   // Total Cl granule consumed (last 30 days)
-  const totalCl = recent.reduce((s, i) => s + (i.treat_cl_granule_gr || 0), 0);
+  // Dual-key: cheia legacy SAU cheia stocului (treat_cl_granule) — vezi TREAT_ALIASES din sync
+  const totalCl = recent.reduce((s, i) => s + (parseFloat(i.treat_cl_granule_gr) || parseFloat(i.treat_cl_granule) || 0), 0);
 
   // Average duration
   const withDur = recent.filter(i => i.duration_minutes != null);
@@ -3591,29 +3558,10 @@ function generateInterventionReport(intervention, client) {
     intervention.measured_salinity != null ? `• Salinitate: ${intervention.measured_salinity} g/L` : null,
   ].filter(Boolean).join('\n');
 
-  // Build treatment section — only non-zero values
-  const treatments = [
-    (intervention.treat_cl_granule_gr || 0) > 0
-      ? `• Cl Granule: ${intervention.treat_cl_granule_gr} gr` : null,
-    (intervention.treat_cl_tablete || 0) > 0
-      ? `• Cl Tablete: ${intervention.treat_cl_tablete} buc` : null,
-    (intervention.treat_cl_lichid_bidoane || 0) > 0
-      ? `• Cl Lichid: ${intervention.treat_cl_lichid_bidoane} bidoane` : null,
-    (intervention.treat_ph_granule || 0) > 0
-      ? `• pH Granule: ${intervention.treat_ph_granule} kg` : null,
-    (intervention.treat_ph_lichid_bidoane || 0) > 0
-      ? `• pH Lichid: ${intervention.treat_ph_lichid_bidoane} bidoane` : null,
-    (intervention.treat_antialgic || 0) > 0
-      ? `• Antialgic: ${intervention.treat_antialgic} L` : null,
-    (intervention.treat_anticalcar || 0) > 0
-      ? `• Anticalcar: ${intervention.treat_anticalcar} L` : null,
-    (intervention.treat_floculant || 0) > 0
-      ? `• Floculant: ${intervention.treat_floculant} L` : null,
-    (intervention.treat_sare_saci || 0) > 0
-      ? `• Sare: ${intervention.treat_sare_saci} saci` : null,
-    (intervention.treat_bicarbonat || 0) > 0
-      ? `• Bicarbonat: ${intervention.treat_bicarbonat} kg` : null,
-  ].filter(Boolean);
+  // Build treatment section — real stock products (with legacy fallback), non-zero only
+  const treatments = listTreatments(intervention).map(function(t) {
+    return '• ' + t[0] + ': ' + t[1] + (t[2] ? ' ' + t[2] : '');
+  });
 
   const treatmentBlock = treatments.length
     ? `\n🧪 *Tratament aplicat:*\n${treatments.join('\n')}`
@@ -4165,16 +4113,10 @@ function _renderHistoryList(clientId, allInterventions) {
 
   var html = '';
   filtered.forEach(function(i) {
-    var chems = [];
-    if (i.treat_cl_granule_gr > 0) chems.push('Cl.gr: ' + i.treat_cl_granule_gr + 'g');
-    if (i.treat_cl_tablete > 0) chems.push('Cl.tab: ' + i.treat_cl_tablete);
-    if (i.treat_ph_granule > 0) chems.push('pH: ' + i.treat_ph_granule + 'kg');
-    if (i.treat_antialgic > 0) chems.push('Anti: ' + i.treat_antialgic + 'L');
-    if (i.treat_floculant > 0) chems.push('Floc: ' + i.treat_floculant + 'L');
-    if (i.treat_bicarbonat > 0) chems.push('Dedur: ' + i.treat_bicarbonat + 'kg');
-    if (i.treat_ph_lichid_bidoane > 0) chems.push('pH.L: ' + i.treat_ph_lichid_bidoane);
-    if (i.treat_cl_lichid_bidoane > 0) chems.push('Cl.L: ' + i.treat_cl_lichid_bidoane);
-    if (i.treat_sare_saci > 0) chems.push('Sare: ' + i.treat_sare_saci);
+    // Nume reale de produse (stoc) + fallback legacy — vezi listTreatments
+    var chems = listTreatments(i).map(function(t) {
+      return t[0] + ': ' + t[1] + (t[2] ? t[2] : '');
+    });
 
     var opsArr = Array.isArray(i.operations) ? i.operations : (typeof i.operations === 'string' && i.operations.length > 0 ? (function() { try { return JSON.parse(i.operations); } catch(e) { return []; } })() : []);
     var ops = opsArr.join(', ');
@@ -4290,12 +4232,6 @@ async function _trackDeletedIntervention(interventionId) {
   // Keep max 500 entries to avoid bloat
   if (deleted.length > 500) deleted = deleted.slice(-500);
   await setSetting('deleted_intervention_ids', deleted);
-}
-
-/** Check if an intervention was locally deleted */
-async function _isDeletedIntervention(interventionId) {
-  var deleted = await getSetting('deleted_intervention_ids').catch(function() { return null; }) || [];
-  return Array.isArray(deleted) && deleted.indexOf(interventionId) >= 0;
 }
 
 /** Delete ALL interventions (local + GAS). Call from console: deleteAllInterventions() */
@@ -4508,41 +4444,15 @@ async function showInterventionDetails(interventionId) {
     html += sect('Operațiuni efectuate', opsHtml);
   }
 
-  // Tratament efectuat — folosim produsele REALE de stoc (nume + unitate corecte,
-  // indiferent de product_id), nu chei fixe. Asta repara cazul in care valorile
-  // apareau sub eticheta gresita (ex. "Clor lichid" in loc de "Clor tablete").
-  const stock = (APP._stockProducts && APP._stockProducts.length) ? APP._stockProducts : await getAllStock();
-  const treatments = [];
-  const shownKeys = {};
-  stock.forEach(function(p) {
-    const key = 'treat_' + p.product_id;
-    const val = parseFloat(i[key]);
-    if (!isNaN(val) && val > 0) {
-      treatments.push([escHtml(p.name), val + (p.unit ? ' ' + escHtml(p.unit) : '')]);
-      shownKeys[key] = true;
-    }
-  });
-  // Chei mostenite de la intervenții vechi al caror produs nu mai e in stoc → etichete cunoscute.
-  const LEGACY_TREAT = {
-    treat_cl_granule_gr: ['Clor granule', 'g'], treat_cl_tablete: ['Clor tablete', 'buc'],
-    treat_cl_tablete_export_gr: ['Clor tablete', 'g'], treat_cl_lichid_bidoane: ['Clor lichid', 'bid'],
-    treat_ph_granule: ['pH minus granule', 'kg'], treat_ph_lichid_bidoane: ['pH minus lichid', 'bid'],
-    treat_antialgic: ['Antialgic', 'L'], treat_anticalcar: ['Anticalcar', 'L'],
-    treat_floculant: ['Floculant', 'L'], treat_bicarbonat: ['Bicarbonat', 'kg'], treat_sare_saci: ['Sare', 'saci']
-  };
-  Object.keys(i).forEach(function(key) {
-    if (key.indexOf('treat_') !== 0 || shownKeys[key]) return;
-    const val = parseFloat(i[key]);
-    if (isNaN(val) || val <= 0) return;
-    const lbl = LEGACY_TREAT[key];
-    const name = lbl ? lbl[0] : key.replace('treat_', '').replace(/_/g, ' ');
-    const unit = lbl ? lbl[1] : '';
-    treatments.push([escHtml(name), val + (unit ? ' ' + unit : '')]);
-  });
+  // Tratament efectuat — produse reale de stoc + fallback legacy (vezi listTreatments).
+  if (!APP._stockProducts || !APP._stockProducts.length) {
+    try { APP._stockProducts = await getAllStock(); } catch (e) {}
+  }
+  const treatments = listTreatments(i);
 
   if (treatments.length) {
     let tHtml = '';
-    treatments.forEach(t => { tHtml += row(t[0], t[1]); });
+    treatments.forEach(t => { tHtml += row(escHtml(t[0]), t[1] + (t[2] ? ' ' + escHtml(t[2]) : '')); });
     html += sect('Tratament efectuat', tHtml);
   }
 
@@ -4611,7 +4521,7 @@ function renderBillingList() {
       '<div class="billing-list-actions" style="display:flex;gap:6px;flex-wrap:wrap">' +
         '<button class="billing-list-btn export" onclick="exportBillingClient(\'' + c.client_id + '\')" title="Deviz Excel" style="font-size:1.1rem">&#128230;</button>' +
         '<button class="billing-list-btn" onclick="exportBillingPdf(\'' + c.client_id + '\')" title="Deviz PDF" style="font-size:1.1rem">&#128196;</button>' +
-        '<button class="billing-list-btn" onclick="sendBillingWhatsApp(\'' + c.client_id + '\')" title="Trimite WhatsApp" style="font-size:1.1rem;color:#25D366">&#128172;</button>' +
+        '<button class="billing-list-btn" onclick="sendBillingEmail(\'' + c.client_id + '\')" title="Trimite notificare email" style="font-size:1.1rem;color:var(--blue-600)">&#9993;&#65039;</button>' +
         '<button class="billing-list-btn reset" onclick="resetBillingClient(\'' + c.client_id + '\')" title="Marcheaza facturat" style="font-size:1.1rem">&#8634;</button>' +
       '</div>' +
     '</div>';
@@ -4701,15 +4611,27 @@ async function exportBillingPdf(clientId) {
   }
 }
 
-/** Clear message about what's missing for WhatsApp (phone, key, or both). */
-function _whatsappNotConfiguredMsg(phone, apikey) {
-  if (!phone && !apikey) return 'WhatsApp neconfigurat: lipsesc numărul ȘI cheia CallMeBot. Setări → WhatsApp.';
-  if (!phone) return 'Lipsește numărul tău WhatsApp. Setări → WhatsApp.';
-  return 'Lipsește cheia CallMeBot API. Numărul singur nu e destul — Setări → WhatsApp (vezi pașii de obținere a cheii).';
+/** Trimite un email de notificare prin backend-ul GAS (contul Google al aplicației). */
+function _sendNotificationEmail(subject, body) {
+  if (!isSyncConfigured()) return Promise.reject(new Error('API neconfigurat'));
+  return getSetting('notify_email').then(function(to) {
+    return apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({
+        action:  'sendEmail',
+        to:      (to || '').trim(),   // gol = serverul trimite către contul Google propriu
+        subject: subject,
+        body:    body
+      })
+    }).then(function(res) {
+      if (!res || !res.success) throw new Error((res && res.error) || 'trimitere eșuată');
+      return true;
+    });
+  });
 }
 
-/** Send WhatsApp notification for a specific billable client */
-function sendBillingWhatsApp(clientId) {
+/** Send billing notification email for a specific billable client */
+function sendBillingEmail(clientId) {
   var client = APP.clients.find(function(c) { return c.client_id === clientId; });
   if (!client) return;
   var since = client.last_billing_date || '1970-01-01';
@@ -4717,29 +4639,18 @@ function sendBillingWhatsApp(clientId) {
     return i.client_id === clientId && String(i.date || '') > since;
   }).length;
 
-  Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
-    var phone = vals[0], apikey = vals[1];
-    if (!phone || !apikey) {
-      showToast(_whatsappNotConfiguredMsg(phone, apikey), 'warning', 6000);
-      return;
-    }
-    var msg = '*Facturare: ' + client.name + '*\n'
-      + count + ' interventii nefacturate\n'
-      + 'Tel: ' + (client.phone || '-') + '\n'
-      + 'Adresa: ' + (client.address || '-') + '\n'
-      + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n'
-      + '_Generat de Pool Manager_';
+  var subject = 'Pool Manager — Facturare: ' + client.name + ' (' + count + ' intervenții)';
+  var body = 'Client: ' + client.name + '\n'
+    + 'Intervenții nefacturate: ' + count + '\n'
+    + 'Telefon: ' + (client.phone || '-') + '\n'
+    + 'Adresă: ' + (client.address || '-') + '\n'
+    + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n\n'
+    + 'Generat automat de Pool Manager.';
 
-    var url = 'https://api.callmebot.com/whatsapp.php'
-      + '?phone=' + encodeURIComponent(phone)
-      + '&text=' + encodeURIComponent(msg)
-      + '&apikey=' + encodeURIComponent(apikey);
-
-    fetch(url, { mode: 'no-cors' }).then(function() {
-      showToast('WhatsApp trimis pentru ' + client.name + '!', 'success');
-    }).catch(function(e) {
-      showToast('WhatsApp nereusit: ' + e.message, 'warning');
-    });
+  _sendNotificationEmail(subject, body).then(function() {
+    showToast('✉️ Email trimis pentru ' + client.name + '!', 'success');
+  }).catch(function(e) {
+    showToast('Email nereușit: ' + e.message, 'warning');
   });
 }
 
@@ -4827,300 +4738,34 @@ function checkBillingAlert(client) {
   }).sort((a, b) => String(a.date).localeCompare(String(b.date)));
 
   if (billable.length >= interval) {
-    // Send WhatsApp notification via CallMeBot (works for all roles, no modal)
-    _sendBillingWhatsApp(client, billable.length);
+    // Trimite notificarea de facturare pe email (o singură dată per ciclu)
+    _sendBillingEmailAuto(client, billable.length);
   }
 }
 
-/** Send billing WhatsApp notification via CallMeBot — once per billing cycle */
-function _sendBillingWhatsApp(client, count) {
-  var sentKey = 'billing_wa_sent_' + client.client_id;
+/** Send the billing notification email — once per billing cycle */
+function _sendBillingEmailAuto(client, count) {
+  var sentKey = 'billing_notif_sent_' + client.client_id;
   var cycleMarker = (client.last_billing_date || 'initial') + '_' + count;
   getSetting(sentKey).then(function(alreadySent) {
     if (alreadySent === cycleMarker) return;
-    return Promise.all([getSetting('wa_phone'), getSetting('wa_apikey')]).then(function(vals) {
-      var phone = vals[0], apikey = vals[1];
-      if (!phone || !apikey) {
-        console.warn('[WA] WhatsApp neconfigurat:', _whatsappNotConfiguredMsg(phone, apikey));
-        showToast(_whatsappNotConfiguredMsg(phone, apikey), 'warning', 6000);
-        return;
-      }
-      var msg = '*Facturare: ' + client.name + '*\n'
-        + count + ' interventii nefacturate\n'
-        + 'Tel: ' + (client.phone || '-') + '\n'
-        + 'Adresa: ' + (client.address || '-') + '\n'
-        + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n'
-        + '_Generat de Pool Manager_';
 
-      var url = 'https://api.callmebot.com/whatsapp.php'
-        + '?phone=' + encodeURIComponent(phone)
-        + '&text=' + encodeURIComponent(msg)
-        + '&apikey=' + encodeURIComponent(apikey);
+    var subject = 'Pool Manager — Facturare: ' + client.name + ' (' + count + ' intervenții)';
+    var body = 'Clientul a atins pragul de facturare.\n\n'
+      + 'Client: ' + client.name + '\n'
+      + 'Intervenții nefacturate: ' + count + '\n'
+      + 'Telefon: ' + (client.phone || '-') + '\n'
+      + 'Adresă: ' + (client.address || '-') + '\n'
+      + 'Data: ' + new Date().toLocaleDateString('ro-RO') + '\n\n'
+      + 'Generat automat de Pool Manager.';
 
-      fetch(url, { mode: 'no-cors' }).then(function() {
-        showToast('WhatsApp trimis!', 'success');
-        setSetting(sentKey, cycleMarker);
-      }).catch(function(e) {
-        console.warn('[WA] Error:', e.message);
-        showToast('WhatsApp nereusit: ' + e.message, 'warning');
-      });
+    _sendNotificationEmail(subject, body).then(function() {
+      showToast('✉️ Notificare facturare trimisă pe email.', 'success');
+      setSetting(sentKey, cycleMarker);
+    }).catch(function(e) {
+      console.warn('[EMAIL] Notificare facturare nereușită:', e.message);
     });
   });
-}
-
-/** Show billing modal with deviz actions */
-function showBillingModal(client, interventions) {
-  var modal = $('modal-billing');
-  if (!modal) return;
-
-  APP._billingClientId = client.client_id;
-  APP._billingInterventions = interventions;
-  APP._billingClient = client;
-
-  var title = $('billing-modal-title');
-  if (title) title.innerHTML = '&#128176; Facturare: ' + escHtml(client.name);
-
-  var body = $('billing-modal-body');
-  if (!body) return;
-
-  var since = client.last_billing_date || null;
-  var sinceLabel = since ? fmtDate(since) : 'prima interven\u021bie';
-  var today = new Date().toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', year: 'numeric' });
-
-  var html = '<div class="billing-summary">';
-  html += '<strong>' + interventions.length + ' interven\u021bii</strong> din ' + sinceLabel + ' p\u00e2n\u0103 azi (' + today + ')';
-  html += '</div>';
-
-  // Mini table
-  html += '<table class="billing-table"><thead><tr><th>Nr.</th><th>Data</th><th>Tehnician</th><th>Produse</th></tr></thead><tbody>';
-  interventions.forEach(function(inv, idx) {
-    html += '<tr>';
-    html += '<td>' + (idx + 1) + '</td>';
-    html += '<td>' + escHtml(inv.date) + '</td>';
-    html += '<td>' + escHtml(inv.technician_name || '') + '</td>';
-    html += '<td style="font-size:.75rem">' + escHtml(_fmtTreatShort(inv)) + '</td>';
-    html += '</tr>';
-  });
-  html += '</tbody></table>';
-
-  // Action buttons
-  html += '<div class="billing-actions">';
-  html += '<button class="billing-action-btn" onclick="generateBillingExcel()"><span style="font-size:1.3rem">\ud83d\udcca</span><div><strong>Deviz Excel</strong><small>Desc\u0103rca\u021bi fi\u0219ier .xlsx</small></div></button>';
-  html += '<button class="billing-action-btn" onclick="generateBillingPdf()"><span style="font-size:1.3rem">\ud83d\udda8\ufe0f</span><div><strong>Deviz PDF</strong><small>Deschide pentru print</small></div></button>';
-  if (client.phone) {
-    html += '<button class="billing-action-btn" onclick="shareBillingWhatsApp()"><span style="font-size:1.3rem">\ud83d\udcac</span><div><strong>Trimite WhatsApp</strong><small>Rezumat pe WhatsApp</small></div></button>';
-  }
-  html += '</div>';
-
-  // Bottom actions
-  html += '<div style="display:flex;gap:8px;margin-top:14px">';
-  html += '<button class="btn-primary" style="flex:1" onclick="billingMarkAndClose()">\u2713 Marcheaz\u0103 facturat</button>';
-  html += '<button style="flex:0 0 auto;padding:8px 18px;border-radius:10px;background:var(--slate-200);color:var(--slate-600);font-weight:600" onclick="closeBillingModal()">Mai t\u00e2rziu</button>';
-  html += '</div>';
-
-  body.innerHTML = html;
-  modal.classList.add('open');
-}
-
-function closeBillingModal() {
-  var modal = $('modal-billing');
-  if (modal) modal.classList.remove('open');
-}
-
-async function billingMarkAndClose() {
-  var clientId = APP._billingClientId;
-  if (!clientId) return;
-  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
-  if (!client) return;
-
-  client.last_billing_date = new Date().toISOString().split('T')[0];
-  client.updated_at = new Date().toISOString();
-  await put('clients', client);
-  APP.clients = APP.clients.map(function(c) { return c.client_id === clientId ? client : c; });
-
-  if (isSyncConfigured()) {
-    apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
-    }).catch(function(e) { console.warn('[SYNC] Billing push failed:', e.message); });
-  }
-
-  closeBillingModal();
-  showToast('\u2713 ' + client.name + ' marcat ca facturat.', 'success');
-
-  var billBtn = $('btn-mark-billed');
-  if (billBtn) billBtn.style.display = 'none';
-}
-
-/** Short treatment summary for billing table */
-function _fmtTreatShort(inv) {
-  var parts = [];
-  if (inv.treat_cl_granule_gr > 0) parts.push('Cl:' + inv.treat_cl_granule_gr + 'g');
-  if (inv.treat_cl_tablete > 0) parts.push('ClTab:' + inv.treat_cl_tablete);
-  if (inv.treat_ph_granule > 0) parts.push('pH:' + inv.treat_ph_granule + 'kg');
-  if (inv.treat_antialgic > 0) parts.push('Anti:' + inv.treat_antialgic + 'L');
-  if (inv.treat_anticalcar > 0) parts.push('Antical:' + inv.treat_anticalcar + 'L');
-  if (inv.treat_floculant > 0) parts.push('Floc:' + inv.treat_floculant + 'L');
-  if (inv.treat_sare_saci > 0) parts.push('Sare:' + inv.treat_sare_saci);
-  if (inv.treat_bicarbonat > 0) parts.push('Bicarb:' + inv.treat_bicarbonat + 'kg');
-  // Dynamic stock products
-  if (typeof APP !== 'undefined' && APP._stockProducts) {
-    APP._stockProducts.forEach(function(p) {
-      var val = inv['treat_' + p.product_id];
-      if (val > 0 && !parts.some(function(x) { return x.indexOf(p.name.slice(0,6)) === 0; })) {
-        parts.push(p.name.slice(0,10) + ':' + val + (p.unit || ''));
-      }
-    });
-  }
-  return parts.join(', ') || '\u2014';
-}
-
-/** Generate billing Excel */
-function generateBillingExcel() {
-  var client = APP._billingClient;
-  var interventions = APP._billingInterventions;
-  if (!client || !interventions) return;
-  var devizType = parseInt(client.deviz_type) || 2;
-  if (devizType === 2) {
-    exportDevizComplet(client, interventions);
-  } else {
-    exportDevizChimicale(client, interventions);
-  }
-}
-
-/** Generate billing PDF */
-function generateBillingPdf() {
-  var client = APP._billingClient;
-  var interventions = APP._billingInterventions;
-  if (!client || !interventions) return;
-
-  var printHtml = _buildBillingPrintHtml(client, interventions);
-  var w = window.open('', '_blank');
-  if (!w) { showToast('Popup blocat. Permite popups pentru acest site.', 'error'); return; }
-  w.document.write(printHtml);
-  w.document.close();
-  setTimeout(function() { w.print(); }, 400);
-}
-
-/** Build billing PDF HTML (A4 print-ready) */
-function _buildBillingPrintHtml(client, interventions) {
-  var since = client.last_billing_date || '';
-  var today = new Date().toISOString().split('T')[0];
-  var devizNr = 'D-' + today.replace(/-/g, '') + '-' + (client.client_id || '').slice(-4);
-  var totals = calcTotals(interventions);
-  var totalMin = interventions.reduce(function(s, i) { return s + (i.duration_minutes || 0); }, 0);
-
-  var rows = '';
-  interventions.forEach(function(inv, idx) {
-    rows += '<tr>';
-    rows += '<td style="text-align:center">' + (idx + 1) + '</td>';
-    rows += '<td>' + escHtml(inv.date) + '</td>';
-    rows += '<td>' + escHtml(inv.technician_name || '') + '</td>';
-    rows += '<td style="font-size:11px">' + escHtml(_fmtTreatFull(inv)) + '</td>';
-    rows += '<td style="text-align:center">' + (inv.duration_minutes != null ? Math.round(inv.duration_minutes) : '-') + '</td>';
-    rows += '<td style="font-size:10px">' + escHtml(inv.observations || '') + '</td>';
-    rows += '</tr>';
-  });
-
-  // Totals row for products
-  var prodSummary = [];
-  if (totals.cl_granule_gr) prodSummary.push('Cl granule: ' + totals.cl_granule_gr + ' gr');
-  if (totals.cl_tablete) prodSummary.push('Cl tablete: ' + totals.cl_tablete + ' buc');
-  if (totals.ph_granule) prodSummary.push('pH granule: ' + totals.ph_granule + ' kg');
-  if (totals.antialgic) prodSummary.push('Antialgic: ' + totals.antialgic + ' L');
-  if (totals.anticalcar) prodSummary.push('Anticalcar: ' + totals.anticalcar + ' L');
-  if (totals.floculant) prodSummary.push('Floculant: ' + totals.floculant + ' L');
-  if (totals.sare) prodSummary.push('Sare: ' + totals.sare + ' saci');
-  if (totals.bicarbonat) prodSummary.push('Bicarbonat: ' + totals.bicarbonat + ' kg');
-
-  return '<!DOCTYPE html><html lang="ro"><head><meta charset="UTF-8"><title>Deviz ' + escHtml(client.name) + '</title>'
-    + '<style>'
-    + '* { box-sizing: border-box; margin: 0; padding: 0; }'
-    + 'body { font-family: Arial, Helvetica, sans-serif; font-size: 13px; color: #111; padding: 30px; max-width: 210mm; margin: 0 auto; }'
-    + 'h1 { font-size: 18px; color: #1d4ed8; margin-bottom: 4px; }'
-    + '.header { display: flex; justify-content: space-between; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #1d4ed8; }'
-    + '.header-left { line-height: 1.6; }'
-    + '.header-right { text-align: right; line-height: 1.6; }'
-    + '.label { color: #64748b; font-size: 11px; }'
-    + 'table { width: 100%; border-collapse: collapse; margin-top: 16px; }'
-    + 'th { background: #1d4ed8; color: #fff; padding: 7px 8px; font-size: 12px; text-align: left; }'
-    + 'td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; font-size: 12px; vertical-align: top; }'
-    + 'tr:nth-child(even) td { background: #f8fafc; }'
-    + '.totals { margin-top: 16px; padding: 12px; background: #eff6ff; border-radius: 6px; font-size: 12px; line-height: 1.7; }'
-    + '.totals strong { color: #1d4ed8; }'
-    + '.footer { margin-top: 30px; font-size: 10px; color: #94a3b8; text-align: center; border-top: 1px solid #e2e8f0; padding-top: 8px; }'
-    + '@media print { body { padding: 15px; } .footer { position: fixed; bottom: 10px; left: 0; right: 0; } }'
-    + '</style></head><body>'
-    + '<h1>DEVIZ SERVICII PISCIN\u0102</h1>'
-    + '<div class="header">'
-    + '<div class="header-left">'
-    + '<div><span class="label">Client:</span> <strong>' + escHtml(client.name) + '</strong></div>'
-    + (client.address ? '<div><span class="label">Adres\u0103:</span> ' + escHtml(client.address) + '</div>' : '')
-    + (client.phone ? '<div><span class="label">Telefon:</span> ' + escHtml(client.phone) + '</div>' : '')
-    + '<div><span class="label">Volum piscin\u0103:</span> ' + (client.pool_volume_mc || '-') + ' m\u00b3 (' + (client.pool_type || '-') + ')</div>'
-    + '</div>'
-    + '<div class="header-right">'
-    + '<div><span class="label">Nr. deviz:</span> <strong>' + devizNr + '</strong></div>'
-    + '<div><span class="label">Data:</span> ' + today + '</div>'
-    + '<div><span class="label">Perioada:</span> ' + (since || '-') + ' \u2013 ' + today + '</div>'
-    + '</div>'
-    + '</div>'
-    + '<table><thead><tr><th>Nr.</th><th>Data</th><th>Tehnician</th><th>Produse utilizate</th><th>Durata</th><th>Observa\u021bii</th></tr></thead>'
-    + '<tbody>' + rows + '</tbody></table>'
-    + '<div class="totals">'
-    + '<strong>Total: ' + interventions.length + ' interven\u021bii</strong> \u00b7 Durat\u0103 total\u0103: ' + totalMin + ' min<br>'
-    + (prodSummary.length ? '<strong>Produse consumate:</strong> ' + prodSummary.join(' \u00b7 ') : '')
-    + '</div>'
-    + '<div class="footer">Generat de Pool Manager \u00b7 ' + today + '</div>'
-    + '</body></html>';
-}
-
-/** Full treatment summary for PDF */
-function _fmtTreatFull(inv) {
-  var parts = [];
-  if (inv.treat_cl_granule_gr > 0) parts.push('Cl granule: ' + inv.treat_cl_granule_gr + 'g');
-  if (inv.treat_cl_tablete > 0) parts.push('Cl tablete: ' + inv.treat_cl_tablete + ' buc');
-  if (inv.treat_cl_lichid_bidoane > 0) parts.push('Cl lichid: ' + inv.treat_cl_lichid_bidoane + ' bid');
-  if (inv.treat_ph_granule > 0) parts.push('pH: ' + inv.treat_ph_granule + 'kg');
-  if (inv.treat_ph_lichid_bidoane > 0) parts.push('pH lichid: ' + inv.treat_ph_lichid_bidoane + ' bid');
-  if (inv.treat_antialgic > 0) parts.push('Antialgic: ' + inv.treat_antialgic + 'L');
-  if (inv.treat_anticalcar > 0) parts.push('Anticalcar: ' + inv.treat_anticalcar + 'L');
-  if (inv.treat_floculant > 0) parts.push('Floculant: ' + inv.treat_floculant + 'L');
-  if (inv.treat_sare_saci > 0) parts.push('Sare: ' + inv.treat_sare_saci + ' saci');
-  if (inv.treat_bicarbonat > 0) parts.push('Bicarbonat: ' + inv.treat_bicarbonat + 'kg');
-  return parts.join(', ') || '\u2014';
-}
-
-/** Share billing summary via WhatsApp */
-function shareBillingWhatsApp() {
-  var client = APP._billingClient;
-  var interventions = APP._billingInterventions;
-  if (!client || !interventions) return;
-
-  var totals = calcTotals(interventions);
-  var since = client.last_billing_date || '';
-  var today = new Date().toISOString().split('T')[0];
-
-  var text = '*Rezumat servicii piscin\u0103*\n\n';
-  text += '*Client:* ' + client.name + '\n';
-  text += '*Perioada:* ' + (since || '-') + ' \u2013 ' + today + '\n';
-  text += '*Total interven\u021bii:* ' + interventions.length + '\n\n';
-  text += '*Produse consumate:*\n';
-  if (totals.cl_granule_gr) text += '\u2022 Cl granule: ' + totals.cl_granule_gr + ' gr\n';
-  if (totals.cl_tablete) text += '\u2022 Cl tablete: ' + totals.cl_tablete + ' buc\n';
-  if (totals.ph_granule) text += '\u2022 pH granule: ' + totals.ph_granule + ' kg\n';
-  if (totals.antialgic) text += '\u2022 Antialgic: ' + totals.antialgic + ' L\n';
-  if (totals.anticalcar) text += '\u2022 Anticalcar: ' + totals.anticalcar + ' L\n';
-  if (totals.floculant) text += '\u2022 Floculant: ' + totals.floculant + ' L\n';
-  if (totals.sare) text += '\u2022 Sare: ' + totals.sare + ' saci\n';
-  if (totals.bicarbonat) text += '\u2022 Bicarbonat: ' + totals.bicarbonat + ' kg\n';
-  text += '\n_Pool Manager_';
-
-  var phone = client.phone ? '4' + client.phone.replace(/\D/g, '').slice(-9) : '';
-  var url = phone
-    ? 'https://wa.me/' + phone + '?text=' + encodeURIComponent(text)
-    : 'https://wa.me/?text=' + encodeURIComponent(text);
-  window.open(url, '_blank');
 }
 
 // ════════════════════════════════════════════════════════════════

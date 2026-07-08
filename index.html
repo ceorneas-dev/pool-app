@@ -187,7 +187,7 @@
       <details style="margin:4px 0">
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">🌐 API & Securitate</summary>
         <div style="padding:4px 14px 8px">
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
+          <div class="settings-row stacked" style="padding:0;margin:0 0 8px">
             <label for="settings-api-url">API URL</label>
             <input type="url" id="settings-api-url" placeholder="https://script.google.com/..." style="width:100%">
           </div>
@@ -200,21 +200,14 @@
             <input type="number" id="settings-alert-threshold" placeholder="4" min="1" max="50" inputmode="numeric" style="width:70px">
           </div>
           <div style="border-top:1px solid var(--slate-200);margin:12px 0 6px;padding:12px 0 4px">
-            <div style="font-weight:700;font-size:.9rem;color:var(--slate-600);margin-bottom:4px">💬 Notificări WhatsApp (facturare)</div>
-            <p style="font-size:.75rem;color:var(--text-secondary);margin:0 0 12px">Ai nevoie de <b>ambele</b>: numărul tău de WhatsApp <b>și</b> o cheie de la CallMeBot (serviciu gratuit).</p>
+            <div style="font-weight:700;font-size:.9rem;color:var(--slate-600);margin-bottom:4px">✉️ Notificări email (facturare)</div>
+            <p style="font-size:.75rem;color:var(--text-secondary);margin:0 0 12px">Când un client atinge pragul de facturare, primești automat un email — trimis din contul tău Google, fără servicii externe.</p>
 
-            <label for="settings-wa-phone" style="display:block;font-size:.82rem;font-weight:600;color:var(--slate-600);margin-bottom:4px">1. Numărul tău WhatsApp</label>
-            <input type="tel" id="settings-wa-phone" placeholder="+40721137178"
-              style="display:block;width:100%;box-sizing:border-box;font-size:1.05rem;padding:12px;margin:0 0 16px;background:#ffffff;color:#111111;border:2px solid #cbd5e1;border-radius:8px">
-
-            <label for="settings-wa-apikey" style="display:block;font-size:.82rem;font-weight:600;color:var(--slate-600);margin-bottom:4px">2. Cheia CallMeBot API (cifrele primite)</label>
-            <input type="text" id="settings-wa-apikey" inputmode="numeric" placeholder="ex: 1234567" autocomplete="off"
-              style="display:block;width:100%;box-sizing:border-box;font-size:1.4rem;letter-spacing:3px;text-align:center;padding:14px;margin:0 0 6px;background:#ffffff;color:#111111;border:2px solid #2563eb;border-radius:8px">
+            <label for="settings-notify-email" style="display:block;font-size:.82rem;font-weight:600;color:var(--slate-600);margin-bottom:4px">Adresa de email pentru notificări</label>
+            <input type="email" id="settings-notify-email" inputmode="email" placeholder="exemplu@gmail.com" autocomplete="off"
+              style="display:block;width:100%;box-sizing:border-box;font-size:1.05rem;padding:12px;margin:0 0 6px;background:#ffffff;color:#111111;border:2px solid #2563eb;border-radius:8px">
             <div style="font-size:.72rem;color:var(--text-secondary);line-height:1.5">
-              Cum obții cheia (o singură dată):<br>
-              a) Salvează în agendă numărul <b>+34 644 71 93 37</b><br>
-              b) Trimite-i pe WhatsApp mesajul: <b>I allow callmebot to send me messages</b><br>
-              c) Îți răspunde cu „Your API key is <b>1234567</b>" — pune acel număr aici.
+              Dacă o lași goală, emailurile vin pe adresa contului Google cu care rulează aplicația.
             </div>
           </div>
           <button id="btn-settings-save" class="btn-settings-save" style="width:100%;padding:10px;margin-top:4px">💾 Salveaza</button>
@@ -263,11 +256,11 @@
         </div>
         <div style="padding:4px 14px 14px;border-top:1px solid var(--slate-200);margin-top:4px">
           <p style="font-size:.78rem;color:var(--text-secondary);margin:8px 0 8px">Backup automat în Google Drive (folder ales de tine), la intervalul ales — rulează silențios când deschide admin-ul aplicația.</p>
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
+          <div class="settings-row stacked" style="padding:0;margin:0 0 8px">
             <label for="settings-backup-folder">Nume folder Drive pentru backup</label>
             <input type="text" id="settings-backup-folder" placeholder="Backup Pool Manager" style="width:100%">
           </div>
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
+          <div class="settings-row stacked" style="padding:0;margin:0 0 8px">
             <label for="settings-backup-interval">Interval backup automat</label>
             <select id="settings-backup-interval" style="width:100%">
               <option value="0">Dezactivat (doar manual)</option>
@@ -285,7 +278,7 @@
         <summary class="settings-section-subheader" style="cursor:pointer;user-select:none">📤 Export automat</summary>
         <div style="padding:4px 14px 14px">
           <p style="font-size:.78rem;color:var(--text-secondary);margin:8px 0 8px">Generează automat devizul Excel cu toți clienții și îl salvează în Google Drive (folderul „Export Interventii"), la intervalul ales. Rulează când deschide admin-ul aplicația în ziua stabilită sau după.</p>
-          <div class="settings-row" style="padding:0;margin:0 0 8px">
+          <div class="settings-row stacked" style="padding:0;margin:0 0 8px">
             <label for="settings-export-auto-mode">Interval export automat</label>
             <select id="settings-export-auto-mode" style="width:100%" onchange="_updateAutoExportDayVisibility()">
               <option value="off">Dezactivat</option>
@@ -294,7 +287,7 @@
               <option value="monthly">Lunar</option>
             </select>
           </div>
-          <div class="settings-row" id="settings-export-auto-day-row" style="padding:0;margin:0 0 8px;display:none">
+          <div class="settings-row stacked" id="settings-export-auto-day-row" style="padding:0;margin:0 0 8px;display:none">
             <label for="settings-export-auto-day">Ziua săptămânii</label>
             <select id="settings-export-auto-day" style="width:100%">
               <option value="1">Luni</option>
@@ -1152,17 +1145,6 @@
 <!-- ════════════════════════════════════
      TOAST CONTAINER
 ════════════════════════════════════ -->
-
-<!-- ── Billing / Deviz Modal (admin-only) ── -->
-<div id="modal-billing" class="modal-overlay admin-only" onclick="if(event.target===this)closeBillingModal()">
-  <div class="modal-content" style="max-width:520px;max-height:85vh;overflow-y:auto" onclick="event.stopPropagation()">
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <h3 id="billing-modal-title" style="margin:0;font-size:1.1rem"></h3>
-      <button style="border:none;background:transparent;font-size:1.2rem;cursor:pointer;color:var(--text-secondary);padding:4px" onclick="closeBillingModal()">&#10005;</button>
-    </div>
-    <div id="billing-modal-body"></div>
-  </div>
-</div>
 
 <!-- ── Audit Log Modal (admin-only) ── -->
 <div id="modal-audit-log" class="modal-overlay admin-only" onclick="if(event.target===this)closeAuditLogModal()">

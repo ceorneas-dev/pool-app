@@ -163,10 +163,6 @@ function getActiveClients() {
   );
 }
 
-function getClientInterventions(clientId) {
-  return getByIndex('interventions', 'client_id', clientId);
-}
-
 function getUnsyncedInterventions() {
   // Note: boolean false is not a valid IDB key, so we filter in JS
   return getAll('interventions').then(list => list.filter(i => !i.synced));
@@ -204,11 +200,6 @@ function setSession(user) {
 
 function clearSession() {
   return deleteRecord('settings', 'session');
-}
-
-// ── Counts ───────────────────────────────────────────────────
-function getPendingSyncCount() {
-  return getUnsyncedInterventions().then(list => list.length);
 }
 
 // ── Stock Helpers (v3) ───────────────────────────────────────

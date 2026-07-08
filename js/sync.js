@@ -148,6 +148,42 @@ function pushDeletedInterventions() {
   }).catch(function() { /* no deleted IDs */ });
 }
 
+// ── Treatment field aliases ──────────────────────────────────
+// The default stock products save treatments under treat_<product_id> keys
+// (cl_granule, cl_lichid, ph_minus_gr, ph_minus_l, sare) while the GAS sheet
+// columns use the original legacy names. Without this mapping, 5 of the 10
+// default products pushed as blank and the pull then wiped local values too.
+// legacy sheet column  ->  stock product_id key
+var TREAT_ALIASES = {
+  treat_cl_granule_gr:     'treat_cl_granule',
+  treat_cl_lichid_bidoane: 'treat_cl_lichid',
+  treat_ph_granule:        'treat_ph_minus_gr',
+  treat_ph_lichid_bidoane: 'treat_ph_minus_l',
+  treat_sare_saci:         'treat_sare'
+};
+
+/** Value for a legacy treat column: prefer the legacy key, else its alias. */
+function _treatVal(i, legacyKey) {
+  var v = i[legacyKey];
+  if (v !== undefined && v !== null && v !== '' && parseFloat(v) > 0) return v;
+  var aliasKey = TREAT_ALIASES[legacyKey];
+  if (aliasKey && i[aliasKey] !== undefined && i[aliasKey] !== null) return i[aliasKey];
+  return v;
+}
+
+/** JSON of ALL treat_* keys with value > 0 — catch-all so custom stock products
+ *  survive the round-trip too (stored in the treatments_json sheet column). */
+function _treatJson(i) {
+  var out = {};
+  Object.keys(i).forEach(function(k) {
+    if (k.indexOf('treat_') === 0) {
+      var v = parseFloat(i[k]);
+      if (!isNaN(v) && v > 0) out[k] = v;
+    }
+  });
+  return Object.keys(out).length ? JSON.stringify(out) : '';
+}
+
 // ── Push interventions to server ─────────────────────────────
 function pushInterventions() {
   return getUnsyncedInterventions().then(list => {
@@ -182,17 +218,18 @@ function pushInterventions() {
           rec_cl_tab:          i.rec_cl_tab,
           rec_ph_kg:           i.rec_ph_kg,
           rec_anti_l:          i.rec_anti_l,
-          treat_cl_granule_gr:      i.treat_cl_granule_gr,
+          treat_cl_granule_gr:      _treatVal(i, 'treat_cl_granule_gr'),
           treat_cl_tablete:         i.treat_cl_tablete,
           treat_cl_tablete_export_gr: i.treat_cl_tablete_export_gr,
-          treat_cl_lichid_bidoane:  i.treat_cl_lichid_bidoane,
-          treat_ph_granule:         i.treat_ph_granule,
-          treat_ph_lichid_bidoane:  i.treat_ph_lichid_bidoane,
+          treat_cl_lichid_bidoane:  _treatVal(i, 'treat_cl_lichid_bidoane'),
+          treat_ph_granule:         _treatVal(i, 'treat_ph_granule'),
+          treat_ph_lichid_bidoane:  _treatVal(i, 'treat_ph_lichid_bidoane'),
           treat_antialgic:          i.treat_antialgic,
           treat_anticalcar:         i.treat_anticalcar,
           treat_floculant:          i.treat_floculant,
-          treat_sare_saci:          i.treat_sare_saci,
+          treat_sare_saci:          _treatVal(i, 'treat_sare_saci'),
           treat_bicarbonat:         i.treat_bicarbonat,
+          treatments_json:          _treatJson(i),
           observations:        i.observations,
           operations:          Array.isArray(i.operations) ? JSON.stringify(i.operations) : (i.operations || ''),
           // GPS + time fields
@@ -468,6 +505,26 @@ function pullData() {
             synced:              true
           };
 
+          // Mirror legacy sheet columns onto the stock product_id keys so the
+          // stock-based UI (details, chips, devize) sees them too.
+          Object.keys(TREAT_ALIASES).forEach(function(legacyKey) {
+            var aliasKey = TREAT_ALIASES[legacyKey];
+            if (parsed[legacyKey] > 0 && !(parseFloat(parsed[aliasKey]) > 0)) {
+              parsed[aliasKey] = parsed[legacyKey];
+            }
+          });
+          // Custom products round-trip via the treatments_json catch-all column.
+          if (ri.treatments_json) {
+            try {
+              var tj = JSON.parse(ri.treatments_json);
+              Object.keys(tj).forEach(function(k) {
+                if (k.indexOf('treat_') === 0 && !(parseFloat(parsed[k]) > 0)) {
+                  parsed[k] = parseFloat(tj[k]) || 0;
+                }
+              });
+            } catch (e) { /* malformed json — ignore */ }
+          }
+
           var local = localMap[parsed.intervention_id];
           // Preserve local-only fields (photos not sent to GAS)
           if (local && Array.isArray(local.photos) && local.photos.length) {
@@ -506,11 +563,6 @@ function apiLogin(username, password) {
     if (!data.success) throw new Error(data.error || 'Login failed');
     return data.user;
   });
-}
-
-// ── Sync state helpers ───────────────────────────────────────
-function getLastSyncTime() {
-  return getSetting('last_sync');
 }
 
 // ── Internal fetch wrapper ───────────────────────────────────

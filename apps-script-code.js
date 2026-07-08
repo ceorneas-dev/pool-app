@@ -26,7 +26,10 @@ const INTERVENTIONS_COLS = [
   'observations','operations',
   'geo_lat','geo_lng','geo_accuracy',
   'arrival_time','departure_time','duration_minutes',
-  'audio_file_url'
+  'audio_file_url',
+  // MUST stay last: getOrCreateSheet appends missing headers at the sheet's end,
+  // and handlePushInterventions writes by column position.
+  'treatments_json'
 ];
 
 const TECHNICIANS_COLS = [
@@ -556,6 +559,10 @@ function handleSendEmail(body) {
   var subject = body.subject || 'Pool Manager - Notificare';
   var emailBody = body.body || '';
 
+  // Fallback: no address given → send to the account that owns this script.
+  if (!to) {
+    try { to = Session.getEffectiveUser().getEmail(); } catch (e) {}
+  }
   if (!to) return { error: 'No email address provided' };
 
   try {
