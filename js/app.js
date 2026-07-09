@@ -4802,26 +4802,25 @@ function openDrumPicker(inputEl) {
   const unit   = inputEl.dataset.unit  || '';
   const label  = inputEl.dataset.label || inputEl.dataset.label || '';
 
-  // Build value list: start from min, generate plenty of values
-  // We intentionally IGNORE inputEl.max so the user can scroll beyond normal limits
-  const minVal   = parseFloat(inputEl.min) || 0;
-  const maxCount = Math.max(100, Math.ceil((curVal - minVal) / step) + 40);
+  // Build value list: start from min. We intentionally IGNORE inputEl.max so the
+  // user can scroll beyond normal limits — there is NO cap on treatment quantity.
+  // The list grows on demand as the user scrolls toward the end (onDrumScroll →
+  // _appendDrumItems), so any quantity is reachable regardless of the step size.
+  const minVal    = parseFloat(inputEl.min) || 0;
+  const initCount = Math.max(100, Math.ceil((curVal - minVal) / step) + 40);
 
-  const values = [];
-  for (let i = 0; i <= maxCount; i++) {
-    values.push(Math.round((minVal + i * step) * 10000) / 10000);
-  }
-
-  // Render items inside viewport
+  // Render items inside viewport (top pad + bottom pad; items inserted between)
   const viewport = $('drum-popup-viewport');
   const dec = step < 0.1 ? 2 : step < 1 ? 1 : 0;
+  viewport._drumMin   = minVal;
+  viewport._drumStep  = step;
+  viewport._drumUnit  = unit;
+  viewport._drumDec   = dec;
+  viewport._drumCount = 0;
   viewport.innerHTML =
     `<div style="height:${DRUM_PAD_H}px;flex-shrink:0"></div>` +
-    values.map((v, i) => {
-      const disp = Number.isInteger(v) ? String(v) : v.toFixed(dec);
-      return `<div class="drum-popup-item" data-index="${i}" data-value="${v}" onclick="_drumItemClick(${i})">${disp}${unit ? '<small class="drum-unit"> ' + unit + '</small>' : ''}</div>`;
-    }).join('') +
     `<div style="height:${DRUM_PAD_H}px;flex-shrink:0"></div>`;
+  _appendDrumItems(initCount);
 
   // Set label
   const lbl = $('drum-popup-label');
@@ -4852,11 +4851,37 @@ function openDrumPicker(inputEl) {
   popup.style.display = 'block';
 
   // Scroll to current value
-  const idx = values.findIndex(v => Math.abs(v - curVal) < step * 0.5);
+  const idx = Math.max(0, Math.round((curVal - minVal) / step));
   requestAnimationFrame(() => {
-    viewport.scrollTop = (idx >= 0 ? idx : 0) * DRUM_ITEM_H;
+    viewport.scrollTop = idx * DRUM_ITEM_H;
     _updateDrumHighlight();
   });
+}
+
+/**
+ * Append `count` more value rows to the drum, continuing from where it left off.
+ * DOM order matches the numeric index, so item positions stay consistent with
+ * confirmDrumPicker()/_drumItemClick(). Called on open and again while scrolling
+ * near the bottom, giving the wheel an effectively unlimited range.
+ */
+function _appendDrumItems(count) {
+  const viewport = $('drum-popup-viewport');
+  if (!viewport) return;
+  const min  = viewport._drumMin || 0;
+  const step = viewport._drumStep || 1;
+  const unit = viewport._drumUnit || '';
+  const dec  = viewport._drumDec || 0;
+  const start = viewport._drumCount || 0;
+  const bottomPad = viewport.lastElementChild; // items are inserted before this
+  if (!bottomPad) return;
+  let html = '';
+  for (let i = start; i < start + count; i++) {
+    const v = Math.round((min + i * step) * 10000) / 10000;
+    const disp = Number.isInteger(v) ? String(v) : v.toFixed(dec);
+    html += `<div class="drum-popup-item" data-index="${i}" data-value="${v}" onclick="_drumItemClick(${i})">${disp}${unit ? '<small class="drum-unit"> ' + unit + '</small>' : ''}</div>`;
+  }
+  bottomPad.insertAdjacentHTML('beforebegin', html);
+  viewport._drumCount = start + count;
 }
 
 function onDrumScroll() {
@@ -4865,6 +4890,11 @@ function onDrumScroll() {
 
   // Update highlight immediately so selected item always appears in center zone
   _updateDrumHighlight();
+
+  // Grow the list on demand as we approach the end, so the wheel never hits a
+  // hard bottom — there is no upper limit on the quantity.
+  const approxIdx = Math.round(viewport.scrollTop / DRUM_ITEM_H);
+  if (approxIdx >= (viewport._drumCount || 0) - 20) _appendDrumItems(100);
 
   // After scroll settles: snap to nearest item
   clearTimeout(viewport._t);
