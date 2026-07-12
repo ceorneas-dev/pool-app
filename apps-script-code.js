@@ -249,8 +249,24 @@ function handlePushInterventions(body) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = getOrCreateSheet(ss, 'interventions', INTERVENTIONS_COLS);
   const rows  = sheet.getDataRange().getValues();
-  const idCol = INTERVENTIONS_COLS.indexOf('intervention_id');
   const now   = new Date().toISOString();
+
+  // Map field name → physical column index from the ACTUAL sheet header row, then
+  // read and write every value BY NAME. Writing by array position corrupts data
+  // whenever the sheet's physical column order drifts from INTERVENTIONS_COLS
+  // (e.g. a column added mid-array in a newer version was appended at the end of
+  // an older sheet) — a value then lands under the wrong header. Header-based
+  // mapping is order-independent and matches how sheetToObjects reads on pull.
+  const header = (rows.length && rows[0].length) ? rows[0].map(String) : INTERVENTIONS_COLS.slice();
+  const width  = header.length;
+  const colIdx = {};
+  header.forEach((h, idx) => { colIdx[h] = idx; });
+
+  const idCol      = colIdx['intervention_id'];
+  const dateCol    = colIdx['date'];
+  const clientCol  = colIdx['client_id'];
+  const techCol    = colIdx['technician_id'];
+  const createdCol = colIdx['created_at'];
 
   // Build index: intervention_id → row number (1-based)
   const existingRows = {};
@@ -260,10 +276,6 @@ function handlePushInterventions(body) {
   }
 
   // Also build index: client_id+tech_id+date → {row, created_at} for server-side dedup
-  const dateCol = INTERVENTIONS_COLS.indexOf('date');
-  const clientCol = INTERVENTIONS_COLS.indexOf('client_id');
-  const techCol = INTERVENTIONS_COLS.indexOf('technician_id');
-  const createdCol = INTERVENTIONS_COLS.indexOf('created_at');
   const dedupIndex = {};
   for (let i = 1; i < rows.length; i++) {
     const cid = String(rows[i][clientCol] || '').trim();
@@ -279,15 +291,20 @@ function handlePushInterventions(body) {
   const rowsToDelete = []; // row numbers to delete (old duplicates)
 
   data.forEach(item => {
-    const row = INTERVENTIONS_COLS.map(col => {
-      if (col === 'synced_at') return now;
-      const val = item[col];
-      return val !== undefined && val !== null ? String(val) : '';
-    });
     const rowNum = existingRows[item.intervention_id];
+    // Start from the existing row (update) so any extra/unknown columns are kept,
+    // or a blank row (insert); then place each known field at its header index.
+    const row = rowNum ? rows[rowNum - 1].slice() : [];
+    while (row.length < width) row.push('');
+    INTERVENTIONS_COLS.forEach(col => {
+      const idx = colIdx[col];
+      if (idx === undefined) return; // header not present (shouldn't happen after getOrCreateSheet)
+      const val = (col === 'synced_at') ? now : item[col];
+      row[idx] = (val !== undefined && val !== null) ? String(val) : '';
+    });
     if (rowNum) {
       // UPSERT: update existing row
-      sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      sheet.getRange(rowNum, 1, 1, width).setValues([row]);
       updated++;
     } else {
       // Server-side dedup: check if another intervention exists for same client+date
