@@ -27,9 +27,11 @@ const INTERVENTIONS_COLS = [
   'geo_lat','geo_lng','geo_accuracy',
   'arrival_time','departure_time','duration_minutes',
   'audio_file_url',
-  // MUST stay last: getOrCreateSheet appends missing headers at the sheet's end,
-  // and handlePushInterventions writes by column position.
-  'treatments_json'
+  'treatments_json',
+  // New columns MUST be appended at the very end: getOrCreateSheet adds missing
+  // headers at the sheet's end, and handlePushInterventions writes by column
+  // position, so the array order must match the physical sheet order.
+  'paid'
 ];
 
 const TECHNICIANS_COLS = [

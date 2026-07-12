@@ -240,7 +240,9 @@ function pushInterventions() {
           departure_time:      i.departure_time,
           duration_minutes:    i.duration_minutes,
           // Voice-note quick intervention
-          audio_file_url:      i.audio_file_url || ''
+          audio_file_url:      i.audio_file_url || '',
+          // Billing: intervention marked as paid/settled (excluded from billing)
+          paid:                i.paid === true
         }))
       };
 
@@ -529,6 +531,14 @@ function pullData() {
           // Preserve local-only fields (photos not sent to GAS)
           if (local && Array.isArray(local.photos) && local.photos.length) {
             parsed.photos = local.photos;
+          }
+          // Paid/settled flag: once the server sheet has a `paid` column it is the
+          // source of truth; before that (older backend), keep the local mark so
+          // marking an intervention as achitat survives sync even without a redeploy.
+          if ('paid' in ri) {
+            parsed.paid = (ri.paid === true || ri.paid === 'true' || ri.paid === 'TRUE' || ri.paid === '1' || ri.paid === 1);
+          } else if (local && local.paid) {
+            parsed.paid = true;
           }
           if (!local) {
             // New from server

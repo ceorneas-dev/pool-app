@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 233;
+const APP_VERSION = 234;
 
 async function initApp() {
   await openDB();
@@ -928,7 +928,6 @@ async function renderClientList(searchTerm) {
         <button class="client-action-btn" onclick="event.stopPropagation(); openVoiceIntervention('${client.client_id}')" style="color:var(--blue-600)" title="Intervenție rapidă — notă vocală">🎙️ Rapid</button>
         <button class="client-action-btn" onclick="showClientDetails('${client.client_id}')">ℹ️ Info</button>
         ${admin ? `<button class="client-action-btn" onclick="showEditClientModal('${client.client_id}')">✏️ Editează</button>` : ''}
-        ${admin ? `<button class="client-action-btn" onclick="showQRCode('${client.client_id}')">📱 QR</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="showExportModal('${client.client_id}')">📥 Export</button>` : ''}
         ${canEditLocationList ? `<button class="client-action-btn" onclick="event.stopPropagation(); setClientLocation('${client.client_id}')" style="color:var(--emerald-600)">📍 ${client.location_set ? 'Relocare' : 'Locație'}</button>` : ''}
         ${admin ? `<button class="client-action-btn" onclick="event.stopPropagation(); deleteClient('${client.client_id}')" style="color:var(--danger)">🗑️ Șterge</button>` : ''}
@@ -1937,7 +1936,9 @@ async function doSaveIntervention() {
     photos:       [...APP.currentPhotos],
     synced:       false,
     // Preserve the linked voice-note recording (if this intervention started as a quick voice note)
-    audio_file_url: APP._editingIntervention ? (APP._editingIntervention.audio_file_url || null) : null
+    audio_file_url: APP._editingIntervention ? (APP._editingIntervention.audio_file_url || null) : null,
+    // Preserve the "achitat" (paid) mark when editing an existing intervention
+    paid:         APP._editingIntervention ? (APP._editingIntervention.paid === true) : false
   };
 
   // Dynamic treatment fields from stock products
@@ -2191,7 +2192,7 @@ async function showClientDetails(clientId) {
     if (interval && interval > 0) {
       const since = client.last_billing_date || '1970-01-01';
       const countSince = APP.interventions.filter(i =>
-        i.client_id === clientId && i.date > since
+        i.client_id === clientId && i.date > since && !i.paid
       ).length;
       billBtn.style.display = countSince >= interval ? '' : 'none';
       billBtn.textContent = `💰 Marchează facturat (${countSince}/${interval})`;
@@ -3464,72 +3465,6 @@ function closeStockModal() {
 }
 
 // ════════════════════════════════════════════════════════════════
-// FEATURE 11 — QR Code per client
-// ════════════════════════════════════════════════════════════════
-function showQRCode(clientId) {
-  const client = APP.clients.find(c => c.client_id === clientId);
-  if (!client) return;
-
-  const url    = location.origin + location.pathname + '?client=' + encodeURIComponent(clientId);
-  const modal  = $('modal-qr');
-  const canvas = $('qr-canvas');
-  const nameEl = $('qr-client-name');
-  const urlEl  = $('qr-url-text');
-  const copyBtn = $('qr-copy-btn');
-
-  if (!modal || !canvas) return;
-
-  if (nameEl) {
-    nameEl.textContent = client.name;
-    // Add info icon button if not already present
-    var infoBtn = $('client-info-btn');
-    if (!infoBtn) {
-      infoBtn = document.createElement('button');
-      infoBtn.id = 'client-info-btn';
-      infoBtn.className = 'client-info-btn';
-      infoBtn.title = 'Info client';
-      infoBtn.innerHTML = 'ℹ️';
-      nameEl.parentNode.insertBefore(infoBtn, nameEl.nextSibling);
-    }
-    infoBtn.onclick = function() { showClientDetails(client.client_id); };
-  }
-  if (urlEl)  urlEl.textContent  = url;
-  canvas.innerHTML = '';
-
-  // Lazy-load QRCode.js from CDN if not already loaded
-  if (typeof QRCode === 'undefined') {
-    const script = document.createElement('script');
-    script.src = 'https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js';
-    script.onload = () => _renderQR(canvas, url);
-    document.head.appendChild(script);
-  } else {
-    _renderQR(canvas, url);
-  }
-
-  if (copyBtn) {
-    copyBtn.onclick = () => {
-      navigator.clipboard.writeText(url).then(() => showToast('Link copiat!', 'success'))
-        .catch(() => { prompt('Copiați URL-ul:', url); });
-    };
-  }
-
-  modal.classList.add('open');
-}
-
-function _renderQR(container, text) {
-  try {
-    new QRCode(container, { text, width: 200, height: 200, correctLevel: QRCode.CorrectLevel.M });
-  } catch (e) {
-    container.textContent = 'Eroare QR: ' + e.message;
-  }
-}
-
-function closeQRModal() {
-  const modal = $('modal-qr');
-  if (modal) modal.classList.remove('open');
-}
-
-// ════════════════════════════════════════════════════════════════
 // FEATURE 12 — Share Raport Intervenție
 // ════════════════════════════════════════════════════════════════
 
@@ -4124,11 +4059,20 @@ function _renderHistoryList(clientId, allInterventions) {
     html += '<div class="prev-intervention" style="position:relative;cursor:pointer" onclick="showInterventionDetails(\'' + i.intervention_id + '\')">';
     html += '<div class="prev-int-header">';
     html += '<span class="prev-int-date">' + fmtDate(i.date) + '</span>';
+    if (i.paid) {
+      html += '<span class="prev-int-paid" style="font-size:.68rem;background:var(--emerald-100,#d1fae5);color:var(--emerald-700,#047857);padding:2px 7px;border-radius:6px;font-weight:700;margin-left:6px">✅ Achitat</span>';
+    }
     if (i.duration_minutes != null) {
       html += '<span class="prev-int-duration">⏱ ' + Math.round(i.duration_minutes) + ' min</span>';
     }
-    // Edit: all users; Delete: admin only (stopPropagation to avoid opening details)
+    // Achitat + Delete: admin only; Edit: all users (stopPropagation to avoid opening details)
     html += '<span style="display:flex;gap:4px;margin-left:auto" onclick="event.stopPropagation()">';
+    if (isAdmin()) {
+      var paidStyle = i.paid
+        ? 'background:var(--emerald-100,#d1fae5);color:var(--emerald-700,#047857)'
+        : 'background:var(--slate-100,#f1f5f9);color:var(--slate-500)';
+      html += '<button onclick="toggleInterventionPaid(\'' + i.intervention_id + '\',\'' + clientId + '\')" title="' + (i.paid ? 'Anulează marcaj achitat' : 'Marchează ca achitat') + '" style="border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;cursor:pointer;' + paidStyle + '">💰</button>';
+    }
     html += '<button onclick="editIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--blue-100);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--blue-700);cursor:pointer">✏️</button>';
     if (isAdmin()) {
       html += '<button onclick="deleteIntervention(\'' + i.intervention_id + '\',\'' + clientId + '\')" style="background:var(--red-100,#fee2e2);border:none;border-radius:6px;padding:3px 8px;font-size:.75rem;color:var(--danger);cursor:pointer">🗑️</button>';
@@ -4224,6 +4168,33 @@ async function deleteIntervention(interventionId, clientId) {
   }
 }
 
+/** Toggle an intervention's "achitat" (paid) mark — admin only.
+ *  Paid interventions are excluded from all billing counts (session-count
+ *  notification, "De facturat" list, deviz exports). */
+async function toggleInterventionPaid(interventionId, clientId) {
+  if (!isAdmin()) return;
+  const intv = APP.interventions.find(function(i) { return i.intervention_id === interventionId; });
+  if (!intv) { showToast('Intervenție negăsită.', 'error'); return; }
+  const client = APP.clients.find(function(c) { return c.client_id === clientId; });
+
+  intv.paid       = !intv.paid;
+  intv.updated_at = new Date().toISOString();
+  intv.synced     = false; // re-push with the new flag on next sync
+
+  try {
+    await saveIntervention(intv);
+    APP.pendingSync = APP.interventions.filter(function(i) { return !i.synced; }).length;
+    logAudit(intv.paid ? 'mark_intervention_paid' : 'unmark_intervention_paid', client, fmtDate(intv.date));
+    showToast(intv.paid ? '✅ Intervenție marcată ca achitată.' : 'Marcaj „achitat" eliminat.', 'success');
+    // Push the full record now (partial pushes would blank other columns on GAS)
+    if (isSyncConfigured()) forceSync().catch(function() {});
+    await showClientDetails(clientId); // refresh history + billing button
+    renderDashboard();                 // refresh "De facturat" badge/count
+  } catch (e) {
+    showToast('Eroare: ' + e.message, 'error');
+  }
+}
+
 /** Track deleted intervention IDs so sync pull ignores them */
 async function _trackDeletedIntervention(interventionId) {
   var deleted = await getSetting('deleted_intervention_ids').catch(function() { return null; }) || [];
@@ -4295,13 +4266,13 @@ function _getBillableClients() {
     if (!interval || interval <= 0) return false;
     var since = client.last_billing_date || '1970-01-01';
     var count = APP.interventions.filter(function(i) {
-      return i.client_id === client.client_id && String(i.date || '') > since;
+      return i.client_id === client.client_id && String(i.date || '') > since && !i.paid;
     }).length;
     return count >= interval;
   }).map(function(client) {
     var since = client.last_billing_date || '1970-01-01';
     var billable = APP.interventions.filter(function(i) {
-      return i.client_id === client.client_id && String(i.date || '') > since;
+      return i.client_id === client.client_id && String(i.date || '') > since && !i.paid;
     }).sort(function(a, b) { return String(a.date || '').localeCompare(String(b.date || '')); });
     return { client: client, interventions: billable, count: billable.length };
   });
@@ -4536,7 +4507,7 @@ async function exportBillingClient(clientId) {
   if (!client) return;
   var since = client.last_billing_date || '1970-01-01';
   var billable = APP.interventions.filter(function(i) {
-    return i.client_id === clientId && i.date > since;
+    return i.client_id === clientId && i.date > since && !i.paid;
   }).sort(function(a, b) { return a.date.localeCompare(b.date); });
 
   if (!billable.length) { showToast('Nicio interventie de exportat.', 'warning'); return; }
@@ -4593,7 +4564,7 @@ async function exportBillingPdf(clientId) {
   if (!client) return;
   var since = client.last_billing_date || '1970-01-01';
   var billable = APP.interventions.filter(function(i) {
-    return i.client_id === clientId && i.date > since;
+    return i.client_id === clientId && i.date > since && !i.paid;
   }).sort(function(a, b) { return a.date.localeCompare(b.date); });
   if (!billable.length) { showToast('Nicio interventie de exportat.', 'warning'); return; }
 
@@ -4636,7 +4607,7 @@ function sendBillingEmail(clientId) {
   if (!client) return;
   var since = client.last_billing_date || '1970-01-01';
   var count = APP.interventions.filter(function(i) {
-    return i.client_id === clientId && String(i.date || '') > since;
+    return i.client_id === clientId && String(i.date || '') > since && !i.paid;
   }).length;
 
   var subject = 'Pool Manager — Facturare: ' + client.name + ' (' + count + ' intervenții)';
@@ -4728,6 +4699,7 @@ function checkBillingAlert(client) {
   // Normalize dates before comparing to handle GAS Date objects
   const billable = APP.interventions.filter(function(i) {
     if (i.client_id !== client.client_id) return false;
+    if (i.paid) return false; // achitat → nu se contorizează pentru facturare
     var raw = String(i.date || '');
     // Normalize to YYYY-MM-DD
     if (raw && !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
