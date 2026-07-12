@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 234;
+const APP_VERSION = 235;
 
 async function initApp() {
   await openDB();
@@ -1867,21 +1867,44 @@ var LEGACY_TREAT_LABELS = {
  * legacy pentru chei vechi — astfel valorile nu mai apar sub nume greșite,
  * indiferent de product_id-urile din stoc.
  */
+// A legacy sheet column and its stock product_id key hold the SAME physical
+// quantity (the sync round-trip mirrors the value into both forms). Group them
+// under one canonical id so a treatment is listed exactly once — otherwise a
+// synced intervention shows every chemical twice (e.g. "Cl Granule 3.5 kg" AND
+// "Cl Granule 3.5 gr"). Keys not listed here form their own group.
+var TREAT_DISPLAY_GROUP = {
+  treat_cl_granule_gr: 'cl_granule',  treat_cl_granule: 'cl_granule',
+  treat_cl_tablete: 'cl_tablete',     treat_cl_tablete_export_gr: 'cl_tablete',
+  treat_cl_lichid_bidoane: 'cl_lichid', treat_cl_lichid: 'cl_lichid',
+  treat_ph_granule: 'ph_minus_gr',    treat_ph_minus_gr: 'ph_minus_gr',
+  treat_ph_lichid_bidoane: 'ph_minus_l', treat_ph_minus_l: 'ph_minus_l',
+  treat_sare_saci: 'sare',            treat_sare: 'sare'
+};
+function _treatGroupOf(key) { return TREAT_DISPLAY_GROUP[key] || key; }
+
 function listTreatments(i) {
   var out = [];
-  var shown = {};
+  var shownGroups = {};
   var stock = (APP._stockProducts && APP._stockProducts.length) ? APP._stockProducts : [];
+  // Stock products are the source of truth for what the user entered — list them first.
   stock.forEach(function(p) {
     var key = 'treat_' + p.product_id;
+    var g = _treatGroupOf(key);
+    if (shownGroups[g]) return;
     var val = parseFloat(i[key]);
-    if (!isNaN(val) && val > 0) { out.push([p.name, val, p.unit || '']); shown[key] = true; }
+    if (!isNaN(val) && val > 0) { out.push([p.name, val, p.unit || '']); shownGroups[g] = true; }
   });
+  // Legacy keys only as a fallback for groups no stock product already covered
+  // (e.g. interventions created before the stock system, or a deleted product).
   Object.keys(i).forEach(function(key) {
-    if (key.indexOf('treat_') !== 0 || shown[key]) return;
+    if (key.indexOf('treat_') !== 0) return;
+    var g = _treatGroupOf(key);
+    if (shownGroups[g]) return;
     var val = parseFloat(i[key]);
     if (isNaN(val) || val <= 0) return;
     var lbl = LEGACY_TREAT_LABELS[key];
     out.push([lbl ? lbl[0] : key.replace('treat_', '').replace(/_/g, ' '), val, lbl ? lbl[1] : '']);
+    shownGroups[g] = true;
   });
   return out;
 }
