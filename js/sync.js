@@ -297,7 +297,9 @@ function pullData() {
           pret_interventie: parseFloat(c.pret_interventie || local.pret_interventie) || 0,
           billing_interval_interventions: parseInt(c.billing_interval_interventions || local.billing_interval_interventions) || 4,
           visit_frequency_days: parseInt(c.visit_frequency_days || local.visit_frequency_days) || 7,
-          last_billing_date: c.last_billing_date || local.last_billing_date || null
+          // Normalize to YYYY-MM-DD: billing counts compare it as a string against
+          // intervention dates, and GAS may return it as "Tue Jul 09 2026 ..."
+          last_billing_date: (function(v){ return v ? _normalizeDate(v) : null; })(c.last_billing_date || local.last_billing_date || null)
         };
       });
       // Robust client replacement: delete each old client individually, then add new ones
