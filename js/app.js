@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 235;
+const APP_VERSION = 236;
 
 async function initApp() {
   await openDB();
@@ -3435,7 +3435,7 @@ async function showStockModal() {
     <div class="stock-product-row" id="srow-${p.product_id}">
       <div style="flex:1">
         <div style="font-weight:600;font-size:.9rem;opacity:${p.visible !== false ? 1 : 0.5}">${escHtml(p.name)}</div>
-        <div style="font-size:.75rem;color:var(--slate-500)">${p.unit} · pas: ${p.step || 1} · prag: ${p.alert_threshold || 0}</div>
+        <div style="font-size:.75rem;color:var(--slate-500)">${p.unit} · pas: ${p.step || 1} · prag alertă: ${p.alert_threshold || 0}</div>
       </div>
       <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;justify-content:flex-end">
         <input type="number" class="stock-qty-input" id="stock-qty-${p.product_id}" value="${p.quantity || 0}" min="0" step="any" inputmode="decimal">
