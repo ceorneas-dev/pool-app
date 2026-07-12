@@ -1052,27 +1052,6 @@
 </div>
 
 <!-- ════════════════════════════════════
-     MODAL: QR CODE
-════════════════════════════════════ -->
-<div id="modal-qr" class="modal-overlay" onclick="if(event.target===this) closeQRModal()">
-  <div class="modal-sheet" role="dialog" aria-modal="true">
-    <div class="modal-handle"></div>
-    <div class="modal-title">QR Code</div>
-    <div class="modal-body" style="text-align:center">
-      <p class="qr-client-label" id="qr-client-name"></p>
-      <div class="qr-wrapper">
-        <div id="qr-canvas"></div>
-      </div>
-      <p style="font-size:.78rem;color:var(--slate-500);word-break:break-all;margin-top:8px" id="qr-url-text"></p>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-modal-cancel" onclick="closeQRModal()">Închide</button>
-      <button class="btn-modal-confirm" id="qr-copy-btn">📋 Copiază link</button>
-    </div>
-  </div>
-</div>
-
-<!-- ════════════════════════════════════
      DRUM PICKER POPUP (inline popover)
 ════════════════════════════════════ -->
 <div id="drum-popup" class="drum-popup" style="display:none">
