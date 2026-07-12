@@ -5,6 +5,11 @@
 // ── IMPORTANT: Actualizați SPREADSHEET_ID cu ID-ul foii dvs ──
 const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
 
+// Marker de versiune cod — verificați ce cod rulează cu <API_URL>?action=ping.
+// Dacă "code_version" NU e cel de mai jos după redeploy, aplicația lovește încă
+// deployment-ul vechi (folosiți Manage deployments → Edit → New version).
+const CODE_VERSION = 'v237-write-by-name';
+
 // ── Sheet column definitions ──────────────────────────────────
 const CLIENTS_COLS = [
   'client_id','name','phone','address','pool_volume_mc','pool_type',
@@ -63,7 +68,7 @@ function doGet(e) {
   try {
     let result;
     if (action === 'ping') {
-      result = { status: 'ok', sheets: 7, timestamp: new Date().toISOString() };
+      result = { status: 'ok', sheets: 7, code_version: CODE_VERSION, timestamp: new Date().toISOString() };
     } else if (action === 'pull') {
       result = handlePull(params);
     } else if (action === 'stats') {
