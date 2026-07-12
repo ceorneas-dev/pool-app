@@ -368,23 +368,36 @@ function handlePushClients(body) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = getOrCreateSheet(ss, 'clients', CLIENTS_COLS);
   const rows  = sheet.getDataRange().getValues();
-  const idCol = CLIENTS_COLS.indexOf('client_id');
+
+  // Map field name → physical column index from the real header, then read/write
+  // by NAME (order-independent). Writing by array position corrupts data when the
+  // sheet's column order drifts from CLIENTS_COLS (e.g. billing/deviz columns
+  // added in a newer version were appended to the end of an older sheet).
+  const header = (rows.length && rows[0].length) ? rows[0].map(String) : CLIENTS_COLS.slice();
+  const width  = header.length;
+  const colIdx = {};
+  header.forEach((h, idx) => { colIdx[h] = idx; });
+  const idCol = colIdx['client_id'];
 
   const existingRows = {};
-  rows.slice(1).forEach((row, i) => {
-    if (row[idCol]) existingRows[row[idCol]] = i + 2;
-  });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][idCol]) existingRows[rows[i][idCol]] = i + 1;
+  }
 
   let saved = 0, updated = 0;
 
   data.forEach(client => {
-    const row = CLIENTS_COLS.map(col => {
-      const val = client[col];
-      return val !== undefined && val !== null ? String(val) : '';
-    });
     const rowNum = existingRows[client.client_id];
+    const row = rowNum ? rows[rowNum - 1].slice() : [];
+    while (row.length < width) row.push('');
+    CLIENTS_COLS.forEach(col => {
+      const idx = colIdx[col];
+      if (idx === undefined) return;
+      const val = client[col];
+      row[idx] = (val !== undefined && val !== null) ? String(val) : '';
+    });
     if (rowNum) {
-      sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      sheet.getRange(rowNum, 1, 1, width).setValues([row]);
       updated++;
     } else {
       sheet.appendRow(row);
@@ -405,12 +418,18 @@ function handlePushTechnicians(body) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = getOrCreateSheet(ss, 'technicians', TECHNICIANS_COLS);
   const rows  = sheet.getDataRange().getValues();
-  const idCol = TECHNICIANS_COLS.indexOf('technician_id');
+
+  // Map field name → physical column index from the real header; read/write by NAME.
+  const header = (rows.length && rows[0].length) ? rows[0].map(String) : TECHNICIANS_COLS.slice();
+  const width  = header.length;
+  const colIdx = {};
+  header.forEach((h, idx) => { colIdx[h] = idx; });
+  const idCol = colIdx['technician_id'];
 
   const existingRows = {};
-  rows.slice(1).forEach((row, i) => {
-    if (row[idCol]) existingRows[row[idCol]] = i + 2;
-  });
+  for (let i = 1; i < rows.length; i++) {
+    if (rows[i][idCol]) existingRows[rows[i][idCol]] = i + 1;
+  }
 
   let saved = 0, updated = 0, deleted = 0;
 
@@ -426,23 +445,26 @@ function handlePushTechnicians(body) {
     deleted++;
   });
 
-  // Re-read rows after deletions
+  // Re-read rows after deletions (header unchanged, colIdx still valid)
   const rows2 = sheet.getDataRange().getValues();
   const existingRows2 = {};
-  rows2.slice(1).forEach((row, i) => {
-    if (row[idCol]) existingRows2[row[idCol]] = i + 2;
-  });
+  for (let i = 1; i < rows2.length; i++) {
+    if (rows2[i][idCol]) existingRows2[rows2[i][idCol]] = i + 1;
+  }
 
   data.forEach(tech => {
     if (tech._deleted) return; // already handled above
-    const row = TECHNICIANS_COLS.map(col => {
-      const val = tech[col];
-      return val !== undefined && val !== null ? String(val) : '';
-    });
-
     const rowNum = existingRows2[tech.technician_id];
+    const row = rowNum ? rows2[rowNum - 1].slice() : [];
+    while (row.length < width) row.push('');
+    TECHNICIANS_COLS.forEach(col => {
+      const idx = colIdx[col];
+      if (idx === undefined) return;
+      const val = tech[col];
+      row[idx] = (val !== undefined && val !== null) ? String(val) : '';
+    });
     if (rowNum) {
-      sheet.getRange(rowNum, 1, 1, row.length).setValues([row]);
+      sheet.getRange(rowNum, 1, 1, width).setValues([row]);
       updated++;
     } else {
       sheet.appendRow(row);
@@ -697,9 +719,13 @@ function cleanDuplicateInterventions() {
   var data = sheet.getDataRange().getValues();
   if (data.length <= 1) { Logger.log('No interventions to clean'); return; }
 
-  var clientIdCol  = INTERVENTIONS_COLS.indexOf('client_id');
-  var dateCol      = INTERVENTIONS_COLS.indexOf('date');
-  var createdAtCol = INTERVENTIONS_COLS.indexOf('created_at');
+  // Read column positions from the ACTUAL header row (not INTERVENTIONS_COLS
+  // array order) so a sheet whose columns drifted isn't grouped by the wrong
+  // columns — which would delete non-duplicate rows.
+  var header = data[0].map(String);
+  var clientIdCol  = header.indexOf('client_id');
+  var dateCol      = header.indexOf('date');
+  var createdAtCol = header.indexOf('created_at');
 
   // Group by client_id + date, keep the newest (by created_at)
   var best = {};

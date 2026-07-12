@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 236;
+const APP_VERSION = 237;
 
 async function initApp() {
   await openDB();
