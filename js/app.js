@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 237;
+const APP_VERSION = 238;
 
 async function initApp() {
   await openDB();
@@ -513,7 +513,7 @@ async function loadData() {
   ]);
   APP.clients        = clients;
   // Cache-ul de stoc e folosit de listTreatments în contexte sincrone (chips, raport)
-  if (stockProducts && stockProducts.length) APP._stockProducts = stockProducts;
+  if (stockProducts && stockProducts.length) APP._stockProducts = stockProducts.sort(_stockOrderCmp);
 
   // Normalize operations field: ensure it's always an array (fixes old sync data stored as string)
   for (var ni = 0; ni < interventions.length; ni++) {
@@ -3419,16 +3419,53 @@ function drawParamsChart(clientId) {
 // ════════════════════════════════════════════════════════════════
 // FEATURE 10 — Stock Management
 // ════════════════════════════════════════════════════════════════
+/** Comparator: order stock products by user-defined sort_order (unset → end), then name. */
+function _stockOrderCmp(a, b) {
+  var oa = (a.sort_order == null) ? 1e9 : a.sort_order;
+  var ob = (b.sort_order == null) ? 1e9 : b.sort_order;
+  if (oa !== ob) return oa - ob;
+  return String(a.name || '').localeCompare(String(b.name || ''), 'ro');
+}
+
+/** All stock products in the user-defined display order. */
+async function getStockOrdered() {
+  var stock = await getAllStock();
+  return stock.sort(_stockOrderCmp);
+}
+
+/** Move a stock product up (-1) or down (+1) in the display order — admin only.
+ *  This order drives both the stock list and the treatment entry form. */
+async function moveProduct(productId, dir) {
+  if (!isAdmin()) return;
+  var stock = await getStockOrdered();
+  var idx = stock.findIndex(function(p) { return p.product_id === productId; });
+  if (idx < 0) return;
+  var swapIdx = idx + dir;
+  if (swapIdx < 0 || swapIdx >= stock.length) return; // already at the edge
+  // Preserve any quantities typed in the open modal but not yet saved
+  stock.forEach(function(p) {
+    var input = document.getElementById('stock-qty-' + p.product_id);
+    if (input && input.value !== '') p.quantity = parseFloat(input.value) || 0;
+  });
+  var moved = stock.splice(idx, 1)[0];
+  stock.splice(swapIdx, 0, moved);
+  for (var k = 0; k < stock.length; k++) stock[k].sort_order = k;
+  await Promise.all(stock.map(updateStockProduct));
+  await showStockModal();                      // re-render list in new order
+  renderTreatmentSteppers().catch(function() {}); // refresh treatment form order
+}
+
 async function showStockModal() {
   const modal = $('modal-stock');
   const body  = $('stock-modal-body');
   if (!modal || !body) return;
 
   hideProductForm();
-  const stock = await getAllStock();
+  const stock = await getStockOrdered();
   const isAdm = isAdmin();
+  const last  = stock.length - 1;
 
-  body.innerHTML = stock.map(p => {
+  body.innerHTML = stock.map((p, idx) => {
     const low = (p.quantity || 0) <= (p.alert_threshold || 0);
     const visIcon = p.visible !== false ? '👁' : '👁‍🗨';
     return `
@@ -3442,6 +3479,8 @@ async function showStockModal() {
         <span style="font-size:.8rem;color:var(--slate-500)">${p.unit}</span>
         ${low ? `<span class="stock-low-badge">⚠</span>` : ''}
         ${isAdm ? `
+        <button class="product-icon-btn" title="Mută mai sus" onclick="moveProduct('${p.product_id}',-1)" ${idx === 0 ? 'disabled style="opacity:.25"' : ''}>▲</button>
+        <button class="product-icon-btn" title="Mută mai jos" onclick="moveProduct('${p.product_id}',1)" ${idx === last ? 'disabled style="opacity:.25"' : ''}>▼</button>
         <button class="product-icon-btn" title="${p.visible !== false ? 'Ascunde din formular' : 'Afișează în formular'}" onclick="toggleProductVisible('${p.product_id}')">${visIcon}</button>
         <button class="product-icon-btn" title="Editează" onclick="showEditProductForm('${p.product_id}')">✏️</button>
         <button class="product-icon-btn product-icon-del" title="Șterge" onclick="deleteProduct('${p.product_id}')">🗑</button>
@@ -3788,7 +3827,8 @@ async function seedMissingStockProducts() {
     sare:        { step: 1,    visible: true },
     bicarbonat:  { step: 0.5,  visible: true }
   };
-  for (const p of stock) {
+  for (let i = 0; i < stock.length; i++) {
+    const p = stock[i];
     let changed = false;
     if (p.step === undefined) {
       p.step = (defaults[p.product_id] || {}).step || 1;
@@ -3796,6 +3836,11 @@ async function seedMissingStockProducts() {
     }
     if (p.visible === undefined) {
       p.visible = true;
+      changed = true;
+    }
+    // Seed a display order for products that don't have one yet (keeps current order)
+    if (p.sort_order === undefined) {
+      p.sort_order = i;
       changed = true;
     }
     if (changed) await updateStockProduct(p);
@@ -3807,7 +3852,7 @@ async function renderTreatmentSteppers() {
   const container = $('treatment-steppers-container');
   if (!container) return;
 
-  const products = await getAllStock();
+  const products = await getStockOrdered();
   APP._stockProducts = products;
   const visible = products.filter(p => p.visible !== false);
 
@@ -3896,16 +3941,22 @@ async function doSaveProduct() {
   const threshold  = parseFloat($('pf-threshold')?.value) || 0;
   const visible    = $('pf-visible')   ? $('pf-visible').checked  : true;
 
-  // Preserve existing quantity if editing
+  // Preserve existing quantity + display order if editing
   let quantity = 0;
+  let sortOrder;
   if (existingId) {
     const existing = await getByKey('stock', existingId);
-    if (existing) quantity = existing.quantity || 0;
+    if (existing) { quantity = existing.quantity || 0; sortOrder = existing.sort_order; }
+  }
+  // New product (or legacy without order) → append at the end of the list
+  if (sortOrder == null) {
+    const all = await getAllStock();
+    sortOrder = all.reduce((m, x) => Math.max(m, (x.sort_order == null ? -1 : x.sort_order)), -1) + 1;
   }
 
   const productId = existingId || ('prod_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6));
 
-  await updateStockProduct({ product_id: productId, name, unit, step, alert_threshold: threshold, visible, quantity });
+  await updateStockProduct({ product_id: productId, name, unit, step, alert_threshold: threshold, visible, quantity, sort_order: sortOrder });
   showToast(existingId ? 'Produs actualizat.' : 'Produs adăugat.', 'success');
   hideProductForm();
   showStockModal(); // re-render stock list
