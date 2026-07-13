@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 239;
+const APP_VERSION = 240;
 
 async function initApp() {
   await openDB();
@@ -1026,23 +1026,39 @@ async function setClientLocationManual(clientId) {
   await _applyClientLocation(client, ll.lat, ll.lng);
 }
 
+/** Manual entry is opt-in — only offered after GPS truly fails, via a confirm. */
+function _offerManualLocation(clientId) {
+  if (confirm('GPS-ul nu a putut fi accesat.\n\nVrei să introduci locația manual (link Google Maps sau coordonate)?')) {
+    setClientLocationManual(clientId);
+  }
+}
+
 async function setClientLocation(clientId) {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
   if (!navigator.geolocation) {
-    showToast('GPS indisponibil pe acest dispozitiv — folosește locația manuală.', 'warning', 5000);
-    setClientLocationManual(clientId);
+    showToast('GPS indisponibil pe acest dispozitiv.', 'warning', 5000);
+    _offerManualLocation(clientId);
     return;
   }
   showToast('Se obține locația...', 'info', 3000);
+  const onOk = (pos) => { _applyClientLocation(client, pos.coords.latitude, pos.coords.longitude); };
+  // Try precise GPS first; if it fails, retry with coarse (network/WiFi) location —
+  // this succeeds on many devices where the high-accuracy provider is unavailable
+  // (the case behind "NoTwaFound"). Manual entry is offered only if both fail.
   navigator.geolocation.getCurrentPosition(
-    (pos) => { _applyClientLocation(client, pos.coords.latitude, pos.coords.longitude); },
-    (err) => {
-      // GPS unavailable (e.g. permission denied, or an installed-app/TWA without a
-      // location provider — "NoTwaFound"). Offer manual entry instead of dead-ending.
-      const msg = (err && err.message) ? err.message : 'necunoscută';
-      showToast('GPS indisponibil (' + msg + '). Setează locația manual.', 'warning', 6000);
-      setClientLocationManual(clientId);
+    onOk,
+    () => {
+      showToast('Reîncerc cu locație aproximativă...', 'info', 3000);
+      navigator.geolocation.getCurrentPosition(
+        onOk,
+        (err2) => {
+          const msg = (err2 && err2.message) ? err2.message : 'necunoscută';
+          showToast('GPS indisponibil (' + msg + '). Verifică permisiunea de locație a aplicației.', 'error', 7000);
+          _offerManualLocation(clientId);
+        },
+        { enableHighAccuracy: false, timeout: 20000, maximumAge: 60000 }
+      );
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
