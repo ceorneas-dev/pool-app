@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 238;
+const APP_VERSION = 239;
 
 async function initApp() {
   await openDB();
@@ -968,42 +968,81 @@ function navigateToClient(clientId) {
 }
 
 /** Set client GPS location from current device position (any logged-in user). */
+/** Persist a client's location (lat/lng), push to GAS, and refresh the UI.
+ *  Shared by the GPS flow and the manual-entry fallback. */
+async function _applyClientLocation(client, lat, lng) {
+  const wasSet = !!client.location_set;
+  client.latitude     = lat;
+  client.longitude    = lng;
+  client.location_set = true;
+  client.updated_at   = new Date().toISOString();
+  await put('clients', client);
+  if (isSyncConfigured()) {
+    apiFetch(SYNC_CONFIG.API_URL, {
+      method: 'POST',
+      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
+    }).catch(err => console.warn('[SYNC] Client loc push failed:', err.message));
+  }
+  logAudit(wasSet ? 'update_location' : 'set_location', client);
+  showToast('📍 Locația salvată pentru ' + client.name, 'success');
+  renderClientList($('search-input') ? $('search-input').value : '');
+  const locStatusEl = $('client-detail-gps-status');
+  if (locStatusEl) locStatusEl.textContent = '✅ Setată';
+  const updBtn = $('client-detail-gps-update-btn');
+  if (updBtn) updBtn.textContent = '📍 Actualizează';
+  const delBtn = $('client-detail-gps-delete-btn');
+  if (delBtn) delBtn.style.display = '';
+}
+
+/** Extract [lat, lng] from a Google Maps link or a plain "lat, lng" string. */
+function _parseLatLng(text) {
+  if (!text) return null;
+  const s = String(text).trim();
+  const m = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)                                   // .../@44.12,26.56,17z
+        || s.match(/[?&](?:q|ll|query|destination|center)=(-?\d+\.\d+),\s*(-?\d+\.\d+)/) // ?q=44.12,26.56
+        || s.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)                                 // !3d44.12!4d26.56
+        || s.match(/^\s*(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)\s*$/);                        // 44.12, 26.56
+  if (!m) return null;
+  const lat = parseFloat(m[1]), lng = parseFloat(m[2]);
+  if (isNaN(lat) || isNaN(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return { lat, lng };
+}
+
+/** Manual location fallback: paste a Google Maps link or coordinates. */
+async function setClientLocationManual(clientId) {
+  const client = APP.clients.find(c => c.client_id === clientId);
+  if (!client) return;
+  const input = prompt(
+    'Lipește un link Google Maps SAU coordonatele.\n\n' +
+    'Exemple:\n• 44.4268, 26.1025\n• https://www.google.com/maps/@44.4268,26.1025,17z\n\n' +
+    'Sfat: în Google Maps ține apăsat pe locul dorit → apar coordonatele → Copiază.'
+  );
+  if (!input) return;
+  const ll = _parseLatLng(input);
+  if (!ll) {
+    showToast('Nu am găsit coordonate valide. Lipește un link Maps cu poziția sau "lat, lng".', 'error', 7000);
+    return;
+  }
+  await _applyClientLocation(client, ll.lat, ll.lng);
+}
+
 async function setClientLocation(clientId) {
   const client = APP.clients.find(c => c.client_id === clientId);
   if (!client) return;
   if (!navigator.geolocation) {
-    showToast('GPS nu este disponibil pe acest dispozitiv.', 'error');
+    showToast('GPS indisponibil pe acest dispozitiv — folosește locația manuală.', 'warning', 5000);
+    setClientLocationManual(clientId);
     return;
   }
-  const wasSet = !!client.location_set;
   showToast('Se obține locația...', 'info', 3000);
   navigator.geolocation.getCurrentPosition(
-    async (pos) => {
-      client.latitude     = pos.coords.latitude;
-      client.longitude    = pos.coords.longitude;
-      client.location_set = true;
-      client.updated_at   = new Date().toISOString();
-      await put('clients', client);
-      // Push to GAS
-      if (isSyncConfigured()) {
-        apiFetch(SYNC_CONFIG.API_URL, {
-          method: 'POST',
-          body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
-        }).catch(err => console.warn('[SYNC] Client loc push failed:', err.message));
-      }
-      logAudit(wasSet ? 'update_location' : 'set_location', client);
-      showToast('📍 Locația salvată pentru ' + client.name, 'success');
-      renderClientList($('search-input') ? $('search-input').value : '');
-      // Refresh the client-info modal's location row, if it's open for this client
-      const locStatusEl = $('client-detail-gps-status');
-      if (locStatusEl) locStatusEl.textContent = '✅ Setată';
-      const updBtn = $('client-detail-gps-update-btn');
-      if (updBtn) updBtn.textContent = '📍 Actualizează';
-      const delBtn = $('client-detail-gps-delete-btn');
-      if (delBtn) delBtn.style.display = '';
-    },
+    (pos) => { _applyClientLocation(client, pos.coords.latitude, pos.coords.longitude); },
     (err) => {
-      showToast('Eroare GPS: ' + err.message, 'error');
+      // GPS unavailable (e.g. permission denied, or an installed-app/TWA without a
+      // location provider — "NoTwaFound"). Offer manual entry instead of dead-ending.
+      const msg = (err && err.message) ? err.message : 'necunoscută';
+      showToast('GPS indisponibil (' + msg + '). Setează locația manual.', 'warning', 6000);
+      setClientLocationManual(clientId);
     },
     { enableHighAccuracy: true, timeout: 10000 }
   );
