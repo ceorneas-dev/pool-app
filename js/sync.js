@@ -528,6 +528,9 @@ function pullData() {
               });
             } catch (e) { /* malformed json — ignore */ }
           }
+          // Keep the raw entered record so the UI can render exactly what the tech
+          // entered, bypassing any phantom values in the individual legacy columns.
+          parsed.treatments_json = ri.treatments_json || '';
 
           var local = localMap[parsed.intervention_id];
           // Preserve local-only fields (photos not sent to GAS)

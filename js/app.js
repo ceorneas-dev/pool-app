@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 240;
+const APP_VERSION = 241;
 
 async function initApp() {
   await openDB();
@@ -1941,22 +1941,38 @@ function listTreatments(i) {
   var out = [];
   var shownGroups = {};
   var stock = (APP._stockProducts && APP._stockProducts.length) ? APP._stockProducts : [];
-  // Stock products are the source of truth for what the user entered — list them first.
+
+  // Value source: prefer treatments_json — the exact record of what the technician
+  // entered on their device. The individual legacy columns can gain phantom values
+  // during the cross-device sync round-trip (legacy-column mirroring), so a synced
+  // intervention could show a chemical that was never used. treatments_json is not
+  // touched by that mirroring, so it stays faithful. Fall back to the record's own
+  // keys for local (not-yet-synced) or pre-json records.
+  var vals = null;
+  if (i.treatments_json) {
+    try { var tj = JSON.parse(i.treatments_json); if (tj && typeof tj === 'object') vals = tj; } catch (e) {}
+  }
+  var valOf = function(key) {
+    var v = parseFloat(vals ? vals[key] : i[key]);
+    return (!isNaN(v) && v > 0) ? v : 0;
+  };
+
+  // Stock products first (real names + user-defined order).
   stock.forEach(function(p) {
     var key = 'treat_' + p.product_id;
     var g = _treatGroupOf(key);
     if (shownGroups[g]) return;
-    var val = parseFloat(i[key]);
-    if (!isNaN(val) && val > 0) { out.push([p.name, val, p.unit || '']); shownGroups[g] = true; }
+    var val = valOf(key);
+    if (val > 0) { out.push([p.name, val, p.unit || '']); shownGroups[g] = true; }
   });
-  // Legacy keys only as a fallback for groups no stock product already covered
-  // (e.g. interventions created before the stock system, or a deleted product).
-  Object.keys(i).forEach(function(key) {
+  // Remaining keys (custom products / legacy) via legacy labels.
+  var keys = vals ? Object.keys(vals) : Object.keys(i);
+  keys.forEach(function(key) {
     if (key.indexOf('treat_') !== 0) return;
     var g = _treatGroupOf(key);
     if (shownGroups[g]) return;
-    var val = parseFloat(i[key]);
-    if (isNaN(val) || val <= 0) return;
+    var val = valOf(key);
+    if (val <= 0) return;
     var lbl = LEGACY_TREAT_LABELS[key];
     out.push([lbl ? lbl[0] : key.replace('treat_', '').replace(/_/g, ' '), val, lbl ? lbl[1] : '']);
     shownGroups[g] = true;
@@ -4554,6 +4570,19 @@ async function showInterventionDetails(interventionId) {
     let tHtml = '';
     treatments.forEach(t => { tHtml += row(escHtml(t[0]), t[1] + (t[2] ? ' ' + escHtml(t[2]) : '')); });
     html += sect('Tratament efectuat', tHtml);
+  }
+
+  // Debug tehnic (doar admin) — arată datele brute, ca să depistăm valori fantomă.
+  if (isAdmin()) {
+    var rawTreat = Object.keys(i).filter(k => k.indexOf('treat_') === 0 && parseFloat(i[k]) > 0)
+      .map(k => k + ' = ' + i[k]).join('\n') || '(niciuna)';
+    var stockMap = (APP._stockProducts || []).map(p => 'treat_' + p.product_id + ' → "' + p.name + '" (' + p.unit + ')').join('\n') || '(fără produse)';
+    html += '<details style="margin-bottom:14px"><summary style="font-size:.78rem;font-weight:700;color:var(--slate-500);cursor:pointer">🔧 Detalii tehnice (doar admin)</summary>' +
+      '<pre style="font-size:.68rem;white-space:pre-wrap;word-break:break-word;color:var(--text-secondary);background:var(--slate-50);padding:8px;border-radius:6px;margin-top:6px">' +
+      'CHEI treat_ BRUTE (în date):\n' + escHtml(rawTreat) +
+      '\n\ntreatments_json (ce a introdus tehnicianul):\n' + escHtml(i.treatments_json || '(lipsă — intervenție veche/nesincronizată)') +
+      '\n\nPRODUSE STOC pe acest telefon (cheie → nume):\n' + escHtml(stockMap) +
+      '</pre></details>';
   }
 
   // Observații
