@@ -88,6 +88,7 @@ function doSync() {
 
   return pushTechnicians()
     .then(() => pushClients())
+    .then(() => pushStock())
     .then(() => pushDeletedInterventions())
     .then(() => pushInterventions())
     .then(() => pullData())
@@ -109,6 +110,36 @@ function doSync() {
 // Clients are pushed immediately on edit (in app.js). No bulk push needed in sync cycle.
 function pushClients() {
   return Promise.resolve();
+}
+
+// Push stock DEFINITIONS to the server — ADMIN ONLY. The admin is the single
+// source of truth for the product set; technician devices receive these read-only.
+// Quantity is intentionally NOT sent (it stays local per device).
+function pushStock() {
+  return getSession().then(function(user) {
+    if (!user || user.role !== 'admin') return; // only admin defines products
+    return getAllStock().then(function(stock) {
+      if (!stock || !stock.length) return;
+      var payload = {
+        action: 'push',
+        type:   'stock',
+        data: stock.map(function(p) {
+          return {
+            product_id:      p.product_id,
+            name:            p.name || '',
+            unit:            p.unit || '',
+            step:            (p.step != null) ? p.step : 1,
+            alert_threshold: (p.alert_threshold != null) ? p.alert_threshold : 0,
+            visible:         (p.visible === false) ? 'false' : 'true',
+            sort_order:      (p.sort_order != null) ? p.sort_order : ''
+          };
+        })
+      };
+      return apiFetch(SYNC_CONFIG.API_URL, { method: 'POST', body: JSON.stringify(payload) })
+        .then(function() { console.log('[SYNC] Pushed', stock.length, 'stock definitions'); })
+        .catch(function(err) { console.warn('[SYNC] Stock push failed:', err.message); });
+    });
+  }).catch(function() { /* no session */ });
 }
 
 // Push pending technician deletions to server (edits are pushed immediately in doSaveTech)
@@ -410,6 +441,35 @@ function pullData() {
           }
         }
       })());
+    }
+
+    // Stock DEFINITIONS from the admin (source of truth). Replace local definitions
+    // but PRESERVE each device's local quantity (matched by product_id). Only when
+    // the server actually has stock — never wipe local stock on an empty response.
+    if (data.stock && data.stock.length) {
+      const stockMerge = (async function() {
+        let localStock = [];
+        try { localStock = await getAll('stock'); } catch (_) {}
+        const qtyById = {};
+        localStock.forEach(function(p) { qtyById[p.product_id] = p.quantity; });
+        const parsed = data.stock.map(function(s) {
+          var so = parseInt(s.sort_order);
+          return {
+            product_id:      s.product_id,
+            name:            s.name || '',
+            unit:            s.unit || '',
+            step:            parseFloat(s.step) || 1,
+            alert_threshold: parseFloat(s.alert_threshold) || 0,
+            visible:         !(s.visible === false || String(s.visible).toLowerCase() === 'false'),
+            sort_order:      isNaN(so) ? 9999 : so,
+            quantity:        (qtyById[s.product_id] != null ? qtyById[s.product_id] : 0)
+          };
+        });
+        try { await clearStore('stock'); } catch (_) {}
+        for (const p of parsed) { try { await put('stock', p); } catch (_) {} }
+        console.log('[SYNC] Stock definitions merged:', parsed.length, '(local quantities preserved)');
+      })();
+      tasks.push(stockMerge);
     }
 
     if (data.treatment_rules && data.treatment_rules.length) {
