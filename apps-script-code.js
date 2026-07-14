@@ -8,7 +8,7 @@ const SPREADSHEET_ID = 'YOUR_SPREADSHEET_ID_HERE';
 // Marker de versiune cod — verificați ce cod rulează cu <API_URL>?action=ping.
 // Dacă "code_version" NU e cel de mai jos după redeploy, aplicația lovește încă
 // deployment-ul vechi (folosiți Manage deployments → Edit → New version).
-const CODE_VERSION = 'v237-write-by-name';
+const CODE_VERSION = 'v242-stock-sync';
 
 // ── Sheet column definitions ──────────────────────────────────
 const CLIENTS_COLS = [
@@ -50,6 +50,12 @@ const RULES_COLS = [
 
 const SYNC_LOG_COLS = [
   'sync_id','technician_id','timestamp','records_pushed','records_pulled','status','error_message'
+];
+
+// Definiții produse stoc (cantitatea rămâne locală pe fiecare telefon — nu se sincronizează).
+// Adminul e sursa: telefoanele tehnicienilor primesc aceste definiții read-only.
+const STOCK_COLS = [
+  'product_id','name','unit','step','alert_threshold','visible','sort_order'
 ];
 
 // Evidenta Checklist - un singur rand (suprascris la fiecare salvare)
@@ -134,6 +140,9 @@ function handlePull(params) {
     const all    = sheetToObjects('interventions', INTERVENTIONS_COLS);
     result.interventions = techId ? all.filter(i => i.technician_id === techId) : all;
   }
+  if (type === 'all' || type === 'stock') {
+    result.stock = sheetToObjects('stock', STOCK_COLS);
+  }
   if (type === 'all' || type === 'config') {
     result.config = handleGetConfig();
   }
@@ -211,7 +220,45 @@ function handlePush(body) {
   if (type === 'delete_intervention') return handleDeleteIntervention(body);
   if (type === 'delete_interventions_bulk') return handleDeleteInterventionsBulk(body);
   if (type === 'clear_interventions') return handleClearInterventions();
+  if (type === 'stock') return handlePushStock(body);
   return handlePushInterventions(body);
+}
+
+/** Replace the stock DEFINITIONS sheet with the admin's list (quantity not synced).
+ *  Full replace = admin is the single source of truth for the product set. */
+function handlePushStock(body) {
+  const { data } = body;
+  if (!data || !Array.isArray(data)) return { success: false, error: 'Lipsesc datele' };
+
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = getOrCreateSheet(ss, 'stock', STOCK_COLS);
+  const header = (sheet.getLastColumn() > 0)
+    ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0].map(String)
+    : STOCK_COLS.slice();
+  const width = header.length;
+  const colIdx = {};
+  header.forEach((h, idx) => { colIdx[h] = idx; });
+
+  // Clear existing product rows (keep header)
+  if (sheet.getLastRow() > 1) {
+    sheet.getRange(2, 1, sheet.getLastRow() - 1, Math.max(1, width)).clearContent();
+  }
+
+  // Write each product by header name (order-independent)
+  if (data.length) {
+    const rows = data.map(p => {
+      const row = new Array(width).fill('');
+      STOCK_COLS.forEach(col => {
+        const idx = colIdx[col];
+        if (idx === undefined) return;
+        const val = p[col];
+        row[idx] = (val !== undefined && val !== null) ? String(val) : '';
+      });
+      return row;
+    });
+    sheet.getRange(2, 1, rows.length, width).setValues(rows);
+  }
+  return { success: true, saved: data.length };
 }
 
 /** Clear ALL interventions from the sheet (keeps header row) */

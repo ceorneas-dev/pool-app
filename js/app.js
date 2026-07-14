@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 241;
+const APP_VERSION = 242;
 
 async function initApp() {
   await openDB();
@@ -3504,6 +3504,14 @@ async function getStockOrdered() {
   return stock.sort(_stockOrderCmp);
 }
 
+/** Push stock definitions to the server after an admin change (admin is the
+ *  source of truth; technician devices receive them read-only). Fire-and-forget. */
+function _syncStockDefs() {
+  if (isAdmin() && isSyncConfigured() && typeof pushStock === 'function') {
+    pushStock().catch(function() {});
+  }
+}
+
 /** Move a stock product up (-1) or down (+1) in the display order — admin only.
  *  This order drives both the stock list and the treatment entry form. */
 async function moveProduct(productId, dir) {
@@ -3524,6 +3532,7 @@ async function moveProduct(productId, dir) {
   await Promise.all(stock.map(updateStockProduct));
   await showStockModal();                      // re-render list in new order
   renderTreatmentSteppers().catch(function() {}); // refresh treatment form order
+  _syncStockDefs();
 }
 
 async function showStockModal() {
@@ -4032,6 +4041,7 @@ async function doSaveProduct() {
   hideProductForm();
   showStockModal(); // re-render stock list
   renderTreatmentSteppers().catch(() => {}); // refresh treatment form if open
+  _syncStockDefs();
 }
 
 /** Delete a product (with confirm) */
@@ -4041,6 +4051,7 @@ async function deleteProduct(productId) {
   showToast('Produs șters.', 'success');
   showStockModal();
   renderTreatmentSteppers().catch(() => {}); // refresh treatment form if open
+  _syncStockDefs();
 }
 
 /** Toggle visibility of a product in the intervention form */
@@ -4051,6 +4062,7 @@ async function toggleProductVisible(productId) {
   await updateStockProduct(p);
   showStockModal();
   renderTreatmentSteppers().catch(() => {}); // refresh treatment form if open
+  _syncStockDefs();
 }
 
 // ════════════════════════════════════════════════════════════════
