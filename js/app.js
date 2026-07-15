@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initApp();
 });
 
-const APP_VERSION = 242;
+const APP_VERSION = 243;
 
 async function initApp() {
   await openDB();
@@ -887,7 +887,7 @@ async function renderClientList(searchTerm) {
     const resetBtn = (admin && cnt > 0)
       ? `<button class="btn-reset-counter"
            onclick="event.stopPropagation(); resetInterventionCounter('${client.client_id}')"
-           title="Resetează contorizarea">↺ Reset</button>`
+           title="Marchează toate intervențiile neachitate ca achitate">✅ Achitat</button>`
       : '';
 
     // Urgency badge
@@ -1385,19 +1385,43 @@ function updateSyncBadge() {
 }
 
 // ── Alert counter helpers ─────────────────────────────────────
-async function getUnreportedCount(clientId) {
-  const total    = APP.interventions.filter(i => i.client_id === clientId).length;
-  const reported = await getSetting('reported_count_' + clientId);
-  return Math.max(0, total - (parseInt(reported) || 0));
+/** Mark every UNPAID intervention of a client as paid (bulk "achitat").
+ *  Single mechanism behind the card / details / billing "mark paid" buttons —
+ *  replaces the old date-based reset that could drop not-yet-billed sessions.
+ *  Returns how many were marked. */
+async function _markClientAllPaid(clientId, opts) {
+  opts = opts || {};
+  const client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  const unpaid = APP.interventions.filter(function(i) { return i.client_id === clientId && !i.paid; });
+  if (!unpaid.length) { if (!opts.silent) showToast('Nicio intervenție neachitată.', 'info'); return 0; }
+  if (!opts.skipConfirm && !confirm('Marchezi cele ' + unpaid.length + ' intervenții neachitate ale acestui client ca ACHITATE?')) return 0;
+  const now = new Date().toISOString();
+  for (const intv of unpaid) {
+    intv.paid = true; intv.updated_at = now; intv.synced = false;
+    try { await saveIntervention(intv); } catch (e) {}
+  }
+  APP.pendingSync = APP.interventions.filter(function(i) { return !i.synced; }).length;
+  if (client) logAudit('mark_all_paid', client, unpaid.length + ' intervenții');
+  if (!opts.silent) showToast('✅ ' + unpaid.length + ' intervenții marcate ca achitate.', 'success');
+  if (isSyncConfigured() && typeof forceSync === 'function') forceSync().catch(function() {});
+  return unpaid.length;
 }
 
+// "Intervenții noi" = intervenții NEACHITATE de la ultima facturare — același
+// criteriu ca notificarea de facturare, ca badge-ul și alerta să fie aliniate.
+async function getUnreportedCount(clientId) {
+  const client = APP.clients.find(function(c) { return c.client_id === clientId; });
+  const since = (client && client.last_billing_date) || '1970-01-01';
+  return APP.interventions.filter(function(i) {
+    return i.client_id === clientId && !i.paid && String(i.date || '') > since;
+  }).length;
+}
+
+/** Card "achitat" button — mark all unpaid interventions of the client as paid. */
 async function resetInterventionCounter(clientId) {
-  const total = APP.interventions.filter(i => i.client_id === clientId).length;
-  await setSetting('reported_count_' + clientId, total);
-  showToast('Contorizare resetată.', 'success');
-  APP.alertShown = false;
-  await loadData();
-  renderDashboard();
+  if (!isAdmin()) return;
+  const n = await _markClientAllPaid(clientId);
+  if (n > 0) { APP.alertShown = false; await loadData(); renderDashboard(); }
 }
 
 
@@ -4698,34 +4722,25 @@ async function exportBillingClient(clientId) {
 
 /** Reset one client's billing (mark as billed) */
 async function resetBillingClient(clientId) {
-  var client = APP.clients.find(function(c) { return c.client_id === clientId; });
-  if (!client) return;
-
-  client.last_billing_date = new Date().toISOString().split('T')[0];
-  client.updated_at = new Date().toISOString();
-  await put('clients', client);
-  APP.clients = APP.clients.map(function(c) { return c.client_id === clientId ? client : c; });
-
-  if (isSyncConfigured()) {
-    apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'clients', data: [client] })
-    }).catch(function(e) { console.warn('[SYNC] Billing push failed:', e.message); });
-  }
-
-  showToast(client.name + ' marcat ca facturat.', 'success');
+  const n = await _markClientAllPaid(clientId);
+  if (n === 0) return;
+  await loadData();
   renderBillingList();
   var elBilling = $('stat-billing-count');
   if (elBilling) elBilling.textContent = _getBillableClients().length;
 }
 
-/** Mark client as billed from client details modal */
+/** Mark client as billed from client details modal (marks unpaid as achitat). */
 async function markClientBilled() {
   var clientId = APP._billingClientId;
   if (!clientId) return;
-  await resetBillingClient(clientId);
+  const n = await _markClientAllPaid(clientId);
+  if (n === 0) return;
   var billBtn = $('btn-mark-billed');
   if (billBtn) billBtn.style.display = 'none';
+  await loadData();
+  await showClientDetails(clientId);
+  renderDashboard();
 }
 
 /** Export one client's billing as PDF (print) */
@@ -4823,35 +4838,18 @@ async function exportAllBilling() {
 async function resetAllBilling() {
   var items = _getBillableClients();
   if (!items.length) { showToast('Niciun client de facturat.', 'warning'); return; }
+  if (!confirm('Marchezi ca ACHITATE toate intervențiile neachitate ale celor ' + items.length + ' clienți de facturat?')) return;
 
-  var today = new Date().toISOString().split('T')[0];
-  var now = new Date().toISOString();
-  var updated = [];
-
+  var total = 0;
   for (var idx = 0; idx < items.length; idx++) {
-    var client = items[idx].client;
-    client.last_billing_date = today;
-    client.updated_at = now;
-    await put('clients', client);
-    updated.push(client);
+    total += await _markClientAllPaid(items[idx].client.client_id, { skipConfirm: true, silent: true });
   }
 
-  APP.clients = APP.clients.map(function(c) {
-    var u = updated.find(function(x) { return x.client_id === c.client_id; });
-    return u || c;
-  });
-
-  if (isSyncConfigured()) {
-    apiFetch(SYNC_CONFIG.API_URL, {
-      method: 'POST',
-      body: JSON.stringify({ action: 'push', type: 'clients', data: updated })
-    }).catch(function(e) { console.warn('[SYNC] Billing reset push failed:', e.message); });
-  }
-
-  showToast(updated.length + ' clienti marcati ca facturati.', 'success');
+  showToast('✅ ' + total + ' intervenții marcate ca achitate (' + items.length + ' clienți).', 'success');
+  await loadData();
   renderBillingList();
   var elBilling = $('stat-billing-count');
-  if (elBilling) elBilling.textContent = 0;
+  if (elBilling) elBilling.textContent = _getBillableClients().length;
 }
 
 // ════════════════════════════════════════════════════════════════
